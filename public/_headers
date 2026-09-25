@@ -1,0 +1,4 @@
+# Cloudflare Pages: cross-origin isolation, required for SharedArrayBuffer.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

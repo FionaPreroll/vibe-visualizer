@@ -1,0 +1,7 @@
+dist/
+coverage/
+pnpm-lock.yaml
+test-results/
+playwright-report/
+src/core/audio/stretch/signalsmith-stretch-wasm.ts
+*.md
