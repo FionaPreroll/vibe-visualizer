@@ -146,4 +146,4 @@ The development container (headless Chromium, software GPU) and CI run all five 
 - Manual checks: the listening test (S2) passed with the test signal; loading files into the S2 player failed and is fixed. The S3 sample plays in sync in QuickTime; the YouTube/TikTok upload is still open.
 - Second-priority machines (Q14): Chrome on Windows and Firefox on Linux. A hosted preview makes this easiest.
 - Hosting needs a (free) Cloudflare account.
-- Export on the main machine: the container and CI have no H.264 encoder, so the tests cover VP9 + Opus. H.264 + AAC (MP4), the render speed, and a YouTube/TikTok upload of an export are still to be checked on Chrome/macOS.
+- Export on the main machine: the tests cover both paths, VP9 + Opus (WebM) in the development container, which has no H.264 encoder, and H.264 + AAC (MP4) in CI. The render speed on Chrome/macOS and a YouTube/TikTok upload of an export are still to be checked.
