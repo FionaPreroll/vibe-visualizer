@@ -8,7 +8,7 @@ export interface Check {
   detail: string;
 }
 
-export type SpikeStatus = 'idle' | 'running' | 'done' | 'error';
+export type SpikeStatus = 'idle' | 'running' | 'done' | 'error' | 'interrupted';
 
 export interface SpikeResult {
   status: SpikeStatus;
@@ -32,15 +32,55 @@ function emptyResult(): SpikeResult {
   return { status: 'idle', checks: [], metrics: {}, log: [], error: null };
 }
 
-class LabState {
-  env = $state<CapabilityReport | null>(null);
-  results = $state<Record<SpikeId, SpikeResult>>({
+const STORAGE_KEY = 'vibe-visualizer:spike-lab:v1';
+
+function emptyResults(): Record<SpikeId, SpikeResult> {
+  return {
     S1: emptyResult(),
     S2: emptyResult(),
     S3: emptyResult(),
     S4: emptyResult(),
     S5: emptyResult(),
-  });
+  };
+}
+
+/** Results survive page reloads, so a reload test (S5) does not wipe the other spikes. */
+function loadResults(): Record<SpikeId, SpikeResult> {
+  const results = emptyResults();
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<
+      Record<SpikeId, SpikeResult>
+    >;
+    for (const { id } of SPIKES) {
+      const result = stored[id];
+      if (!result) continue;
+      results[id] = {
+        ...result,
+        status: result.status === 'running' ? 'interrupted' : result.status,
+      };
+    }
+  } catch {
+    // Unreadable or unavailable storage: start empty.
+  }
+  return results;
+}
+
+class LabState {
+  env = $state<CapabilityReport | null>(null);
+  results = $state<Record<SpikeId, SpikeResult>>(loadResults());
+
+  save(): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify($state.snapshot(this.results)));
+    } catch {
+      // Storage full or blocked: results stay in memory only.
+    }
+  }
+
+  clear(): void {
+    this.results = emptyResults();
+    this.save();
+  }
 }
 
 export const lab = new LabState();

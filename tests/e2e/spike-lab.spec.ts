@@ -123,3 +123,26 @@ test('S5 long render survives a page reload and joins into a valid file', async 
   }
   expect(errors).toEqual([]);
 });
+
+test('S2 player plays a loaded file, and lab results survive a reload', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/?quick');
+  await page.getByTestId('s2-run').click();
+  const card = page.getByTestId('spike-S2');
+  await expect(card).toHaveAttribute('data-status', 'done', { timeout: 120_000 });
+
+  // Regression: a loaded file used to fail with "could not be cloned" (Svelte state proxy).
+  await page
+    .getByTestId('s2-file')
+    .setInputFiles({ name: 'tone.wav', mimeType: 'audio/wav', buffer: createWav(5) });
+  await expect(card.getByText('Source: tone.wav')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('s2-play').click();
+  await expect(page.getByTestId('s2-player')).toHaveAttribute('data-playing', 'true');
+  await page.getByTestId('s2-play').click();
+
+  await page.reload();
+  await expect(page.getByTestId('spike-S2')).toHaveAttribute('data-status', 'done');
+  await page.getByTestId('clear-results').click();
+  await expect(page.getByTestId('spike-S2')).toHaveAttribute('data-status', 'idle');
+  expect(errors).toEqual([]);
+});
