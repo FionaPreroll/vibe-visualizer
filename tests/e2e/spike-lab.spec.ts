@@ -77,3 +77,18 @@ test('S1 streaming spike plays a file and jumps between cues', async ({ page }) 
   );
   expect(errors).toEqual([]);
 });
+
+test('S2 key lock spike: fast and bit-identical in worker and AudioWorklet', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/?quick');
+  await page.getByTestId('s2-run').click();
+  const card = page.getByTestId('spike-S2');
+  await expect(card).toHaveAttribute('data-status', /done|error/, { timeout: 180_000 });
+  console.log(await card.innerText());
+  await expect(card).toHaveAttribute('data-status', 'done');
+  await expect(card.locator('tr[data-state="pass"]', { hasText: 'Deterministic' })).toHaveCount(1);
+  await expect(
+    card.locator('tr[data-state="pass"]', { hasText: 'Identical output live' }),
+  ).toHaveCount(1);
+  expect(errors).toEqual([]);
+});

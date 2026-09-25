@@ -1,6 +1,7 @@
 <script lang="ts">
   import { buildMarkdownReport } from './report-markdown';
   import S1Streaming from './s1-streaming/S1Streaming.svelte';
+  import S2KeyLock from './s2-keylock/S2KeyLock.svelte';
   import S3Encoding from './s3-encoding/S3Encoding.svelte';
   import S4Rendering from './s4-rendering/S4Rendering.svelte';
   import EnvPanel from './ui/EnvPanel.svelte';
@@ -41,6 +42,7 @@
 
   <EnvPanel />
   <S1Streaming />
+  <S2KeyLock />
   <S3Encoding />
   <S4Rendering />
 </main>
