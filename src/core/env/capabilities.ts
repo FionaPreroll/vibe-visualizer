@@ -58,11 +58,11 @@ export const VIDEO_TARGETS = [
     bitrate: 40e6,
   },
   {
-    label: 'H.264 1080×1920 60 (TikTok)',
-    codec: 'avc1.64002A',
+    label: 'H.264 1080×1920 30 (TikTok)',
+    codec: 'avc1.640028',
     width: 1080,
     height: 1920,
-    fps: 60,
+    fps: 30,
     bitrate: 10e6,
   },
   {

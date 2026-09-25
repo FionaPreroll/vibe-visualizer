@@ -19,6 +19,8 @@ const AUDIO_RATE = 48000;
 
 export interface VideoBenchmarkArgs {
   codec: VideoCodec;
+  /** Explicit codec string, e.g. H.264 level 4.2 for 1080p60 (Mediabunny would pick 4.0). */
+  fullCodecString?: string;
   width: number;
   height: number;
   fps: number;
@@ -85,6 +87,7 @@ async function videoBenchmark(args: VideoBenchmarkArgs): Promise<VideoBenchmarkR
   });
   const source = new CanvasSource(pattern.canvas, {
     codec: args.codec,
+    fullCodecString: args.fullCodecString,
     bitrate: args.bitrate,
     keyFrameInterval: 2,
     onEncoderConfig: (config) => (encoderCodec = config.codec),
@@ -186,7 +189,13 @@ async function sampleFile(args: {
   const ctx = canvas.getContext('2d')!;
   const target = new BufferTarget();
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target });
-  const video = new CanvasSource(canvas, { codec: videoCodec, bitrate: 12e6, keyFrameInterval: 2 });
+  const video = new CanvasSource(canvas, {
+    codec: videoCodec,
+    // H.264 High profile, level 4.2: required for 1080p at 60 fps.
+    fullCodecString: videoCodec === 'avc' ? 'avc1.64002A' : undefined,
+    bitrate: 12e6,
+    keyFrameInterval: 2,
+  });
   const audio = new AudioSampleSource({
     codec: audioCodec,
     bitrate: audioCodec === 'aac' ? 320_000 : 192_000,

@@ -16,6 +16,7 @@
   const TARGETS: {
     label: string;
     codec: VideoCodec;
+    fullCodecString: string;
     width: number;
     height: number;
     fps: number;
@@ -25,6 +26,7 @@
     {
       label: 'YouTube 1080p60',
       codec: 'avc',
+      fullCodecString: 'avc1.64002A',
       width: 1920,
       height: 1080,
       fps: 60,
@@ -34,6 +36,7 @@
     {
       label: 'YouTube 4K30',
       codec: 'avc',
+      fullCodecString: 'avc1.640033',
       width: 3840,
       height: 2160,
       fps: 30,
@@ -43,6 +46,7 @@
     {
       label: 'TikTok 1080×1920 30',
       codec: 'avc',
+      fullCodecString: 'avc1.640028',
       width: 1080,
       height: 1920,
       fps: 30,
@@ -68,6 +72,7 @@
         try {
           const result = await client.call<VideoBenchmarkResult>('videoBenchmark', {
             codec: target.codec,
+            fullCodecString: target.fullCodecString,
             width: target.width,
             height: target.height,
             fps: target.fps,

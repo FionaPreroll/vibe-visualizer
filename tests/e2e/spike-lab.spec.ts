@@ -92,3 +92,30 @@ test('S2 key lock spike: fast and bit-identical in worker and AudioWorklet', asy
   ).toHaveCount(1);
   expect(errors).toEqual([]);
 });
+
+test('S5 long render survives a page reload and joins into a valid file', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/?quick');
+  await page.getByTestId('s5-start').click();
+  await expect(page.getByTestId('s5-progress')).toContainText('segment 2/3', { timeout: 120_000 });
+
+  // Kill the render the hard way, then resume from what is stored in OPFS.
+  await page.reload();
+  await expect(page.getByTestId('s5-resume')).toBeEnabled({ timeout: 30_000 });
+  await page.getByTestId('s5-resume').click();
+  await expect(page.getByTestId('s5-join')).toBeEnabled({ timeout: 120_000 });
+  await page.getByTestId('s5-join').click();
+
+  const card = page.getByTestId('spike-S5');
+  await expect(card).toHaveAttribute('data-status', /done|error/, { timeout: 120_000 });
+  console.log(await card.innerText());
+  await expect(card).toHaveAttribute('data-status', 'done');
+  for (const check of [
+    'Valid output file',
+    'Segments joined without re-encoding',
+    'Resumes after',
+  ]) {
+    await expect(card.locator('tr[data-state="pass"]', { hasText: check })).toHaveCount(1);
+  }
+  expect(errors).toEqual([]);
+});

@@ -4,6 +4,7 @@
   import S2KeyLock from './s2-keylock/S2KeyLock.svelte';
   import S3Encoding from './s3-encoding/S3Encoding.svelte';
   import S4Rendering from './s4-rendering/S4Rendering.svelte';
+  import S5LongRender from './s5-long-render/S5LongRender.svelte';
   import EnvPanel from './ui/EnvPanel.svelte';
 
   let copied = $state(false);
@@ -45,6 +46,7 @@
   <S2KeyLock />
   <S3Encoding />
   <S4Rendering />
+  <S5LongRender />
 </main>
 
 <style>
