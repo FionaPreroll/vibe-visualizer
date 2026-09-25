@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { sceneDefaults } from '../render/kaleido-settings';
 import { DEFAULT_LOGO_SPECTRUM, RANGES } from '../render/visual-settings';
 import { initialState, newTrack, reducer, type AppAction, type AppState } from './app-state';
 import { createStore } from './store';
@@ -70,5 +71,28 @@ describe('app state', () => {
     expect(changed.visuals.palette).toBe('fire');
     const reset = reducer(changed, { type: 'visuals/replaced', visuals: DEFAULT_LOGO_SPECTRUM });
     expect(reset.visuals).toEqual(DEFAULT_LOGO_SPECTRUM);
+  });
+
+  it('switches Kaleidoscope scenes with their look and keeps parameters valid', () => {
+    const crystal = reducer(initialState(), { type: 'kaleido/scene', scene: 'crystal' });
+    expect(crystal.kaleido.scene).toBe('crystal');
+    expect(crystal.kaleido.common['flow']).toBe(sceneDefaults('crystal').common['flow']);
+    const changed = reducer(crystal, {
+      type: 'kaleido/param',
+      scope: 'crystal',
+      key: 'points',
+      value: 99,
+    });
+    expect(changed.kaleido.scenes.crystal['points']).toBe(12);
+    const common = reducer(changed, {
+      type: 'kaleido/param',
+      scope: 'common',
+      key: 'segments',
+      value: 3,
+    });
+    expect(common.kaleido.common['segments']).toBe(3);
+    // Switching back keeps the other scene's own parameters.
+    const back = reducer(common, { type: 'kaleido/scene', scene: 'vortex' });
+    expect(back.kaleido.scenes.crystal['points']).toBe(12);
   });
 });

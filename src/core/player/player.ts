@@ -10,8 +10,16 @@ import {
   type Settings,
   type Track,
 } from '../state/app-state';
+import type { KaleidoSceneId, KaleidoSettings, ParamValue } from '../render/kaleido-settings';
 import type { LogoSpectrumSettings } from '../render/visual-settings';
-import { loadSettings, loadVisuals, saveSettings, saveVisuals } from '../state/persistence';
+import {
+  loadKaleido,
+  loadSettings,
+  loadVisuals,
+  saveKaleido,
+  saveSettings,
+  saveVisuals,
+} from '../state/persistence';
 import { createStore, type Store } from '../state/store';
 import { errorMessage } from '../util/format';
 import { WorkerClient } from '../util/worker-rpc';
@@ -32,16 +40,21 @@ export class Player {
 
   constructor() {
     this.store = createStore<AppState, AppAction>(
-      initialState(loadSettings(), loadVisuals()),
+      initialState(loadSettings(), loadVisuals(), loadKaleido()),
       reducer,
     );
     this.engine.volume = this.state.settings.volume;
     let lastSettings = this.state.settings;
     let lastVisuals = this.state.visuals;
+    let lastKaleido = this.state.kaleido;
     this.store.subscribe((state) => {
       if (state.visuals !== lastVisuals) {
         lastVisuals = state.visuals;
         saveVisuals(state.visuals);
+      }
+      if (state.kaleido !== lastKaleido) {
+        lastKaleido = state.kaleido;
+        saveKaleido(state.kaleido);
       }
       if (state.settings === lastSettings) return;
       lastSettings = state.settings;
@@ -249,6 +262,20 @@ export class Player {
   /** Applies a preset: all visual parameters at once. */
   replaceVisuals(visuals: LogoSpectrumSettings): void {
     this.dispatch({ type: 'visuals/replaced', visuals });
+  }
+
+  /** Switches the Kaleidoscope scene (with the look that suits it). */
+  setKaleidoScene(scene: KaleidoSceneId): void {
+    this.dispatch({ type: 'kaleido/scene', scene });
+  }
+
+  /** Changes one Kaleidoscope parameter: a common one or one of a scene. */
+  setKaleidoParam(scope: 'common' | KaleidoSceneId, key: string, value: ParamValue): void {
+    this.dispatch({ type: 'kaleido/param', scope, key, value });
+  }
+
+  replaceKaleido(kaleido: KaleidoSettings): void {
+    this.dispatch({ type: 'kaleido/replaced', kaleido });
   }
 
   updateSettings(changes: Partial<Settings>): void {

@@ -1,4 +1,9 @@
 import {
+  sanitizeKaleido,
+  type KaleidoPreset,
+  type KaleidoSettings,
+} from '../render/kaleido-settings';
+import {
   sanitizeSettings,
   type LogoSpectrumSettings,
   type VisualPreset,
@@ -8,6 +13,8 @@ import { DEFAULT_SETTINGS, VISUAL_MODES, type Settings } from './app-state';
 const SETTINGS_KEY = 'vibe-visualizer:settings:v1';
 const VISUALS_KEY = 'vibe-visualizer:visuals:v1';
 const PRESETS_KEY = 'vibe-visualizer:presets:v1';
+const KALEIDO_KEY = 'vibe-visualizer:kaleido:v1';
+const KALEIDO_PRESETS_KEY = 'vibe-visualizer:kaleido-presets:v1';
 
 function read(key: string): unknown {
   try {
@@ -81,6 +88,38 @@ export function loadPresets(): VisualPreset[] {
 export function savePresets(presets: VisualPreset[]): void {
   write(
     PRESETS_KEY,
+    presets.filter((preset) => !preset.builtIn).map(({ name, settings }) => ({ name, settings })),
+  );
+}
+
+/** The Kaleidoscope parameters, validated. */
+export function loadKaleido(): KaleidoSettings {
+  return sanitizeKaleido(read(KALEIDO_KEY));
+}
+
+export function saveKaleido(kaleido: KaleidoSettings): void {
+  write(KALEIDO_KEY, kaleido);
+}
+
+/** The user's own Kaleidoscope presets. */
+export function loadKaleidoPresets(): KaleidoPreset[] {
+  const stored = read(KALEIDO_PRESETS_KEY);
+  if (!Array.isArray(stored)) return [];
+  return stored
+    .filter(
+      (entry): entry is { name: string; settings: unknown } =>
+        typeof entry === 'object' && entry !== null && typeof entry.name === 'string',
+    )
+    .map((entry) => ({
+      name: entry.name,
+      settings: sanitizeKaleido(entry.settings),
+      builtIn: false,
+    }));
+}
+
+export function saveKaleidoPresets(presets: KaleidoPreset[]): void {
+  write(
+    KALEIDO_PRESETS_KEY,
     presets.filter((preset) => !preset.builtIn).map(({ name, settings }) => ({ name, settings })),
   );
 }

@@ -14,6 +14,7 @@ import {
   type Target,
 } from './gl';
 import { PostProcessing } from './post';
+import type { Scene, SceneInput } from './scene';
 import { CURVE_POINTS, SpectrumShaper } from './spectrum-shaper';
 import {
   DEFAULT_LOGO_SPECTRUM,
@@ -29,15 +30,6 @@ import {
  * into a half-float buffer, then bloom and dithering (VE-02). Everything moves in real time
  * (dt), so it looks the same at any frame rate and in the export (VE-03).
  */
-
-export interface SceneInput {
-  /** Seconds since the scene started (drives slow animations). */
-  time: number;
-  /** Seconds since the previous frame. */
-  dt: number;
-  /** Analysis values at the moment being shown (layout F). */
-  features: Float32Array;
-}
 
 export type ImageKind = 'background' | 'logo';
 
@@ -226,7 +218,7 @@ class Follower {
   }
 }
 
-export class LogoSpectrumScene {
+export class LogoSpectrumScene implements Scene {
   readonly floatTargets: boolean;
   private readonly gl: WebGL2RenderingContext;
   private readonly triangle: WebGLVertexArrayObject;

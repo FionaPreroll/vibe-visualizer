@@ -1,23 +1,34 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { ImageKind } from '../core/render/logo-spectrum';
+  import type { SceneKind } from '../core/render/render-protocol';
   import { Renderer } from '../core/render/renderer';
   import { decodeImage, type StoredImage } from '../core/render/visual-assets';
   import { usePlayer } from './player-context';
   import { useAssets } from './visuals-context';
 
   /**
-   * The Logo Spectrum visuals (M2), drawn by the render worker at the canvas's native
-   * resolution (VE-01). Settings and images are forwarded as they change.
+   * The visuals (Logo Spectrum or Kaleidoscope), drawn by the render worker at the canvas's
+   * native resolution (VE-01). Switching between the two keeps the worker and both scenes;
+   * settings and images are forwarded as they change.
    */
+  interface Props {
+    mode: SceneKind;
+  }
+  let { mode }: Props = $props();
 
   const player = usePlayer();
   const assets = useAssets();
   const app = player.store;
   let canvas: HTMLCanvasElement;
+  let renderer: Renderer | null = $state(null);
   let status = $state<'starting' | 'running' | 'failed'>('starting');
   let message = $state('');
   let fps = $state(0);
+
+  $effect(() => {
+    renderer?.setScene(mode);
+  });
 
   onMount(() => {
     const size = () => {
@@ -28,8 +39,10 @@
       ] as const;
     };
     const [width, height] = size();
-    const renderer = new Renderer(canvas, player.engine, width, height);
-    renderer.onEvent = (event) => {
+    const instance = new Renderer(canvas, player.engine, width, height);
+    // The first frame already shows the right scene (the effect takes over after mounting).
+    instance.setScene(mode);
+    instance.onEvent = (event) => {
       if (event.type === 'ready') status = 'running';
       else if (event.type === 'stats') fps = event.fps;
       else {
@@ -40,8 +53,8 @@
 
     const observer = new ResizeObserver((entries) => {
       const box = entries[0]?.devicePixelContentBoxSize?.[0];
-      if (box) renderer.resize(box.inlineSize, box.blockSize);
-      else renderer.resize(...size());
+      if (box) instance.resize(box.inlineSize, box.blockSize);
+      else instance.resize(...size());
     });
     try {
       observer.observe(canvas, { box: 'device-pixel-content-box' });
@@ -50,11 +63,18 @@
     }
 
     let lastVisuals = $app.visuals;
-    renderer.setSettings(lastVisuals);
+    let lastKaleido = $app.kaleido;
+    instance.setLogoSpectrum(lastVisuals);
+    instance.setKaleidoscope(lastKaleido);
     const unsubscribeSettings = app.subscribe((state) => {
-      if (state.visuals === lastVisuals) return;
-      lastVisuals = state.visuals;
-      renderer.setSettings(state.visuals);
+      if (state.visuals !== lastVisuals) {
+        lastVisuals = state.visuals;
+        instance.setLogoSpectrum(state.visuals);
+      }
+      if (state.kaleido !== lastKaleido) {
+        lastKaleido = state.kaleido;
+        instance.setKaleidoscope(state.kaleido);
+      }
     });
 
     // Decode images off the render thread's path; skip results that were replaced meanwhile.
@@ -68,28 +88,31 @@
         if (image === shown[kind]) continue;
         shown[kind] = image;
         if (!image) {
-          renderer.setImage(kind, null);
+          instance.setImage(kind, null);
           continue;
         }
         decodeImage(image.blob)
           .then((bitmap) => {
-            if (shown[kind] === image) renderer.setImage(kind, bitmap);
+            if (shown[kind] === image) instance.setImage(kind, bitmap);
             else bitmap.close();
           })
-          .catch(() => renderer.setImage(kind, null));
+          .catch(() => instance.setImage(kind, null));
       }
     });
 
-    const onVisibility = () => renderer.setRunning(document.visibilityState === 'visible');
+    const onVisibility = () => instance.setRunning(document.visibilityState === 'visible');
     document.addEventListener('visibilitychange', onVisibility);
     onVisibility();
+    // The effect above sends mode changes from now on (and the current mode right away).
+    renderer = instance;
 
     return () => {
+      renderer = null;
       document.removeEventListener('visibilitychange', onVisibility);
       unsubscribeSettings();
       unsubscribeAssets();
       observer.disconnect();
-      renderer.dispose();
+      instance.dispose();
     };
   });
 </script>
@@ -99,7 +122,8 @@
   data-testid="visual-stage"
   data-status={status}
   data-fps={fps.toFixed(0)}
-  aria-label="Logo Spectrum visuals"
+  data-scene={mode}
+  aria-label={mode === 'kaleidoscope' ? 'Kaleidoscope visuals' : 'Logo Spectrum visuals'}
 ></canvas>
 {#if status === 'failed'}
   <p class="failed" role="alert">The visuals could not start: {message}</p>

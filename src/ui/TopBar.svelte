@@ -13,6 +13,7 @@
 
   const MODES: { id: VisualMode; label: string; title: string; icon: IconName }[] = [
     { id: 'logoSpectrum', label: 'Logo Spectrum', title: 'Logo Spectrum visuals', icon: 'ring' },
+    { id: 'kaleidoscope', label: 'Kaleidoscope', title: 'Kaleidoscope visuals', icon: 'kaleido' },
     { id: 'analysis', label: 'Analysis', title: 'What the visuals react to', icon: 'wave' },
   ];
 </script>
