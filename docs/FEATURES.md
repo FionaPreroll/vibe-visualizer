@@ -1,6 +1,6 @@
 # Vibe Visualizer — Feature List
 
-> **Status:** v0.3 (2026-09-25). The answers to Q1–Q16 are applied (see [§8 Decision log](#8-decision-log)). The tech stack is in [TECH-STACK.md](TECH-STACK.md).
+> **Status:** v0.4 (2026-09-25). The answers to Q1–Q16 are applied (see [§8 Decision log](#8-decision-log)), and the P0 spikes passed on the main target machine. The tech stack is in [TECH-STACK.md](TECH-STACK.md).
 
 ## How to use this document
 
@@ -118,7 +118,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | AN-03 | M | Beat/onset detection, roughly separated into kick / snare / hi-hat |
 | AN-04 | M | Waveform data (time domain) for oscilloscope-style elements |
 | AN-05* | M | Adaptive normalisation (auto-gain), so quiet and loud material both look lively |
-| AN-06* | S | A/V sync offset that compensates output latency (e.g. Bluetooth headphones, 100–300 ms): auto-detected plus a manual slider |
+| AN-06* | S | A/V sync offset that compensates output latency (e.g. Bluetooth headphones, 100–300 ms): auto-detected where the browser reports it, a calibration step (flash + beep, adjust until in sync) and a manual slider. Chrome on macOS reports 0 ms, so calibration is needed there |
 | AN-07* | S | Tempo (BPM) and beat-phase tracking; for files, a beat grid is pre-computed in the background and follows tempo changes within long mixes |
 | AN-08* | C | Build-up/drop detection, e.g. to trigger preset changes or effects |
 | AN-09* | C | Choose whether the visuals react to the signal before or after the FX |
@@ -280,8 +280,8 @@ Reordered after Q1: the export comes right after the core, because it is the mai
 
 | Phase | Goal | Features |
 |---|---|---|
-| P0 Setup & spikes | Project skeleton, CI, hosting; test the risky parts first | Spikes S1–S5 in [TECH-STACK.md](TECH-STACK.md#5-spikes-p0). Built; waiting for results from the target machines |
-| P1 Core | Play files and see both modes | SRC-01/02, PL-01–03, TR-01/02, AN-01–05, VE-01–05, KA-01/02, KA-05–08, LS-01, LS-05–09, LS-12–14, PR-01, DS-01, UI-01–03, NF-08 |
+| P0 Setup & spikes | Project skeleton, CI, hosting; test the risky parts first | Spikes S1–S5 in [TECH-STACK.md](TECH-STACK.md#5-spikes-p0). Passed on Chrome/macOS (Apple M3). Still open: listening test, upload test, Chrome/Windows and Firefox/Linux |
+| P1 Core | Play files and see both modes | SRC-01/02, PL-01–03, TR-01/02, AN-01–05, VE-01–05, KA-01/02, KA-05–08, LS-01, LS-05–09, LS-12–14, PR-01, DS-01, UI-01–03, NF-08. In three milestones: **M1** audio engine, queue, transport, analysis (done: SRC-01/02, PL-01–03, TR-01/02, AN-01–05, UI-01–03, NF-08); **M2** Logo Spectrum; **M3** Kaleidoscope |
 | P2 Export | Render a track or an in/out range to MP4 | EX-01–04, EX-05 (whole track, in/out), EX-06/07, EX-15, TR-09, VE-09 |
 | P3 Player & FX | Cues, tempo, effects | TR-03–05, TR-08, TMP-01–04, FX-01–04, FX-06, FX-10, AN-06/07, PL-04/05, SRC-03–05, UI-04 |
 | P4 Visual depth & video polish | More scenes, presets, overlays, multi-track export | KA-03/04, LS-02/03, LS-10/11, LS-15, LS-17/18, PR-02–04, VE-06–08, EX-05 (multiple tracks, playlist), EX-09/10, EX-14 |
@@ -326,3 +326,5 @@ Details and library choices: [TECH-STACK.md](TECH-STACK.md).
 | 2026-09-25 | Q14 | Main render machine: Chrome on macOS. Second priority: Chrome on Windows, Firefox on Linux (NF-02) |
 | 2026-09-25 | Q15 | Tempo and reverb are meant for "slowed + reverb" / "sped up" edits: one-click presets (FX-10 → M) |
 | 2026-09-25 | Q16 | Tech stack accepted as proposed, with Svelte 5 for the UI |
+| 2026-09-25 | P0 | All spike criteria met on Chrome/macOS (Apple M3); the stack carries. Details in [TECH-STACK.md §5](TECH-STACK.md#5-spikes-p0) |
+| 2026-09-25 | P1 | Order: M1 engine and queue → M2 Logo Spectrum → M3 Kaleidoscope; one pull request into `main` per milestone. The engine runs at a fixed 48 kHz; files are converted in the media worker |

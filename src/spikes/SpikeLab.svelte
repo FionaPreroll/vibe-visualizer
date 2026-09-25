@@ -1,5 +1,6 @@
 <script lang="ts">
   import { buildMarkdownReport } from './report-markdown';
+  import { lab } from './report.svelte';
   import S1Streaming from './s1-streaming/S1Streaming.svelte';
   import S2KeyLock from './s2-keylock/S2KeyLock.svelte';
   import S3Encoding from './s3-encoding/S3Encoding.svelte';
@@ -8,6 +9,11 @@
   import EnvPanel from './ui/EnvPanel.svelte';
 
   let copied = $state(false);
+
+  // Persist every change, so results survive a reload.
+  $effect(() => {
+    lab.save();
+  });
 
   async function copyReport() {
     const report = buildMarkdownReport();
@@ -36,9 +42,12 @@
         app. Run the spikes, then copy the report and paste it into the chat.
       </p>
     </div>
-    <button class="primary" onclick={copyReport} data-testid="copy-report">
-      {copied ? 'Copied ✔' : 'Copy report'}
-    </button>
+    <div class="actions">
+      <button class="primary" onclick={copyReport} data-testid="copy-report">
+        {copied ? 'Copied ✔' : 'Copy report'}
+      </button>
+      <button onclick={() => lab.clear()} data-testid="clear-results">Clear results</button>
+    </div>
   </header>
 
   <EnvPanel />
@@ -71,6 +80,11 @@
   h1 span {
     color: var(--accent);
     font-weight: 500;
+  }
+  .actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
   }
   header p {
     margin: 6px 0 0;

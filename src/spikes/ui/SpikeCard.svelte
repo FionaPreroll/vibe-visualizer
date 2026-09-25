@@ -13,7 +13,13 @@
   let { id, title, question, criteria, children }: Props = $props();
   const result = $derived(lab.results[id]);
   const statusLabel = $derived(
-    { idle: 'not run', running: 'running…', done: 'done', error: 'error' }[result.status],
+    {
+      idle: 'not run',
+      running: 'running…',
+      done: 'done',
+      error: 'error',
+      interrupted: 'interrupted by a reload',
+    }[result.status],
   );
 </script>
 
@@ -101,6 +107,9 @@
   }
   .status.error {
     color: var(--fail);
+  }
+  .status.interrupted {
+    color: var(--info);
   }
   .question {
     margin: 8px 0 4px;

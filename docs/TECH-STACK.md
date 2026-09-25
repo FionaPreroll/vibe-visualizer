@@ -1,6 +1,6 @@
 # Vibe Visualizer — Tech Stack
 
-> **Status:** v0.2 (2026-09-25), accepted (Q16). It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export. The P0 spikes are implemented (see [§5](#5-spikes-p0)).
+> **Status:** v0.3 (2026-09-25), accepted (Q16). It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export. The P0 spikes passed on the main target machine (see [§5](#5-spikes-p0)).
 
 ## 1. The stack at a glance
 
@@ -34,12 +34,13 @@
 
 ```
 LIVE
-file ─► media worker ─► AudioWorklet ────────────────────► speakers
-        (decode,        (DSP core)
-         prefetch)          │
-                            ▼
-                     analysis worker ─► render worker ─► screen
-                     (features)         (WebGL2, audible time)
+file ─► media worker ────────► AudioWorklet ─────────────────► speakers
+        (decode, convert to     (DSP core, then analysis
+         48 kHz, prefetch)       at a fixed hop)
+                                     │ feature timeline (shared memory)
+                                     ▼
+                                 renderer ─► screen
+                                 (reads features at the audible time)
 
 EXPORT (workers, virtual clock)
 file ─► decode ─► DSP core ─► AAC encoder ──────────┐
@@ -49,15 +50,15 @@ file ─► decode ─► DSP core ─► AAC encoder ────────�
                               (t = n/fps)  encoder
 ```
 
-**Live**
+**Live** (built in P1/M1, except the DSP core and the render worker)
 
-1. **Media worker:** reads the file in pieces and decodes it (Mediabunny + WebCodecs). It stays a few seconds ahead of playback and keeps a short cache at every hot cue for instant jumps.
-2. **AudioWorklet:** runs the DSP core (vinyl or key lock → DJ filter → delay → reverb → limiter) and plays the result.
-3. **Analysis worker:** turns the output into a feature timeline (spectrum, band energies, onsets, beat phase). It works at a fixed rate that does not depend on the display frame rate.
-4. **Render worker:** WebGL2 on an OffscreenCanvas. Every display frame reads the features at the moment you actually hear (latency-compensated, AN-06).
-5. **Main thread:** Svelte UI and app state only, so UI work never makes audio or visuals stutter.
+1. **Media worker:** reads the file in pieces, decodes it (Mediabunny + WebCodecs) and converts it to the engine rate of 48 kHz with a windowed-sinc resampler. It stays a few seconds ahead of playback. Every seek starts a new ring "generation"; the AudioWorklet drops older audio within one render quantum.
+2. **AudioWorklet:** plays the stream and analyses exactly what it plays: 64-band spectrum, six band energies, kick/snare/hi-hat onsets, loudness and an oscilloscope snapshot, about 94 times per second. Paused, it outputs silence but keeps accepting seeks. Later it also runs the DSP core (vinyl or key lock → DJ filter → delay → reverb → limiter).
+3. **Feature timeline:** a shared-memory history of analysis frames with timestamps. The renderer looks up the frame for the moment you actually hear (via the AudioContext's output timestamp; calibration offset: AN-06) and interpolates between frames.
+4. **Renderer:** in M1 a Canvas 2D analysis view on the main thread; from M2 on WebGL2 in a render worker on an OffscreenCanvas.
+5. **Main thread:** Svelte UI and the app state; every command is a timestamped action (NF-08).
 
-Realtime data moves through SharedArrayBuffer ring buffers; control commands go through Comlink.
+Realtime data moves through SharedArrayBuffer ring buffers; control commands go through a small RPC helper. Data handed to workers or worklets must not live in deep Svelte state: its proxies cannot be cloned (`$state.raw` instead).
 
 **Export**
 
@@ -81,17 +82,21 @@ Realtime data moves through SharedArrayBuffer ring buffers; control commands go 
 ```
 src/
   core/          framework-free TypeScript
-    audio/       ring buffer, Signalsmith Stretch binding, rate player, test signal
-    env/         capability probe
-    util/        worker RPC, hashing, formatting
-    video/       test pattern
+    audio/       ring buffer, resampler, rate player, test signal, Signalsmith Stretch binding
+      engine/    media worker, engine AudioWorklet, AudioEngine facade
+    analysis/    analyzer (FFT, bands, onsets), feature layout, feature timeline
+    library/     probe worker (tags, duration, cover art)
+    player/      Player: connects the state with the engine
+    state/       store with timestamped actions, app state, persistence
+    env/, util/, video/
+  ui/            Svelte app: shell, top bar, stage, analysis view, queue, transport
   spikes/        Spike Lab and the P0 prototypes (throwaway)
 vite-plugins/    extraction of the Signalsmith Stretch WASM core
 tests/e2e/       Playwright tests
 docs/            FEATURES.md, TECH-STACK.md
 ```
 
-From P1 on, `src/core/` grows the planned modules (`analysis/`, `render/`, `export/`, `state/`) and `src/ui/` holds the Svelte app. `core/` does not depend on the UI framework.
+Next come `core/render/` (M2/M3) and `core/export/` (P2). `core/` does not depend on the UI framework.
 
 ## 5. Spikes (P0)
 
@@ -105,16 +110,27 @@ Before P1 we test the risky parts in small throwaway prototypes. They live in th
 | S4 Rendering | Does WebGL2 in a worker handle float feedback and bloom? | 1080p60 live on integrated graphics; 4K offline without errors |
 | S5 Long render | Does a 3-hour dummy export with segments work? | Valid output file; resumes after the tab was killed; segments joined without re-encoding |
 
-**Results in the development container** (headless Chromium 141 on Linux, software GPU, no H.264 encoder). All five spikes run end to end, and CI runs them on every push. What these results already show:
+**Results on the main target** (Chrome 153 on macOS, Apple M3, 16 GB RAM, 2026-09-25): all measured criteria met.
 
-- **S2:** Worker and AudioWorklet output are bit-identical; stretching costs at most 3 % of one CPU core, even here.
-- **S1:** Cue jumps take about 10 ms; no dropouts (WAV test file).
-- **S5:** A render killed by a page reload resumes and joins into a valid file without re-encoding (120 of 120 frames).
-- **S3:** The AAC WebAssembly fallback works. The container has no H.264 encoder, so the sample file used VP9.
+| Spike | Result | Key numbers |
+|---|---|---|
+| S1 Streaming audio | pass | 1-hour MP3: 71.5 MB for page and workers; start 8 ms; cue jumps 5 ms; seeks without cache 13 ms; 0 dropouts; full decode 515× real time (3 hours in about 21 s); decoded length exact |
+| S2 Key lock | pass (listening test open) | 0.9 % of one CPU core at 0.5–1.5×; bit-identical output in AudioWorklet and worker |
+| S3 Encoding | pass (upload test open) | Hardware H.264: 1080p60 at 177 fps (2.9× real time), 4K30 at 53 fps (1.8×), 1080×1920 at 186 fps (6.2×); native AAC 154×, WebAssembly fallback 16× |
+| S4 Rendering | pass | 1080p live at 59.7 fps (1 % low 39 fps); 4K offline at 117 fps; float render targets available |
+| S5 Long render | pass | 3-hour export: 18 segments, 21,600 of 21,600 frames, audio 10,800.06 s; resumed 8 times; joined in 19 s |
 
-Frame rates and encoder speeds are meaningless here. They come from the target machines.
+What this means:
+
+- **The stack carries.** Every risky part works on the main target, with a lot of headroom.
+- **Export time**, estimated with the prototype scene; the encoder is the bottleneck. One hour at 1080p60 takes about 20–25 minutes, one hour at 4K30 about 35–40 minutes, and a 60-second TikTok clip about 10–15 seconds.
+- **A/V sync (AN-06):** Chrome on macOS reports an output latency of 0 ms, so the offset cannot be detected automatically there. P1 needs a calibration step.
+- **Frame pacing:** the 1 % low of 39 fps in the live test probably comes from shader warm-up in the first frames. P1 measures it without the warm-up.
+
+The development container (headless Chromium, software GPU) and CI run all five spikes on every push; their frame rates and encoder speeds are not meaningful.
 
 ## 6. Open points
 
-- Spike results from the target machines (Q14): Chrome on macOS first, then Chrome on Windows and Firefox on Linux. How to run them: [README](../README.md#spike-lab-p0).
-- Hosting needs a (free) Cloudflare account. That only matters once we deploy.
+- Manual checks: the listening test (S2) passed with the test signal; loading files into the S2 player failed and is fixed. The S3 sample plays in sync in QuickTime; the YouTube/TikTok upload is still open.
+- Second-priority machines (Q14): Chrome on Windows and Firefox on Linux. A hosted preview makes this easiest.
+- Hosting needs a (free) Cloudflare account.

@@ -19,7 +19,10 @@
   let running = $state(false);
   let rate = $state(1);
   let mode = $state<TempoMode>('keylock');
-  let source = $state<{ planes: Float32Array[]; sampleRate: number; label: string } | null>(null);
+  // Raw state: the PCM planes are handed to the AudioWorklet, which cannot clone Svelte proxies.
+  let source = $state.raw<{ planes: Float32Array[]; sampleRate: number; label: string } | null>(
+    null,
+  );
   let player = $state<{ context: AudioContext; node: AudioWorkletNode } | null>(null);
   let loadingFile = $state(false);
 
@@ -175,7 +178,7 @@
     </button>
     <span class="hint">About 20 seconds, no file needed.</span>
   </div>
-  <div class="player">
+  <div class="player" data-testid="s2-player" data-playing={player !== null}>
     <div class="row">
       <button onclick={player ? stop : play} data-testid="s2-play">
         {player ? 'Stop' : 'Play'}
@@ -199,6 +202,7 @@
           type="file"
           accept="audio/*,.mp3,.m4a,.flac,.ogg,.opus,.wav"
           onchange={loadFile}
+          data-testid="s2-file"
           disabled={loadingFile}
         />
       </label>
