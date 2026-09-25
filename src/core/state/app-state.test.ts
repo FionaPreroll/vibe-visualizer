@@ -3,6 +3,7 @@ import { sceneDefaults } from '../render/kaleido-settings';
 import { DEFAULT_LOGO_SPECTRUM, RANGES } from '../render/visual-settings';
 import {
   initialState,
+  LIVE_OFF,
   newTrack,
   reducer,
   trackRange,
@@ -126,5 +127,35 @@ describe('app state', () => {
     expect(mark('in', 250)).toEqual({ in: 200, out: null });
     expect(mark('out', 60)).toEqual({ in: null, out: 60 });
     expect(mark('out', null)).toEqual({ in: null, out: null });
+  });
+
+  it('tracks live input: starting, running, failing, monitoring and stopping (IN-01…04)', () => {
+    let state = reducer(initialState(), { type: 'player/playing', playing: true });
+    state = reducer(state, { type: 'live/starting', kind: 'device' });
+    expect(state.live.status).toBe('starting');
+    state = reducer(state, { type: 'live/started', kind: 'device', label: 'Line in' });
+    // The queue pauses while live input is the source.
+    expect(state.playing).toBe(false);
+    expect(state.live).toMatchObject({ status: 'on', label: 'Line in', monitor: false });
+    state = reducer(state, { type: 'live/monitor', monitor: true });
+    expect(state.live.monitor).toBe(true);
+    // A failed switch keeps the running input; a new source starts unmonitored.
+    state = reducer(state, { type: 'live/starting', kind: 'display' });
+    state = reducer(state, {
+      type: 'live/failed',
+      message: 'Sharing was cancelled',
+      running: true,
+    });
+    expect(state.live).toMatchObject({
+      status: 'on',
+      label: 'Line in',
+      error: 'Sharing was cancelled',
+    });
+    state = reducer(state, { type: 'live/started', kind: 'display', label: 'Shared tab' });
+    expect(state.live).toMatchObject({ kind: 'display', monitor: false, error: null });
+    state = reducer(state, { type: 'live/stopped', reason: 'Sharing has ended.' });
+    expect(state.live).toEqual({ ...LIVE_OFF, error: 'Sharing has ended.' });
+    state = reducer(state, { type: 'live/failed', message: 'Denied', running: false });
+    expect(state.live.status).toBe('off');
   });
 });

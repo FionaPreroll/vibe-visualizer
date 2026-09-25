@@ -9,7 +9,13 @@ import {
   type VisualPreset,
 } from '../render/visual-settings';
 import { isAspectRatio, sanitizeExportOptions, type ExportOptions } from '../export/video-format';
-import { DEFAULT_SETTINGS, VISUAL_MODES, type Settings } from './app-state';
+import {
+  DEFAULT_SETTINGS,
+  INPUT_GAIN_RANGE,
+  PANEL_TABS,
+  VISUAL_MODES,
+  type Settings,
+} from './app-state';
 
 const SETTINGS_KEY = 'vibe-visualizer:settings:v1';
 const VISUALS_KEY = 'vibe-visualizer:visuals:v1';
@@ -48,11 +54,14 @@ export function loadSettings(): Settings {
         (settings as Record<keyof Settings, unknown>)[key] = value;
       }
     }
-    if (settings.panel !== 'queue' && settings.panel !== 'visuals') settings.panel = 'queue';
+    if (!PANEL_TABS.includes(settings.panel)) settings.panel = DEFAULT_SETTINGS.panel;
     if (!VISUAL_MODES.includes(settings.visualMode))
       settings.visualMode = DEFAULT_SETTINGS.visualMode;
     settings.volume = Math.max(0, Math.min(1, settings.volume));
     if (!isAspectRatio(settings.aspect)) settings.aspect = DEFAULT_SETTINGS.aspect;
+    settings.inputGain = Number.isFinite(settings.inputGain)
+      ? Math.max(INPUT_GAIN_RANGE.min, Math.min(INPUT_GAIN_RANGE.max, settings.inputGain))
+      : DEFAULT_SETTINGS.inputGain;
   } catch {
     // Unreadable storage: defaults.
   }

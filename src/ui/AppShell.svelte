@@ -6,6 +6,7 @@
   import AnalysisView from './AnalysisView.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import ExportDialog from './ExportDialog.svelte';
+  import LivePanel from './LivePanel.svelte';
   import { provideExporter } from './exporter-context';
   import Icon from './Icon.svelte';
   import PhotosensitivityNotice from './PhotosensitivityNotice.svelte';
@@ -134,10 +135,11 @@
         paused={$exporter.status === 'running'}
       />
     {/if}
-    {#if $app.tracks.length === 0}
+    {#if $app.tracks.length === 0 && $app.live.status === 'off'}
       <div class="welcome">
         <h1>Drop your music here</h1>
         <p>MP3, M4A, FLAC, Ogg, Opus or WAV. Several files make a queue.</p>
+        <p>Or visualise music from another app or device: see the Live tab.</p>
       </div>
     {/if}
     {#if !exportOpen && ['interrupted', 'done', 'failed'].includes($exporter.status)}
@@ -180,12 +182,22 @@
         >
           <Icon name="sliders" size={16} /> Visuals
         </button>
+        <button
+          role="tab"
+          aria-selected={$app.settings.panel === 'live'}
+          onclick={() => player.updateSettings({ panel: 'live' })}
+        >
+          <Icon name="live" size={16} /> Live
+          {#if $app.live.status === 'on'}<span class="live-dot" aria-label="(on)"></span>{/if}
+        </button>
       </div>
       <div class="panel-body" role="tabpanel">
         {#if $app.settings.panel === 'queue'}
           <QueuePanel />
-        {:else}
+        {:else if $app.settings.panel === 'visuals'}
           <VisualsPanel />
+        {:else}
+          <LivePanel />
         {/if}
       </div>
     </aside>
@@ -249,6 +261,12 @@
     border-color: var(--border);
     color: var(--text);
   }
+  .live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--fail);
+  }
   .panel-body {
     flex: 1;
     min-height: 0;
@@ -271,6 +289,10 @@
   .welcome p {
     margin: 0;
     color: var(--muted);
+  }
+  .welcome p + p {
+    margin-top: 4px;
+    font-size: 14px;
   }
   .export-note {
     position: absolute;

@@ -1,3 +1,4 @@
+import type { LiveSourceKind } from '../audio/live-input';
 import type { AspectRatio } from '../export/video-format';
 import {
   DEFAULT_KALEIDO,
@@ -45,16 +46,49 @@ export interface Marks {
 export type VisualMode = 'logoSpectrum' | 'kaleidoscope' | 'analysis';
 export const VISUAL_MODES: readonly VisualMode[] = ['logoSpectrum', 'kaleidoscope', 'analysis'];
 
+export type PanelTab = 'queue' | 'visuals' | 'live';
+export const PANEL_TABS: readonly PanelTab[] = ['queue', 'visuals', 'live'];
+
+/** Input gain range in dB (IN-03). */
+export const INPUT_GAIN_RANGE = { min: -24, max: 24 } as const;
+
 export interface Settings {
   volume: number;
   visualMode: VisualMode;
-  panel: 'queue' | 'visuals';
+  panel: PanelTab;
   panelOpen: boolean;
   /** Frame of the visuals (VE-09): the stage is letterboxed to it, and the export uses it. */
   aspect: AspectRatio;
   /** Shows the safe areas of the platforms over the stage. */
   safeAreas: boolean;
+  /** The audio input used last ('' for the default one), and its name (ids can change). */
+  inputDevice: string;
+  inputDeviceLabel: string;
+  /** Gain of the live input in dB. */
+  inputGain: number;
 }
+
+/**
+ * Live input (IN-01…04): music from an audio input or another app instead of the queue. The
+ * stream itself lives in the player; this is what the UI shows.
+ */
+export interface LiveState {
+  status: 'off' | 'starting' | 'on';
+  kind: LiveSourceKind | null;
+  label: string | null;
+  /** Hearing the input through the app; always off at the start (feedback). */
+  monitor: boolean;
+  /** Why the last attempt failed or the input stopped. */
+  error: string | null;
+}
+
+export const LIVE_OFF: LiveState = {
+  status: 'off',
+  kind: null,
+  label: null,
+  monitor: false,
+  error: null,
+};
 
 export interface AppState {
   tracks: Track[];
@@ -65,6 +99,7 @@ export interface AppState {
   visuals: LogoSpectrumSettings;
   /** Parameters of the Kaleidoscope mode. */
   kaleido: KaleidoSettings;
+  live: LiveState;
   error: string | null;
 }
 
@@ -101,7 +136,14 @@ export type AppAction =
   | { type: 'kaleido/scene'; scene: KaleidoSceneId }
   /** One parameter: a common one or one of a scene. */
   | { type: 'kaleido/param'; scope: 'common' | KaleidoSceneId; key: string; value: ParamValue }
-  | { type: 'kaleido/replaced'; kaleido: KaleidoSettings };
+  | { type: 'kaleido/replaced'; kaleido: KaleidoSettings }
+  | { type: 'live/starting'; kind: LiveSourceKind }
+  | { type: 'live/started'; kind: LiveSourceKind; label: string }
+  /** Opening failed; `running` when the previous input keeps going. */
+  | { type: 'live/failed'; message: string; running: boolean }
+  /** Back to the queue; `reason` when the input ended by itself. */
+  | { type: 'live/stopped'; reason: string | null }
+  | { type: 'live/monitor'; monitor: boolean };
 
 export const DEFAULT_SETTINGS: Settings = {
   volume: 0.8,
@@ -110,6 +152,9 @@ export const DEFAULT_SETTINGS: Settings = {
   panelOpen: true,
   aspect: '16:9',
   safeAreas: false,
+  inputDevice: '',
+  inputDeviceLabel: '',
+  inputGain: 0,
 };
 
 export function initialState(
@@ -117,7 +162,16 @@ export function initialState(
   visuals: LogoSpectrumSettings = DEFAULT_LOGO_SPECTRUM,
   kaleido: KaleidoSettings = DEFAULT_KALEIDO,
 ): AppState {
-  return { tracks: [], currentId: null, playing: false, settings, visuals, kaleido, error: null };
+  return {
+    tracks: [],
+    currentId: null,
+    playing: false,
+    settings,
+    visuals,
+    kaleido,
+    live: LIVE_OFF,
+    error: null,
+  };
 }
 
 /** A new queue entry for `file`, before its metadata is known. */
@@ -246,5 +300,24 @@ export function reducer(state: AppState, action: AppAction): AppState {
     }
     case 'kaleido/replaced':
       return { ...state, kaleido: sanitizeKaleido(action.kaleido) };
+    case 'live/starting':
+      return { ...state, live: { ...state.live, status: 'starting', error: null } };
+    case 'live/started':
+      return {
+        ...state,
+        playing: false,
+        live: { status: 'on', kind: action.kind, label: action.label, monitor: false, error: null },
+      };
+    case 'live/failed':
+      return {
+        ...state,
+        live: action.running
+          ? { ...state.live, status: 'on', error: action.message }
+          : { ...LIVE_OFF, error: action.message },
+      };
+    case 'live/stopped':
+      return { ...state, live: { ...LIVE_OFF, error: action.reason } };
+    case 'live/monitor':
+      return { ...state, live: { ...state.live, monitor: action.monitor } };
   }
 }
