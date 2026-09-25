@@ -1,4 +1,4 @@
-# Vibe Visualizer — Tech Stack Proposal
+# Vibe Visualizer — Tech Stack
 
 > **Status:** v0.2 (2026-09-25), accepted (Q16). It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export. The P0 spikes are implemented (see [§5](#5-spikes-p0)).
 
