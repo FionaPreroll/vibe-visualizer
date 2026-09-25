@@ -1,3 +1,9 @@
+import {
+  DEFAULT_LOGO_SPECTRUM,
+  sanitizeSettings,
+  type LogoSpectrumSettings,
+} from '../render/visual-settings';
+
 /** Application state: the queue, what plays, and user settings. Pure data, no side effects. */
 
 export type TrackStatus = 'probing' | 'ready' | 'unsupported';
@@ -19,10 +25,13 @@ export interface Track {
   coverUrl: string | null;
 }
 
+/** What the stage shows: a visual mode (VE-04; the Kaleidoscope follows in M3) or the analysis. */
+export type VisualMode = 'logoSpectrum' | 'analysis';
+export const VISUAL_MODES: readonly VisualMode[] = ['logoSpectrum', 'analysis'];
+
 export interface Settings {
   volume: number;
-  /** Shows the analysis debug view on the stage. */
-  analysisView: boolean;
+  visualMode: VisualMode;
   panel: 'queue' | 'visuals';
   panelOpen: boolean;
 }
@@ -32,6 +41,8 @@ export interface AppState {
   currentId: string | null;
   playing: boolean;
   settings: Settings;
+  /** Parameters of the Logo Spectrum mode. */
+  visuals: LogoSpectrumSettings;
   error: string | null;
 }
 
@@ -58,17 +69,23 @@ export type AppAction =
   | { type: 'player/playing'; playing: boolean }
   | { type: 'player/seeked'; seconds: number }
   | { type: 'player/error'; message: string | null }
-  | { type: 'settings/changed'; changes: Partial<Settings> };
+  | { type: 'settings/changed'; changes: Partial<Settings> }
+  | { type: 'visuals/changed'; changes: Partial<LogoSpectrumSettings> }
+  /** A preset was applied: all visual parameters at once. */
+  | { type: 'visuals/replaced'; visuals: LogoSpectrumSettings };
 
 export const DEFAULT_SETTINGS: Settings = {
   volume: 0.8,
-  analysisView: true,
+  visualMode: 'logoSpectrum',
   panel: 'queue',
   panelOpen: true,
 };
 
-export function initialState(settings: Settings = DEFAULT_SETTINGS): AppState {
-  return { tracks: [], currentId: null, playing: false, settings, error: null };
+export function initialState(
+  settings: Settings = DEFAULT_SETTINGS,
+  visuals: LogoSpectrumSettings = DEFAULT_LOGO_SPECTRUM,
+): AppState {
+  return { tracks: [], currentId: null, playing: false, settings, visuals, error: null };
 }
 
 /** A new queue entry for `file`, before its metadata is known. */
@@ -130,5 +147,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return state.error === action.message ? state : { ...state, error: action.message };
     case 'settings/changed':
       return { ...state, settings: { ...state.settings, ...action.changes } };
+    case 'visuals/changed':
+      return { ...state, visuals: sanitizeSettings({ ...state.visuals, ...action.changes }) };
+    case 'visuals/replaced':
+      return { ...state, visuals: sanitizeSettings(action.visuals) };
   }
 }

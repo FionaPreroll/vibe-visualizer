@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_LOGO_SPECTRUM, RANGES } from '../render/visual-settings';
 import { initialState, newTrack, reducer, type AppAction, type AppState } from './app-state';
 import { createStore } from './store';
 
@@ -58,5 +59,16 @@ describe('app state', () => {
       ['player/playing', 2],
     ]);
     expect(seen).toHaveLength(2); // initial call + the one real change
+  });
+
+  it('changes visual settings and keeps them valid', () => {
+    const changed = reducer(initialState(), {
+      type: 'visuals/changed',
+      changes: { glow: 2, palette: 'fire' },
+    });
+    expect(changed.visuals.glow).toBe(RANGES.glow[1]);
+    expect(changed.visuals.palette).toBe('fire');
+    const reset = reducer(changed, { type: 'visuals/replaced', visuals: DEFAULT_LOGO_SPECTRUM });
+    expect(reset.visuals).toEqual(DEFAULT_LOGO_SPECTRUM);
   });
 });

@@ -4,9 +4,10 @@
   import { usePlayer } from './player-context';
 
   /**
-   * Debug view of the audio analysis (AN-01…05), drawn at the audible moment. It shows what the
+   * Debug view of the audio analysis (AN-01…06), drawn at the audible moment. It shows what the
    * visuals will react to and lets you check A/V sync by eye: the kick lamp should flash with
-   * the kick you hear.
+   * the kick you hear, the beat lamp with the pulse you would tap along to (its ring shows the
+   * position within the beat).
    */
 
   const player = usePlayer();
@@ -77,19 +78,22 @@
         context.fillText(LABELS[BAND_NAMES[n]!], x, pad + meterHeight + 6 * ratio);
       }
 
-      // Onset lamps.
-      const lamps: [string, number][] = [
-        ['KICK', frame[F.kick]!],
-        ['SNARE', frame[F.snare]!],
-        ['HAT', frame[F.hat]!],
+      // Drum and beat lamps.
+      const confidence = frame[F.beatConfidence]!;
+      const lamps: [string, number, string][] = [
+        ['KICK', frame[F.kick]!, '179,112,255'],
+        ['SNARE', frame[F.snare]!, '179,112,255'],
+        ['HAT', frame[F.hat]!, '179,112,255'],
+        ['BEAT', frame[F.beat]!, '255,176,64'],
       ];
       const lampRadius = 18 * ratio;
-      lamps.forEach(([label, value], i) => {
-        const x = width - pad - lampRadius - (lamps.length - 1 - i) * (lampRadius * 2 + 22 * ratio);
+      const lampStep = lampRadius * 2 + 22 * ratio;
+      lamps.forEach(([label, value, rgb], i) => {
+        const x = width - pad - lampRadius - (lamps.length - 1 - i) * lampStep;
         const y = pad + lampRadius;
         context.beginPath();
         context.arc(x, y, lampRadius, 0, Math.PI * 2);
-        context.fillStyle = `rgba(179,112,255,${0.12 + value * 0.88})`;
+        context.fillStyle = `rgba(${rgb},${0.12 + value * 0.88})`;
         context.fill();
         context.fillStyle = 'rgba(233,233,243,0.7)';
         context.fillText(
@@ -97,12 +101,38 @@
           x - context.measureText(label).width / 2,
           y + lampRadius + 6 * ratio,
         );
+        if (label === 'BEAT' && confidence > 0) {
+          // Position within the beat, as a ring that fills up towards the next beat.
+          context.beginPath();
+          const start = -Math.PI / 2;
+          context.arc(
+            x,
+            y,
+            lampRadius + 4 * ratio,
+            start,
+            start + frame[F.beatPhase]! * Math.PI * 2,
+          );
+          context.strokeStyle = `rgba(255,176,64,${0.3 + confidence * 0.7})`;
+          context.lineWidth = 2 * ratio;
+          context.stroke();
+        }
       });
+      // Tempo, dimmed while the beat is uncertain.
+      const tempo =
+        confidence > 0
+          ? `${frame[F.bpm]!.toFixed(1)} BPM · ${Math.round(confidence * 100)} %`
+          : '— BPM';
+      context.fillStyle = `rgba(233,233,243,${0.35 + confidence * 0.5})`;
+      context.fillText(
+        tempo,
+        width - pad - context.measureText(tempo).width,
+        pad + lampRadius * 2 + 24 * ratio,
+      );
 
       // Oscilloscope.
       const scopeY = height * 0.32;
       const scopeLeft = pad + BAND_NAMES.length * (meterWidth + 8 * ratio) + 16 * ratio;
-      const scopeRight = width - pad - 3 * (lampRadius * 2 + 22 * ratio);
+      const scopeRight = width - pad - lamps.length * lampStep;
       if (scopeRight > scopeLeft) {
         context.beginPath();
         for (let i = 0; i < WAVEFORM_POINTS; i++) {

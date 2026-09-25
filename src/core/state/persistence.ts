@@ -1,6 +1,29 @@
-import { DEFAULT_SETTINGS, type Settings } from './app-state';
+import {
+  sanitizeSettings,
+  type LogoSpectrumSettings,
+  type VisualPreset,
+} from '../render/visual-settings';
+import { DEFAULT_SETTINGS, VISUAL_MODES, type Settings } from './app-state';
 
 const SETTINGS_KEY = 'vibe-visualizer:settings:v1';
+const VISUALS_KEY = 'vibe-visualizer:visuals:v1';
+const PRESETS_KEY = 'vibe-visualizer:presets:v1';
+
+function read(key: string): unknown {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? 'null');
+  } catch {
+    return null;
+  }
+}
+
+function write(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage full or blocked: the value stays for this session only.
+  }
+}
 
 /** Stored settings merged over the defaults; unknown or mistyped values are ignored. */
 export function loadSettings(): Settings {
@@ -17,6 +40,8 @@ export function loadSettings(): Settings {
       }
     }
     if (settings.panel !== 'queue' && settings.panel !== 'visuals') settings.panel = 'queue';
+    if (!VISUAL_MODES.includes(settings.visualMode))
+      settings.visualMode = DEFAULT_SETTINGS.visualMode;
     settings.volume = Math.max(0, Math.min(1, settings.volume));
   } catch {
     // Unreadable storage: defaults.
@@ -25,9 +50,37 @@ export function loadSettings(): Settings {
 }
 
 export function saveSettings(settings: Settings): void {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {
-    // Storage full or blocked: settings stay for this session only.
-  }
+  write(SETTINGS_KEY, settings);
+}
+
+/** The Logo Spectrum parameters, validated (defaults for anything missing or invalid). */
+export function loadVisuals(): LogoSpectrumSettings {
+  return sanitizeSettings(read(VISUALS_KEY));
+}
+
+export function saveVisuals(visuals: LogoSpectrumSettings): void {
+  write(VISUALS_KEY, visuals);
+}
+
+/** The user's own presets (PR-01). */
+export function loadPresets(): VisualPreset[] {
+  const stored = read(PRESETS_KEY);
+  if (!Array.isArray(stored)) return [];
+  return stored
+    .filter(
+      (entry): entry is { name: string; settings: unknown } =>
+        typeof entry === 'object' && entry !== null && typeof entry.name === 'string',
+    )
+    .map((entry) => ({
+      name: entry.name,
+      settings: sanitizeSettings(entry.settings),
+      builtIn: false,
+    }));
+}
+
+export function savePresets(presets: VisualPreset[]): void {
+  write(
+    PRESETS_KEY,
+    presets.filter((preset) => !preset.builtIn).map(({ name, settings }) => ({ name, settings })),
+  );
 }

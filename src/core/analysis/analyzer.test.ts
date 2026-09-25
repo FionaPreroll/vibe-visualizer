@@ -39,21 +39,25 @@ describe('Analyzer', () => {
     expect(last[F.bands + 0]).toBeLessThan(0.1); // sub
   });
 
-  it('detects kick, snare and hi-hat of the 120 BPM test signal', () => {
+  it('detects kick, snare, hi-hat and beat of the 120 BPM test signal', () => {
     const [left, right] = createTestSignal(10, RATE) as [Float32Array, Float32Array];
     const frames = analyze(left, right, 128);
     const count = (offset: number) => frames.filter((f) => f[offset] === 1).length;
-    expect(count(F.kickHit)).toBeGreaterThanOrEqual(19); // 20 kicks
-    expect(count(F.kickHit)).toBeLessThanOrEqual(21);
-    expect(count(F.snareHit)).toBeGreaterThanOrEqual(8); // 10 snares
-    expect(count(F.snareHit)).toBeLessThanOrEqual(12);
-    expect(count(F.hatHit)).toBeGreaterThanOrEqual(35); // 40 hi-hats
-    expect(count(F.hatHit)).toBeLessThanOrEqual(42);
+    expect(count(F.kickHit)).toBe(20);
+    expect(count(F.snareHit)).toBe(10);
+    expect(count(F.hatHit)).toBe(40);
+    expect(count(F.beatHit)).toBeGreaterThanOrEqual(17); // 20 beats, the first ones unconfirmed
+    const last = frames.at(-1)!;
+    expect(last[F.bpm]).toBeCloseTo(120, 0);
+    expect(last[F.beatConfidence]).toBeGreaterThan(0.5);
   });
 
   it('stays silent on silence', () => {
-    const silence = new Float32Array(RATE);
+    const silence = new Float32Array(RATE * 3);
     const last = analyze(silence, silence, 128).at(-1)!;
+    // Everything but the tempo and the beat position (which only mean something with confidence).
+    last[F.bpm] = 0;
+    last[F.beatPhase] = 0;
     expect(Math.max(...last)).toBe(0);
   });
 

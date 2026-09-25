@@ -23,7 +23,8 @@ export class AudioEngine {
   private readonly monitor = new AudioRingMonitor(this.ringBuffer, 2);
   private readonly controlBuffer = createEngineControl();
   private readonly control = new EngineControl(this.controlBuffer);
-  private readonly timelineBuffer = createFeatureTimeline(1024);
+  /** Shared memory behind {@link timeline}, for readers in other threads (the renderer). */
+  readonly timelineBuffer = createFeatureTimeline(1024);
   private readonly media = new WorkerClient(new MediaWorker());
   private context: AudioContext | null = null;
   private gain: GainNode | null = null;
@@ -129,19 +130,36 @@ export class AudioEngine {
 
   /** Engine frame that is audible right now: the time to look analysis frames up at. */
   audibleFrame(): number {
+    const clock = this.outputClock();
+    if (!clock) return 0;
+    const now = performance.timeOrigin + performance.now();
+    return (clock.contextTime + (now - clock.performanceTime) / 1000) * AudioEngine.SAMPLE_RATE;
+  }
+
+  /**
+   * A pair of matching times: `contextTime` (seconds on the audio clock) is being heard at
+   * `performanceTime` (milliseconds since the epoch, `performance.timeOrigin + now()`, so that
+   * workers with their own time origin can use it). Null before {@link start}.
+   */
+  outputClock(): { contextTime: number; performanceTime: number } | null {
     const context = this.context;
-    if (!context) return 0;
+    if (!context) return null;
     const stamp = context.getOutputTimestamp();
     if (
       stamp.contextTime !== undefined &&
       stamp.performanceTime !== undefined &&
       stamp.performanceTime > 0
     ) {
-      const now = stamp.contextTime + (performance.now() - stamp.performanceTime) / 1000;
-      return now * AudioEngine.SAMPLE_RATE;
+      return {
+        contextTime: stamp.contextTime,
+        performanceTime: performance.timeOrigin + stamp.performanceTime,
+      };
     }
     const latency = context.baseLatency + (context.outputLatency || 0);
-    return (context.currentTime - latency) * AudioEngine.SAMPLE_RATE;
+    return {
+      contextTime: context.currentTime - latency,
+      performanceTime: performance.timeOrigin + performance.now(),
+    };
   }
 
   async dispose(): Promise<void> {

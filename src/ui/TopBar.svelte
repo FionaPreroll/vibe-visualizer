@@ -1,5 +1,6 @@
 <script lang="ts">
-  import Icon from './Icon.svelte';
+  import type { VisualMode } from '../core/state/app-state';
+  import Icon, { type IconName } from './Icon.svelte';
   import { usePlayer } from './player-context';
 
   interface Props {
@@ -9,6 +10,11 @@
 
   const player = usePlayer();
   const app = player.store;
+
+  const MODES: { id: VisualMode; label: string; title: string; icon: IconName }[] = [
+    { id: 'logoSpectrum', label: 'Logo Spectrum', title: 'Logo Spectrum visuals', icon: 'ring' },
+    { id: 'analysis', label: 'Analysis', title: 'What the visuals react to', icon: 'wave' },
+  ];
 </script>
 
 <header class="topbar">
@@ -28,15 +34,20 @@
     <span>Vibe Visualizer</span>
   </div>
   <nav>
-    <button
-      class="toggle"
-      class:on={$app.settings.analysisView}
-      onclick={() => player.updateSettings({ analysisView: !$app.settings.analysisView })}
-      aria-pressed={$app.settings.analysisView}
-      title="Analysis view"
-    >
-      <Icon name="wave" size={18} /> Analysis
-    </button>
+    <div class="modes" role="group" aria-label="Visual mode">
+      {#each MODES as mode (mode.id)}
+        <button
+          class="toggle"
+          class:on={$app.settings.visualMode === mode.id}
+          aria-pressed={$app.settings.visualMode === mode.id}
+          onclick={() => player.updateSettings({ visualMode: mode.id })}
+          title={mode.title}
+        >
+          <Icon name={mode.icon} size={18} />
+          {mode.label}
+        </button>
+      {/each}
+    </div>
     <button class="toggle" onclick={onFullscreen} title="Fullscreen (F)">
       <Icon name="fullscreen" size={18} />
     </button>
@@ -45,7 +56,7 @@
       class:on={$app.settings.panelOpen}
       onclick={() => player.updateSettings({ panelOpen: !$app.settings.panelOpen })}
       aria-pressed={$app.settings.panelOpen}
-      title="Queue panel"
+      title="Side panel"
     >
       <Icon name="panel" size={18} />
     </button>
@@ -72,6 +83,14 @@
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+  .modes {
+    display: flex;
+    gap: 2px;
+    margin-right: 8px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
   }
   .toggle {
     display: flex;

@@ -16,6 +16,10 @@
     alert: 'M12 3l10 18H2zM11 10v5h2v-5zM11 17v2h2v-2z',
     panel: 'M3 5h18v14H3zM15 7v10h4V7z',
     wave: 'M2 12h3l2-6 3 12 3-9 2 6 2-3h5',
+    ring: 'M12 3a9 9 0 110 18 9 9 0 010-18zm0 5a4 4 0 100 8 4 4 0 000-8z',
+    sliders: 'M4 6h9v2H4zM17 6h3v2h-3zM13 4h4v6h-4zM4 16h3v2H4zM11 16h9v2h-9zM7 14h4v6H7z',
+    image: 'M3 5h18v14H3zM5 17h14l-4.5-6-3.5 4.5L8.5 12z',
+    save: 'M5 3h11l3 3v15H5zM8 5v4h7V5zM8 13v6h8v-6z',
   } as const;
   export type IconName = keyof typeof ICONS;
 </script>
