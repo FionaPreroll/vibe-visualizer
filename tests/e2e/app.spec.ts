@@ -1,6 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createWav } from './wav';
 
+// The photosensitivity notice (tested in visuals.spec.ts) would cover the page.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('vibe-visualizer:photosensitivity-ack', '1'));
+});
+
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -61,6 +66,7 @@ test('playback: plays, seeks, shows the analysis and moves on to the next track'
   await page.getByTestId('play-button').click();
   await expect(page.getByTestId('now-title')).toHaveText('First');
   await expect.poll(() => elapsed(page), { timeout: 10_000 }).toBeGreaterThan(0.5);
+  await page.getByRole('button', { name: 'Analysis' }).click();
   await expect(page.getByTestId('analysis-view')).toHaveAttribute('data-active', 'true');
   await expect(page.getByRole('option', { selected: true })).toContainText('First');
 
@@ -91,13 +97,14 @@ test('playback: plays, seeks, shows the analysis and moves on to the next track'
 
 test('settings survive a reload', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('analysis-view')).toBeVisible();
+  await expect(page.getByTestId('visual-stage')).toBeVisible();
   await page.getByRole('button', { name: 'Analysis' }).click();
-  await expect(page.getByTestId('analysis-view')).toHaveCount(0);
+  await expect(page.getByTestId('visual-stage')).toHaveCount(0);
+  await expect(page.getByTestId('analysis-view')).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: 'Analysis' })).toHaveAttribute(
     'aria-pressed',
-    'false',
+    'true',
   );
-  await expect(page.getByTestId('analysis-view')).toHaveCount(0);
+  await expect(page.getByTestId('analysis-view')).toBeVisible();
 });

@@ -2,7 +2,7 @@
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
-> **Status:** P1. Milestone M1 (audio engine, queue, transport, analysis) is done, with analysis v2 (drum detection and beat tracking). The visual modes follow in M2 and M3.
+> **Status:** P1. M1 (audio engine, queue, transport, analysis v2 with drum detection and beat tracking) and M2 (the Logo Spectrum mode) are done. The Kaleidoscope mode follows in M3.
 > Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md) · [audio analysis](docs/ANALYSIS.md)
 
 ## Run it locally
@@ -18,7 +18,14 @@ Then open http://localhost:5173 in Chrome or Firefox. The dev server sends the c
 
 ## Using the app
 
-Drop audio files onto the window (or click **Add files**); several files make a queue. Double-click a track to play it. Shortcuts: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, F fullscreen; in the queue Alt+↑/↓ moves a track and Delete removes it. The analysis view shows what the visuals will react to: spectrum, band energies, kick/snare/hi-hat lamps, the beat (its ring shows the position within the beat) and the tempo.
+Drop audio files onto the window (or click **Add files**); several files make a queue. Double-click a track to play it. Shortcuts: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, F fullscreen; in the queue Alt+↑/↓ moves a track and Delete removes it.
+
+The top bar switches the stage between two views:
+
+- **Logo Spectrum:** your logo in the middle, a spectrum ring of colour layers around it, star particles and a background image. Everything is set in the side panel under **Visuals**: presets (built in, or save your own), the ring (palette or your own colours, layers, size, frequency range, rotation, glow), how it reacts (quick settings *Smooth*, *Punchy*, *Twitchy*, or each value), the logo (image, zoom and position inside the circle, rim, shadow, bass pulse), the background (image, fill or fit, position, blur, darkening, bass zoom) and the particles. Double-click a slider's label to reset it. Your images and settings are kept in the browser, so they are still there after a reload.
+- **Analysis:** what the visuals react to: spectrum, band energies, kick/snare/hi-hat lamps, the beat (its ring shows the position within the beat) and the tempo.
+
+In fullscreen (F), only the visuals show; the mouse cursor hides when you do not move it.
 
 ## Spike Lab (P0)
 
@@ -54,8 +61,9 @@ The app is a static site. On Cloudflare Pages use the build command `pnpm build`
 
 ```
 src/core/       framework-free core: audio engine (media worker, AudioWorklet, resampler, ring
-                buffer), analysis, player and state, Signalsmith Stretch binding, utilities
-src/ui/         Svelte app: top bar, stage, queue, transport
+                buffer), analysis, WebGL2 renderer (render worker, Logo Spectrum scene), player
+                and state, Signalsmith Stretch binding, utilities
+src/ui/         Svelte app: top bar, stage, queue, visuals panel, transport
 src/spikes/     Spike Lab and the P0 prototypes
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core
 tests/e2e/      Playwright tests

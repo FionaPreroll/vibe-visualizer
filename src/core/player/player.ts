@@ -10,7 +10,8 @@ import {
   type Settings,
   type Track,
 } from '../state/app-state';
-import { loadSettings, saveSettings } from '../state/persistence';
+import type { LogoSpectrumSettings } from '../render/visual-settings';
+import { loadSettings, loadVisuals, saveSettings, saveVisuals } from '../state/persistence';
 import { createStore, type Store } from '../state/store';
 import { errorMessage } from '../util/format';
 import { WorkerClient } from '../util/worker-rpc';
@@ -30,10 +31,18 @@ export class Player {
   private readonly endCheck: ReturnType<typeof setInterval>;
 
   constructor() {
-    this.store = createStore<AppState, AppAction>(initialState(loadSettings()), reducer);
+    this.store = createStore<AppState, AppAction>(
+      initialState(loadSettings(), loadVisuals()),
+      reducer,
+    );
     this.engine.volume = this.state.settings.volume;
     let lastSettings = this.state.settings;
+    let lastVisuals = this.state.visuals;
     this.store.subscribe((state) => {
+      if (state.visuals !== lastVisuals) {
+        lastVisuals = state.visuals;
+        saveVisuals(state.visuals);
+      }
       if (state.settings === lastSettings) return;
       lastSettings = state.settings;
       saveSettings(state.settings);
@@ -230,6 +239,16 @@ export class Player {
     for (const track of this.state.tracks) this.releaseCover(track.id);
     this.files.clear();
     this.dispatch({ type: 'tracks/cleared' });
+  }
+
+  /** Changes parameters of the visuals (recorded as actions, like everything else). */
+  updateVisuals(changes: Partial<LogoSpectrumSettings>): void {
+    this.dispatch({ type: 'visuals/changed', changes });
+  }
+
+  /** Applies a preset: all visual parameters at once. */
+  replaceVisuals(visuals: LogoSpectrumSettings): void {
+    this.dispatch({ type: 'visuals/replaced', visuals });
   }
 
   updateSettings(changes: Partial<Settings>): void {

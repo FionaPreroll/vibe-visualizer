@@ -1,20 +1,38 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { Player } from '../core/player/player';
+  import { VisualAssets } from '../core/render/visual-assets';
   import AnalysisView from './AnalysisView.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import Icon from './Icon.svelte';
+  import PhotosensitivityNotice from './PhotosensitivityNotice.svelte';
   import { providePlayer } from './player-context';
   import QueuePanel from './QueuePanel.svelte';
   import TopBar from './TopBar.svelte';
   import TransportBar from './TransportBar.svelte';
+  import VisualsPanel from './VisualsPanel.svelte';
+  import VisualStage from './VisualStage.svelte';
+  import { provideAssets } from './visuals-context';
 
   const player = new Player();
   providePlayer(player);
+  provideAssets(new VisualAssets());
   const app = player.store;
   let stage: HTMLElement;
+  /** In fullscreen, the mouse cursor hides after a moment without movement (DS-01). */
+  let idle = $state(false);
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
-  onDestroy(() => player.dispose());
+  onDestroy(() => {
+    clearTimeout(idleTimer);
+    player.dispose();
+  });
+
+  function onPointerMove() {
+    idle = false;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => (idle = document.fullscreenElement === stage), 2500);
+  }
 
   function toggleFullscreen() {
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -31,6 +49,9 @@
   }
 
   onMount(() => {
+    // Entering fullscreen starts the countdown for hiding the cursor, even without movement.
+    const onFullscreen = () => onPointerMove();
+    document.addEventListener('fullscreenchange', onFullscreen);
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || ownsKeys(event.target)) return;
       const step = event.shiftKey ? 30 : 5;
@@ -59,15 +80,26 @@
       event.preventDefault();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('fullscreenchange', onFullscreen);
+    };
   });
 </script>
 
 <div class="shell" class:panel-open={$app.settings.panelOpen}>
   <TopBar onFullscreen={toggleFullscreen} />
 
-  <main class="stage" bind:this={stage} aria-label="Visual stage">
-    {#if $app.settings.analysisView}
+  <main
+    class="stage"
+    class:idle
+    bind:this={stage}
+    aria-label="Visual stage"
+    onpointermove={onPointerMove}
+  >
+    {#if $app.settings.visualMode === 'logoSpectrum'}
+      <VisualStage />
+    {:else}
       <AnalysisView />
     {/if}
     {#if $app.tracks.length === 0}
@@ -89,12 +121,35 @@
 
   {#if $app.settings.panelOpen}
     <aside class="panel">
-      <QueuePanel />
+      <div class="tabs" role="tablist" aria-label="Side panel">
+        <button
+          role="tab"
+          aria-selected={$app.settings.panel === 'queue'}
+          onclick={() => player.updateSettings({ panel: 'queue' })}
+        >
+          <Icon name="music" size={16} /> Queue
+        </button>
+        <button
+          role="tab"
+          aria-selected={$app.settings.panel === 'visuals'}
+          onclick={() => player.updateSettings({ panel: 'visuals' })}
+        >
+          <Icon name="sliders" size={16} /> Visuals
+        </button>
+      </div>
+      <div class="panel-body" role="tabpanel">
+        {#if $app.settings.panel === 'queue'}
+          <QueuePanel />
+        {:else}
+          <VisualsPanel />
+        {/if}
+      </div>
     </aside>
   {/if}
 
   <TransportBar />
   <DropOverlay />
+  <PhotosensitivityNotice />
 </div>
 
 <style>
@@ -117,10 +172,42 @@
     overflow: hidden;
     background: radial-gradient(ellipse at 50% 40%, #16162a 0%, var(--bg) 70%);
   }
+  .stage.idle {
+    cursor: none;
+  }
   .panel {
     min-height: 0;
+    display: flex;
+    flex-direction: column;
     background: var(--surface);
     border-left: 1px solid var(--border);
+  }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tabs button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    background: transparent;
+    color: var(--muted);
+  }
+  .tabs button[aria-selected='true'] {
+    background: var(--surface-2);
+    border-color: var(--border);
+    color: var(--text);
+  }
+  .panel-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
   }
   .welcome {
     position: absolute;
