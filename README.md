@@ -2,7 +2,7 @@
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
-> **Status:** P1 and P2 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, and the video export (whole tracks or clips, in segments that survive a crash). Next: P3, cues, tempo and effects.
+> **Status:** P1, P2 and P5 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, the video export (whole tracks or clips, in segments that survive a crash), and live input from audio devices and other apps. Next: P3 (cues, tempo and effects) and P4 (more scenes and video polish).
 > Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md) · [audio analysis](docs/ANALYSIS.md)
 
 ## Run it locally
@@ -29,6 +29,17 @@ The top bar switches the stage between three views:
 In fullscreen (F), only the visuals show; the mouse cursor hides when you do not move it.
 
 The stage shows the visuals in the aspect ratio of your video: 16:9 (YouTube), 9:16 (TikTok, Shorts, Reels), 1:1, 4:5 or 21:9, chosen in the top bar. The frame button next to it shows the safe areas: the title-safe frame, and on 9:16 the parts that the apps cover with their buttons and captions.
+
+## Live input
+
+To visualise music that plays somewhere else (a DJ mixer, a turntable, a music app or a browser tab), open the **Live** tab in the side panel.
+
+- **Audio input:** choose a line-in, microphone or virtual audio device and click **Start**. The browser's voice processing (echo cancellation, noise suppression, automatic gain) is switched off, so music stays clean.
+- **Another tab or app:** opens the browser's share dialog. Choose a tab and keep "Also share tab audio" on; some systems also offer "Also share system audio" for the whole screen.
+- **Level and monitoring:** input gain and a level meter. *Hear the input through this app* is off by default and for every new source: a microphone next to speakers would feed back.
+- A music app on the same computer can be routed through a virtual audio device: BlackHole on macOS, VB-Audio Virtual Cable on Windows, or a monitor source with PipeWire/PulseAudio on Linux. The Live tab explains the steps.
+
+While live input runs, the visuals follow it without delay and the queue pauses; double-click a track to go back to it. The export renders files from the queue; recording the live input is planned for later (IN-06).
 
 ## Exporting videos
 
@@ -74,10 +85,11 @@ The app is a static site. On Cloudflare Pages use the build command `pnpm build`
 
 ```
 src/core/       framework-free core: audio engine (media worker, AudioWorklet, resampler, ring
-                buffer), analysis, WebGL2 renderer (render worker, Logo Spectrum and Kaleidoscope
-                scenes), export (export worker, formats, job storage), player and state,
-                Signalsmith Stretch binding, utilities
-src/ui/         Svelte app: top bar, stage, queue, visuals panel, transport, export dialog
+                buffer, live input), analysis, WebGL2 renderer (render worker, Logo Spectrum
+                and Kaleidoscope scenes), export (export worker, formats, job storage), player
+                and state, Signalsmith Stretch binding, utilities
+src/ui/         Svelte app: top bar, stage, queue, visuals and live panels, transport, export
+                dialog
 src/spikes/     Spike Lab and the P0 prototypes
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core
 tests/e2e/      Playwright tests

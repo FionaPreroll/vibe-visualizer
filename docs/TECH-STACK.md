@@ -53,9 +53,9 @@ file ─► decode ─► DSP core ─► AAC encoder ────────�
 **Live** (built in P1 M1 and M2, except the DSP core)
 
 1. **Media worker:** reads the file in pieces, decodes it (Mediabunny + WebCodecs) and converts it to the engine rate of 48 kHz with a windowed-sinc resampler. It stays a few seconds ahead of playback. Every seek starts a new ring "generation"; the AudioWorklet drops older audio within one render quantum.
-2. **AudioWorklet:** plays the stream and analyses exactly what it plays: 64-band spectrum, six band energies, kick/snare/hi-hat hits, the beat (tempo, phase, confidence), loudness and an oscilloscope snapshot, about 94 times per second ([ANALYSIS.md](ANALYSIS.md)). Paused, it outputs silence but keeps accepting seeks. Later it also runs the DSP core (vinyl or key lock → DJ filter → delay → reverb → limiter).
+2. **AudioWorklet:** plays the stream and analyses exactly what it plays: 64-band spectrum, six band energies, kick/snare/hi-hat hits, the beat (tempo, phase, confidence), loudness and an oscilloscope snapshot, about 94 times per second ([ANALYSIS.md](ANALYSIS.md)). Paused, it outputs silence but keeps accepting seeks. With live input (P5) it analyses its input instead: an audio input (getUserMedia with voice processing off) or tab/screen audio (getDisplayMedia) goes through an input gain into the worklet, and a monitor branch (off by default) plays it. Later it also runs the DSP core (vinyl or key lock → DJ filter → delay → reverb → limiter).
 3. **Feature timeline:** a shared-memory history of analysis frames with timestamps. The renderer looks up the frame for the moment you actually hear (via the AudioContext's output timestamp; calibration offset: AN-06) and interpolates between frames.
-4. **Renderer:** WebGL2 in a render worker on an OffscreenCanvas (M2, M3), paced by the worker's own requestAnimationFrame. The worker keeps both visual modes as scenes and switches between them without losing their state. The Kaleidoscope's feedback runs in fixed steps of 1/60 s, interpolated for display, so it looks the same at any frame rate and in the export. The main thread sends the audio clock (output timestamp) four times a second; the worker extrapolates it, reads the feature timeline directly from shared memory and renders at the canvas's native resolution. Scenes draw into half-float buffers, then bloom and dithering. The analysis view (Canvas 2D, main thread) remains as a debug mode.
+4. **Renderer:** WebGL2 in a render worker on an OffscreenCanvas (M2, M3), paced by the worker's own requestAnimationFrame. The worker keeps both visual modes as scenes and switches between them without losing their state. The Kaleidoscope's feedback runs in fixed steps of 1/60 s, interpolated for display, so it looks the same at any frame rate and in the export. The main thread sends the audio clock (output timestamp) four times a second; the worker extrapolates it, reads the feature timeline directly from shared memory and renders at the canvas's native resolution. With live input the music is heard directly, so the worker shows the newest analysis frame instead (never looking past it, so no hit is lost). Scenes draw into half-float buffers, then bloom and dithering. The analysis view (Canvas 2D, main thread) remains as a debug mode.
 5. **Main thread:** Svelte UI and the app state; every command is a timestamped action (NF-08).
 
 Realtime data moves through SharedArrayBuffer ring buffers; control commands go through a small RPC helper. Data handed to workers or worklets must not live in deep Svelte state: its proxies cannot be cloned (`$state.raw` instead).
@@ -85,7 +85,8 @@ The main thread only starts, pauses, resumes and cancels the worker, decodes the
 ```
 src/
   core/          framework-free TypeScript
-    audio/       ring buffer, resampler, rate player, test signal, Signalsmith Stretch binding
+    audio/       ring buffer, resampler, shared decoder loop, live input (audio inputs, screen-share
+                 audio), rate player, test signal, Signalsmith Stretch binding
       engine/    media worker, engine AudioWorklet, AudioEngine facade
     analysis/    analyzer (FFT, bands), drum detection, beat tracker, feature layout, feature
                  timeline; eval/ has the synthetic test mix and the scoring (docs/ANALYSIS.md)

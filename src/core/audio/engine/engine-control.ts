@@ -1,6 +1,7 @@
 /** Flags shared between the main thread and the engine AudioWorklet. */
 
 const PAUSED = 0;
+const LIVE = 1;
 const INTS = 4;
 
 export function createEngineControl(): SharedArrayBuffer {
@@ -20,5 +21,14 @@ export class EngineControl {
 
   set paused(value: boolean) {
     Atomics.store(this.ints, PAUSED, value ? 1 : 0);
+  }
+
+  /** True while the engine analyses its input (live input) instead of playing a file. */
+  get live(): boolean {
+    return Atomics.load(this.ints, LIVE) === 1;
+  }
+
+  set live(value: boolean) {
+    Atomics.store(this.ints, LIVE, value ? 1 : 0);
   }
 }

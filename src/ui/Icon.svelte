@@ -26,9 +26,10 @@
     safe: 'M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M9 9h6v6H9z',
     markIn: 'M9 5v14M9 5h6M9 19h6',
     markOut: 'M15 5v14M15 5H9M15 19H9',
+    live: 'M12 9a3 3 0 110 6 3 3 0 010-6zM7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a10 10 0 000 14M19 5a10 10 0 010 14',
   } as const;
   /** Icons drawn as lines instead of filled shapes. */
-  const STROKED: readonly string[] = ['wave', 'export', 'safe', 'markIn', 'markOut'];
+  const STROKED: readonly string[] = ['wave', 'export', 'safe', 'markIn', 'markOut', 'live'];
   export type IconName = keyof typeof ICONS;
 </script>
 

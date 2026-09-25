@@ -79,7 +79,7 @@ export class Renderer {
 
   private sendClock(): void {
     const clock = this.engine.outputClock();
-    if (clock) this.send({ type: 'clock', ...clock });
+    if (clock) this.send({ type: 'clock', ...clock, live: this.engine.live });
   }
 
   private send(message: RenderRequest, transfer: Transferable[] = []): void {

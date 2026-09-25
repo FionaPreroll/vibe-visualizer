@@ -13,8 +13,11 @@ export type RenderRequest =
   | { type: 'logoSpectrum'; settings: LogoSpectrumSettings }
   | { type: 'kaleidoscope'; settings: KaleidoSettings }
   | { type: 'image'; kind: ImageKind; image: ImageBitmap | null }
-  /** The audio clock: `contextTime` is heard at `performanceTime` (epoch milliseconds). */
-  | { type: 'clock'; contextTime: number; performanceTime: number }
+  /**
+   * The audio clock: `contextTime` is heard at `performanceTime` (epoch milliseconds). With
+   * `live` input the newest analysis frame is shown instead.
+   */
+  | { type: 'clock'; contextTime: number; performanceTime: number; live: boolean }
   | { type: 'running'; running: boolean }
   | { type: 'dispose' };
 

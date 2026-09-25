@@ -1,4 +1,11 @@
 import { AudioEngine } from '../audio/engine/audio-engine';
+import {
+  closeInput,
+  openDevice,
+  openDisplay,
+  type LiveSourceKind,
+  type OpenedInput,
+} from '../audio/live-input';
 import type { ProbeResult } from '../library/probe.worker';
 import ProbeWorker from '../library/probe.worker.ts?worker';
 import {
@@ -37,6 +44,10 @@ export class Player {
   private loadedId: string | null = null;
   private busy = false;
   private readonly endCheck: ReturnType<typeof setInterval>;
+  /** The live input's stream while it is the source. */
+  private liveInput: OpenedInput | null = null;
+  /** Increases with every start or stop of live input; stale attempts are dropped. */
+  private liveToken = 0;
 
   constructor() {
     this.store = createStore<AppState, AppAction>(
@@ -44,6 +55,7 @@ export class Player {
       reducer,
     );
     this.engine.volume = this.state.settings.volume;
+    this.engine.inputGainDecibels = this.state.settings.inputGain;
     let lastSettings = this.state.settings;
     let lastVisuals = this.state.visuals;
     let lastKaleido = this.state.kaleido;
@@ -60,6 +72,7 @@ export class Player {
       lastSettings = state.settings;
       saveSettings(state.settings);
       this.engine.volume = state.settings.volume;
+      this.engine.inputGainDecibels = state.settings.inputGain;
     });
     this.endCheck = setInterval(() => this.advanceAtEnd(), 100);
   }
@@ -145,10 +158,93 @@ export class Player {
     });
   }
 
+  /** True while live input is the source (the transport is idle then). */
+  get live(): boolean {
+    return this.state.live.status !== 'off';
+  }
+
+  /**
+   * Makes live input the source (IN-01, IN-02): an audio input (`device`; the given one, or the
+   * one used last) or a tab or the screen (`display`). The queue pauses. Call from a user
+   * gesture: the browser asks for permission.
+   */
+  async startLive(kind: LiveSourceKind, deviceId?: string | null): Promise<void> {
+    const token = ++this.liveToken;
+    this.dispatch({ type: 'live/starting', kind });
+    try {
+      await this.engine.start();
+      const opened =
+        kind === 'device'
+          ? await openDevice(deviceId ?? (this.state.settings.inputDevice || null))
+          : await openDisplay();
+      if (token !== this.liveToken) {
+        closeInput(opened.stream);
+        return;
+      }
+      const previous = this.liveInput;
+      this.pause();
+      // Every new source starts unmonitored: a microphone could feed back, a shared tab
+      // already plays by itself.
+      this.engine.monitorInput = false;
+      try {
+        this.engine.connectInput(opened.stream);
+      } catch (error) {
+        closeInput(opened.stream);
+        if (previous) this.engine.connectInput(previous.stream);
+        // Some browsers only accept inputs at the engine's sample rate.
+        throw new Error(
+          error instanceof DOMException && error.name === 'NotSupportedError'
+            ? 'This browser cannot use this input at 48 kHz. Set the device to 48 kHz in the system sound settings, or use Chrome.'
+            : errorMessage(error),
+          { cause: error },
+        );
+      }
+      if (previous) closeInput(previous.stream);
+      this.liveInput = opened;
+      for (const track of opened.stream.getAudioTracks()) {
+        // Unplugged, or sharing stopped in the browser's bar.
+        track.addEventListener('ended', () => {
+          if (this.liveInput === opened) {
+            this.stopLive(kind === 'display' ? 'Sharing has ended.' : 'The audio input was lost.');
+          }
+        });
+      }
+      this.dispatch({ type: 'live/started', kind, label: opened.label });
+      if (opened.deviceId && opened.deviceId !== this.state.settings.inputDevice) {
+        this.updateSettings({ inputDevice: opened.deviceId });
+      }
+    } catch (error) {
+      if (token !== this.liveToken) return;
+      this.dispatch({
+        type: 'live/failed',
+        message: errorMessage(error),
+        running: this.liveInput !== null,
+      });
+    }
+  }
+
+  /** Back to the queue as the source; monitoring goes off. */
+  stopLive(reason: string | null = null): void {
+    this.liveToken++;
+    this.engine.monitorInput = false;
+    this.engine.disconnectInput();
+    if (this.liveInput) closeInput(this.liveInput.stream);
+    this.liveInput = null;
+    this.dispatch({ type: 'live/stopped', reason });
+  }
+
+  /** Hearing the live input through the app (IN-04). */
+  setMonitor(monitor: boolean): void {
+    this.engine.monitorInput = monitor;
+    this.dispatch({ type: 'live/monitor', monitor });
+  }
+
   /** Plays the track with `id` from `startSeconds`. Call from a user gesture the first time. */
   async playTrack(id: string, startSeconds = 0): Promise<void> {
     const file = this.files.get(id);
     if (!file) return;
+    // Choosing a track explicitly switches back from live input.
+    if (this.live) this.stopLive();
     this.busy = true;
     try {
       await this.engine.start();
@@ -172,7 +268,7 @@ export class Player {
   }
 
   async play(): Promise<void> {
-    if (this.state.playing) return;
+    if (this.state.playing || this.live) return;
     const current = this.state.currentId;
     if (current !== null && current === this.loadedId) {
       await this.engine.start();
@@ -204,7 +300,7 @@ export class Player {
   }
 
   async seek(seconds: number): Promise<void> {
-    if (this.loadedId === null) return;
+    if (this.loadedId === null || this.live) return;
     const duration = this.currentTrack?.duration ?? Infinity;
     const target = Math.max(0, Math.min(seconds, duration - 0.05));
     this.busy = true;
@@ -219,12 +315,14 @@ export class Player {
   }
 
   async next(): Promise<void> {
+    if (this.live) return;
     const id = this.neighbour(1);
     if (id) await this.playTrack(id);
   }
 
   /** Restarts the track, or goes to the previous one when near its start. */
   async previous(): Promise<void> {
+    if (this.live) return;
     const id = this.neighbour(-1);
     if (this.position > 3 || !id) await this.seek(0);
     else await this.playTrack(id);
@@ -303,6 +401,7 @@ export class Player {
 
   dispose(): void {
     clearInterval(this.endCheck);
+    if (this.liveInput) closeInput(this.liveInput.stream);
     this.probeClient.terminate();
     void this.engine.dispose();
   }

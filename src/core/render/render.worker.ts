@@ -26,9 +26,10 @@ let logoSpectrum: LogoSpectrumScene | null = null;
 let kaleidoscope: KaleidoscopeScene | null = null;
 let active: SceneKind = 'logoSpectrum';
 let scene: Scene | null = null;
+let reader: FeatureTimelineReader | null = null;
 let sampler: FeatureSampler | null = null;
 let sampleRate = 48000;
-let clock: { contextTime: number; performanceTime: number } | null = null;
+let clock: { contextTime: number; performanceTime: number; live: boolean } | null = null;
 let running = false;
 let request = 0;
 let lastTime = -1;
@@ -45,6 +46,12 @@ function post(event: RenderEvent): void {
 
 function audibleFrame(now: number): number | null {
   if (!clock) return null;
+  if (clock.live) {
+    // Live input is heard directly: show the newest analysis. Never looking past it keeps
+    // every hit for the next frame.
+    const latest = reader?.latestEngineFrame() ?? -1;
+    return latest >= 0 ? latest : null;
+  }
   const epoch = performance.timeOrigin + now;
   return (clock.contextTime + (epoch - clock.performanceTime) / 1000) * sampleRate;
 }
@@ -105,7 +112,8 @@ scope.addEventListener('message', (event) => {
       case 'init': {
         canvas = message.canvas;
         sampleRate = message.sampleRate;
-        sampler = new FeatureSampler(new FeatureTimelineReader(message.timeline));
+        reader = new FeatureTimelineReader(message.timeline);
+        sampler = new FeatureSampler(reader);
         canvas.addEventListener('webglcontextlost', (e) => {
           e.preventDefault();
           lost = true;
@@ -150,7 +158,11 @@ scope.addEventListener('message', (event) => {
         message.image?.close();
         break;
       case 'clock':
-        clock = { contextTime: message.contextTime, performanceTime: message.performanceTime };
+        clock = {
+          contextTime: message.contextTime,
+          performanceTime: message.performanceTime,
+          live: message.live,
+        };
         break;
       case 'running':
         setRunning(message.running);

@@ -13,6 +13,9 @@ export type { LoadResult };
  * Main-thread face of the audio engine. The engine always runs at 48 kHz: files are converted
  * in the media worker, so tracks with different sample rates can follow each other and the
  * export can use the same code.
+ *
+ * Live input (IN-01…04): an input stream goes through the input gain into the engine, which
+ * then analyses it instead of the file; a monitor branch (off by default) plays it.
  */
 export class AudioEngine {
   static readonly SAMPLE_RATE = 48000;
@@ -28,8 +31,13 @@ export class AudioEngine {
   private readonly media = new WorkerClient(new MediaWorker());
   private context: AudioContext | null = null;
   private gain: GainNode | null = null;
+  private inputGain: GainNode | null = null;
+  private monitorGain: GainNode | null = null;
+  private input: MediaStreamAudioSourceNode | null = null;
   private starting: Promise<void> | null = null;
   private volumeLevel = 1;
+  private inputGainDb = 0;
+  private monitoring = false;
 
   constructor() {
     this.timeline = new FeatureTimelineReader(this.timelineBuffer);
@@ -70,15 +78,75 @@ export class AudioEngine {
       timeline: this.timelineBuffer,
     };
     const node = new AudioWorkletNode(context, 'vibe-engine', {
-      numberOfInputs: 0,
+      numberOfInputs: 1,
       outputChannelCount: [2],
       processorOptions: options,
     });
     const gain = context.createGain();
     gain.gain.value = this.volumeLevel;
     node.connect(gain).connect(context.destination);
+    // Live input: input gain → engine (analysis) and → monitor → volume → speakers.
+    const inputGain = context.createGain();
+    inputGain.gain.value = dbToGain(this.inputGainDb);
+    const monitorGain = context.createGain();
+    monitorGain.gain.value = this.monitoring ? 1 : 0;
+    inputGain.connect(node);
+    inputGain.connect(monitorGain).connect(gain);
     this.context = context;
     this.gain = gain;
+    this.inputGain = inputGain;
+    this.monitorGain = monitorGain;
+  }
+
+  /** True while the engine analyses a live input instead of a file. */
+  get live(): boolean {
+    return this.input !== null;
+  }
+
+  /**
+   * Makes `stream` the source (IN-01): the file pauses and the engine analyses the stream.
+   * Call {@link start} first.
+   */
+  connectInput(stream: MediaStream): void {
+    const context = this.context;
+    if (!context || !this.inputGain) throw new Error('The audio engine is not running');
+    this.disconnectInput();
+    this.paused = true;
+    this.input = context.createMediaStreamSource(stream);
+    this.input.connect(this.inputGain);
+    this.control.live = true;
+    void context.resume();
+  }
+
+  /** Back to the file as the source (the stream itself is stopped by its owner). */
+  disconnectInput(): void {
+    this.control.live = false;
+    this.input?.disconnect();
+    this.input = null;
+  }
+
+  /** Gain of the live input in dB (IN-03). */
+  get inputGainDecibels(): number {
+    return this.inputGainDb;
+  }
+
+  set inputGainDecibels(value: number) {
+    this.inputGainDb = value;
+    if (this.inputGain && this.context) {
+      this.inputGain.gain.setTargetAtTime(dbToGain(value), this.context.currentTime, 0.015);
+    }
+  }
+
+  /** Hearing the live input through the app (IN-04); off by default to avoid feedback. */
+  get monitorInput(): boolean {
+    return this.monitoring;
+  }
+
+  set monitorInput(value: boolean) {
+    this.monitoring = value;
+    if (this.monitorGain && this.context) {
+      this.monitorGain.gain.setTargetAtTime(value ? 1 : 0, this.context.currentTime, 0.015);
+    }
   }
 
   /** Opens `file` and positions it at `startSeconds` (paused state is unchanged). */
@@ -128,8 +196,12 @@ export class AudioEngine {
     return this.monitor.isEnded();
   }
 
-  /** Engine frame that is audible right now: the time to look analysis frames up at. */
+  /**
+   * Engine frame that is audible right now: the time to look analysis frames up at. With live
+   * input the music is heard directly, so the newest analysis frame is shown.
+   */
   audibleFrame(): number {
+    if (this.live) return Math.max(0, this.timeline.latestEngineFrame());
     const clock = this.outputClock();
     if (!clock) return 0;
     const now = performance.timeOrigin + performance.now();
@@ -163,7 +235,12 @@ export class AudioEngine {
   }
 
   async dispose(): Promise<void> {
+    this.disconnectInput();
     this.media.terminate();
     await this.context?.close();
   }
+}
+
+function dbToGain(db: number): number {
+  return 10 ** (db / 20);
 }
