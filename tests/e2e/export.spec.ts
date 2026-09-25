@@ -71,8 +71,12 @@ test('exports the range between the markers as a video file', async ({ page }) =
   const errors = collectErrors(page);
   await page.goto('/');
   await addTrack(page, 10);
-  await page.getByTestId('play-button').click();
-  await page.getByTestId('play-button').click();
+  // Load the track, then pause it (waiting for each state, so the second click is a pause).
+  const play = page.getByTestId('play-button');
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Pause');
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Play');
 
   // Markers at 5 s and at the end, set with the keys while the timeline has focus (TR-09).
   await page.getByTestId('timeline').focus();
