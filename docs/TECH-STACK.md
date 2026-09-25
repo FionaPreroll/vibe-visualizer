@@ -55,7 +55,7 @@ file ─► decode ─► DSP core ─► AAC encoder ────────�
 1. **Media worker:** reads the file in pieces, decodes it (Mediabunny + WebCodecs) and converts it to the engine rate of 48 kHz with a windowed-sinc resampler. It stays a few seconds ahead of playback. Every seek starts a new ring "generation"; the AudioWorklet drops older audio within one render quantum.
 2. **AudioWorklet:** plays the stream and analyses exactly what it plays: 64-band spectrum, six band energies, kick/snare/hi-hat hits, the beat (tempo, phase, confidence), loudness and an oscilloscope snapshot, about 94 times per second ([ANALYSIS.md](ANALYSIS.md)). Paused, it outputs silence but keeps accepting seeks. Later it also runs the DSP core (vinyl or key lock → DJ filter → delay → reverb → limiter).
 3. **Feature timeline:** a shared-memory history of analysis frames with timestamps. The renderer looks up the frame for the moment you actually hear (via the AudioContext's output timestamp; calibration offset: AN-06) and interpolates between frames.
-4. **Renderer:** WebGL2 in a render worker on an OffscreenCanvas (M2), paced by the worker's own requestAnimationFrame. The main thread sends the audio clock (output timestamp) four times a second; the worker extrapolates it, reads the feature timeline directly from shared memory and renders at the canvas's native resolution. Scenes draw into half-float buffers, then bloom and dithering. The analysis view (Canvas 2D, main thread) remains as a debug mode.
+4. **Renderer:** WebGL2 in a render worker on an OffscreenCanvas (M2, M3), paced by the worker's own requestAnimationFrame. The worker keeps both visual modes as scenes and switches between them without losing their state. The Kaleidoscope's feedback runs in fixed steps of 1/60 s, interpolated for display, so it looks the same at any frame rate and in the export. The main thread sends the audio clock (output timestamp) four times a second; the worker extrapolates it, reads the feature timeline directly from shared memory and renders at the canvas's native resolution. Scenes draw into half-float buffers, then bloom and dithering. The analysis view (Canvas 2D, main thread) remains as a debug mode.
 5. **Main thread:** Svelte UI and the app state; every command is a timestamped action (NF-08).
 
 Realtime data moves through SharedArrayBuffer ring buffers; control commands go through a small RPC helper. Data handed to workers or worklets must not live in deep Svelte state: its proxies cannot be cloned (`$state.raw` instead).
@@ -87,9 +87,10 @@ src/
     analysis/    analyzer (FFT, bands), drum detection, beat tracker, feature layout, feature
                  timeline; eval/ has the synthetic test mix and the scoring (docs/ANALYSIS.md)
     library/     probe worker (tags, duration, cover art)
-    render/      renderer facade and render worker (OffscreenCanvas, WebGL2), Logo Spectrum scene,
-                 spectrum shaping, post-processing (bloom, dithering), visual settings and presets,
-                 image storage
+    render/      renderer facade and render worker (OffscreenCanvas, WebGL2), scenes (Logo
+                 Spectrum; Kaleidoscope with Vortex and Crystal Mandala), spectrum shaping,
+                 fixed-step feedback, post-processing (bloom, dithering), settings, parameter specs
+                 and presets, image storage
     player/      Player: connects the state with the engine
     state/       store with timestamped actions, app state, persistence
     env/, util/, video/
@@ -101,7 +102,7 @@ tests/eval/      evaluation on real recordings (optional dataset, see docs/ANALY
 docs/            FEATURES.md, TECH-STACK.md, ANALYSIS.md
 ```
 
-Next come the Kaleidoscope scene in `core/render/` (M3) and `core/export/` (P2). `core/` does not depend on the UI framework.
+Next comes `core/export/` (P2). `core/` does not depend on the UI framework.
 
 ## 5. Spikes (P0)
 

@@ -1,6 +1,7 @@
 import { AudioEngine } from '../audio/engine/audio-engine';
+import type { KaleidoSettings } from './kaleido-settings';
 import type { ImageKind } from './logo-spectrum';
-import type { RenderEvent, RenderRequest } from './render-protocol';
+import type { RenderEvent, RenderRequest, SceneKind } from './render-protocol';
 import RenderWorker from './render.worker.ts?worker';
 import type { LogoSpectrumSettings } from './visual-settings';
 
@@ -45,8 +46,17 @@ export class Renderer {
     this.send({ type: 'resize', width: Math.round(width), height: Math.round(height) });
   }
 
-  setSettings(settings: LogoSpectrumSettings): void {
-    this.send({ type: 'settings', settings });
+  /** Switches the scene shown; both keep their state. */
+  setScene(scene: SceneKind): void {
+    this.send({ type: 'scene', scene });
+  }
+
+  setLogoSpectrum(settings: LogoSpectrumSettings): void {
+    this.send({ type: 'logoSpectrum', settings });
+  }
+
+  setKaleidoscope(settings: KaleidoSettings): void {
+    this.send({ type: 'kaleidoscope', settings });
   }
 
   /** Hands an image to the worker (the bitmap is transferred and must not be used afterwards). */

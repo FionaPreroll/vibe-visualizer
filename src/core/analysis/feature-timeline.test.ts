@@ -73,5 +73,9 @@ describe('feature timeline', () => {
     expect(out[F.kickHit]).toBe(1);
     reader.collectHits(512, 1024, out);
     expect(out[F.kickHit]).toBe(0);
+    // A clock that steps back reports nothing (the hits up to 1024 were already collected).
+    out[F.kickHit] = 1;
+    reader.collectHits(1024, 600, out);
+    expect(out[F.kickHit]).toBe(0);
   });
 });

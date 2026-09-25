@@ -1,4 +1,12 @@
 import {
+  DEFAULT_KALEIDO,
+  sanitizeKaleido,
+  sceneDefaults,
+  type KaleidoSceneId,
+  type KaleidoSettings,
+  type ParamValue,
+} from '../render/kaleido-settings';
+import {
   DEFAULT_LOGO_SPECTRUM,
   sanitizeSettings,
   type LogoSpectrumSettings,
@@ -25,9 +33,9 @@ export interface Track {
   coverUrl: string | null;
 }
 
-/** What the stage shows: a visual mode (VE-04; the Kaleidoscope follows in M3) or the analysis. */
-export type VisualMode = 'logoSpectrum' | 'analysis';
-export const VISUAL_MODES: readonly VisualMode[] = ['logoSpectrum', 'analysis'];
+/** What the stage shows: one of the two visual modes (VE-04) or the analysis. */
+export type VisualMode = 'logoSpectrum' | 'kaleidoscope' | 'analysis';
+export const VISUAL_MODES: readonly VisualMode[] = ['logoSpectrum', 'kaleidoscope', 'analysis'];
 
 export interface Settings {
   volume: number;
@@ -43,6 +51,8 @@ export interface AppState {
   settings: Settings;
   /** Parameters of the Logo Spectrum mode. */
   visuals: LogoSpectrumSettings;
+  /** Parameters of the Kaleidoscope mode. */
+  kaleido: KaleidoSettings;
   error: string | null;
 }
 
@@ -72,7 +82,12 @@ export type AppAction =
   | { type: 'settings/changed'; changes: Partial<Settings> }
   | { type: 'visuals/changed'; changes: Partial<LogoSpectrumSettings> }
   /** A preset was applied: all visual parameters at once. */
-  | { type: 'visuals/replaced'; visuals: LogoSpectrumSettings };
+  | { type: 'visuals/replaced'; visuals: LogoSpectrumSettings }
+  /** Another Kaleidoscope scene, with the look that suits it. */
+  | { type: 'kaleido/scene'; scene: KaleidoSceneId }
+  /** One parameter: a common one or one of a scene. */
+  | { type: 'kaleido/param'; scope: 'common' | KaleidoSceneId; key: string; value: ParamValue }
+  | { type: 'kaleido/replaced'; kaleido: KaleidoSettings };
 
 export const DEFAULT_SETTINGS: Settings = {
   volume: 0.8,
@@ -84,8 +99,9 @@ export const DEFAULT_SETTINGS: Settings = {
 export function initialState(
   settings: Settings = DEFAULT_SETTINGS,
   visuals: LogoSpectrumSettings = DEFAULT_LOGO_SPECTRUM,
+  kaleido: KaleidoSettings = DEFAULT_KALEIDO,
 ): AppState {
-  return { tracks: [], currentId: null, playing: false, settings, visuals, error: null };
+  return { tracks: [], currentId: null, playing: false, settings, visuals, kaleido, error: null };
 }
 
 /** A new queue entry for `file`, before its metadata is known. */
@@ -151,5 +167,33 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, visuals: sanitizeSettings({ ...state.visuals, ...action.changes }) };
     case 'visuals/replaced':
       return { ...state, visuals: sanitizeSettings(action.visuals) };
+    case 'kaleido/scene': {
+      if (action.scene === state.kaleido.scene) return state;
+      const look = sceneDefaults(action.scene).common;
+      return {
+        ...state,
+        kaleido: sanitizeKaleido({
+          ...state.kaleido,
+          scene: action.scene,
+          common: { ...state.kaleido.common, ...look },
+        }),
+      };
+    }
+    case 'kaleido/param': {
+      const { scope, key, value } = action;
+      const kaleido =
+        scope === 'common'
+          ? { ...state.kaleido, common: { ...state.kaleido.common, [key]: value } }
+          : {
+              ...state.kaleido,
+              scenes: {
+                ...state.kaleido.scenes,
+                [scope]: { ...state.kaleido.scenes[scope], [key]: value },
+              },
+            };
+      return { ...state, kaleido: sanitizeKaleido(kaleido) };
+    }
+    case 'kaleido/replaced':
+      return { ...state, kaleido: sanitizeKaleido(action.kaleido) };
   }
 }

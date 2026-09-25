@@ -97,10 +97,10 @@
     aria-label="Visual stage"
     onpointermove={onPointerMove}
   >
-    {#if $app.settings.visualMode === 'logoSpectrum'}
-      <VisualStage />
-    {:else}
+    {#if $app.settings.visualMode === 'analysis'}
       <AnalysisView />
+    {:else}
+      <VisualStage mode={$app.settings.visualMode} />
     {/if}
     {#if $app.tracks.length === 0}
       <div class="welcome">

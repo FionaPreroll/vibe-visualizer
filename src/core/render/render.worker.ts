@@ -1,7 +1,9 @@
 import { FeatureTimelineReader } from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
+import { KaleidoscopeScene } from './kaleidoscope';
 import { LogoSpectrumScene } from './logo-spectrum';
-import type { RenderEvent, RenderRequest } from './render-protocol';
+import type { RenderEvent, RenderRequest, SceneKind } from './render-protocol';
+import type { Scene } from './scene';
 
 /**
  * Draws the visuals on an OffscreenCanvas, off the main thread (TECH-STACK: renderer). Each
@@ -20,8 +22,13 @@ const scope = self as unknown as {
 
 let canvas: OffscreenCanvas | null = null;
 let gl: WebGL2RenderingContext | null = null;
-let scene: LogoSpectrumScene | null = null;
+let logoSpectrum: LogoSpectrumScene | null = null;
+let kaleidoscope: KaleidoscopeScene | null = null;
+let active: SceneKind = 'logoSpectrum';
+let scene: Scene | null = null;
 let reader: FeatureTimelineReader | null = null;
+/** Engine frame shown last time, to collect every hit exactly once. */
+let lastAudible = -1;
 let sampleRate = 48000;
 let clock: { contextTime: number; performanceTime: number } | null = null;
 let running = false;
@@ -52,7 +59,17 @@ function frame(now: number): void {
   lastTime = now;
 
   const at = audibleFrame(now);
-  if (at === null || !reader || reader.sample(at, features) === null) features.fill(0);
+  if (at === null || !reader || reader.sample(at, features) === null) {
+    features.fill(0);
+  } else if (lastAudible < 0) {
+    lastAudible = at;
+  } else {
+    // Hits between the last frame shown and this one, so none is missed or counted twice. The
+    // engine clock only moves forward; a small step back comes from a clock update and must not
+    // report the same hits again (collectHits then clears them).
+    reader.collectHits(lastAudible, at, features);
+    lastAudible = Math.max(lastAudible, at);
+  }
   try {
     scene.render({ time: (now - startTime) / 1000, dt, features });
   } catch (error) {
@@ -84,6 +101,14 @@ function setRunning(value: boolean): void {
   }
 }
 
+/** Shows `kind` from the next frame on (the scene's buffers follow the canvas size). */
+function activate(kind: SceneKind): void {
+  active = kind;
+  scene = kind === 'logoSpectrum' ? logoSpectrum : kaleidoscope;
+  if (scene && canvas) scene.resize(canvas.width, canvas.height);
+  lastTime = -1;
+}
+
 scope.addEventListener('message', (event) => {
   const message = event.data;
   try {
@@ -107,9 +132,11 @@ scope.addEventListener('message', (event) => {
           powerPreference: 'high-performance',
         });
         if (!gl) throw new Error('WebGL2 is not available.');
-        scene = new LogoSpectrumScene(gl);
-        scene.resize(canvas.width, canvas.height);
-        post({ type: 'ready', floatTargets: scene.floatTargets });
+        // Both scenes live as long as the worker: switching keeps their state and images.
+        logoSpectrum = new LogoSpectrumScene(gl);
+        kaleidoscope = new KaleidoscopeScene(gl);
+        activate(active);
+        post({ type: 'ready', floatTargets: logoSpectrum.floatTargets });
         setRunning(running);
         break;
       }
@@ -120,11 +147,17 @@ scope.addEventListener('message', (event) => {
           scene.resize(canvas.width, canvas.height);
         }
         break;
-      case 'settings':
-        scene?.setSettings(message.settings);
+      case 'scene':
+        activate(message.scene);
+        break;
+      case 'logoSpectrum':
+        logoSpectrum?.setSettings(message.settings);
+        break;
+      case 'kaleidoscope':
+        kaleidoscope?.setSettings(message.settings);
         break;
       case 'image':
-        scene?.setImage(message.kind, message.image);
+        logoSpectrum?.setImage(message.kind, message.image);
         message.image?.close();
         break;
       case 'clock':
@@ -135,7 +168,10 @@ scope.addEventListener('message', (event) => {
         break;
       case 'dispose':
         setRunning(false);
-        scene?.dispose();
+        logoSpectrum?.dispose();
+        kaleidoscope?.dispose();
+        logoSpectrum = null;
+        kaleidoscope = null;
         scene = null;
         gl?.getExtension('WEBGL_lose_context')?.loseContext();
         scope.close();
