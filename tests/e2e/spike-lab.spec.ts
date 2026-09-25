@@ -31,3 +31,20 @@ test('S3 encoding spike runs to completion', async ({ page }) => {
   );
   expect(errors).toEqual([]);
 });
+
+test('S4 rendering spike runs to completion', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/?quick');
+  await page.getByTestId('s4-run').click();
+  const card = page.getByTestId('spike-S4');
+  await expect(card).toHaveAttribute('data-status', /done|error/, { timeout: 180_000 });
+  console.log(await card.innerText());
+  await expect(card).toHaveAttribute('data-status', 'done');
+  await expect(
+    card.locator('tr[data-state="pass"]', { hasText: 'Float render targets' }),
+  ).toHaveCount(1);
+  await expect(
+    card.locator('tr[data-state="pass"]', { hasText: '4K offline without errors' }),
+  ).toHaveCount(1);
+  expect(errors).toEqual([]);
+});

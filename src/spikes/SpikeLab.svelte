@@ -1,6 +1,7 @@
 <script lang="ts">
   import { buildMarkdownReport } from './report-markdown';
   import S3Encoding from './s3-encoding/S3Encoding.svelte';
+  import S4Rendering from './s4-rendering/S4Rendering.svelte';
   import EnvPanel from './ui/EnvPanel.svelte';
 
   let copied = $state(false);
@@ -39,6 +40,7 @@
 
   <EnvPanel />
   <S3Encoding />
+  <S4Rendering />
 </main>
 
 <style>
