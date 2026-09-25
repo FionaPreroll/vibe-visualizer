@@ -113,3 +113,36 @@ export class FeatureTimelineReader extends TimelineView {
     }
   }
 }
+
+/**
+ * The renderer's view of a timeline: the features at a sequence of display times (engine
+ * frames), with every hit between two displays reported exactly once. The live view and the
+ * export use it the same way, so they react identically.
+ */
+export class FeatureSampler {
+  private last = -1;
+
+  constructor(private readonly reader: FeatureTimelineReader) {}
+
+  /** Writes the features at engine frame `at` into `out`; zeros (and false) if there are none. */
+  sample(at: number | null, out: Float32Array): boolean {
+    if (at === null || this.reader.sample(at, out) === null) {
+      out.fill(0);
+      return false;
+    }
+    if (this.last >= 0) {
+      // A small step back comes from a clock update and must not report the same hits again
+      // (collectHits then clears them).
+      this.reader.collectHits(this.last, at, out);
+      this.last = Math.max(this.last, at);
+    } else {
+      this.last = at;
+    }
+    return true;
+  }
+
+  /** Continues as if the previous display was at engine frame `frame` (-1: none). */
+  resetTo(frame: number): void {
+    this.last = frame;
+  }
+}

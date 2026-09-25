@@ -68,7 +68,8 @@ test('playback: plays, seeks, shows the analysis and moves on to the next track'
   await expect.poll(() => elapsed(page), { timeout: 10_000 }).toBeGreaterThan(0.5);
   await page.getByRole('button', { name: 'Analysis' }).click();
   await expect(page.getByTestId('analysis-view')).toHaveAttribute('data-active', 'true');
-  await expect(page.getByRole('option', { selected: true })).toContainText('First');
+  const queue = page.getByRole('listbox', { name: 'Queue tracks' });
+  await expect(queue.getByRole('option', { selected: true })).toContainText('First');
 
   // Seek by clicking at 50 % of the timeline (4 s track → 2 s).
   const box = (await page.getByTestId('timeline').boundingBox())!;

@@ -98,6 +98,19 @@ export class SpectrumShaper {
     this.bands.fill(0);
   }
 
+  /** The state that carries over between frames (for scene snapshots). */
+  saveState(): Float32Array[] {
+    return [this.curves.slice(), this.bands.slice()];
+  }
+
+  restoreState([curves, bands]: Float32Array[]): void {
+    if (curves?.length !== this.curves.length || bands?.length !== this.bands.length) {
+      throw new Error('Snapshot does not match the spectrum shaper');
+    }
+    this.curves.set(curves);
+    this.bands.set(bands);
+  }
+
   private updateKernel(smoothing: number): void {
     if (smoothing === this.kernelSmoothing) return;
     this.kernelSmoothing = smoothing;

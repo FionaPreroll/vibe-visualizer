@@ -140,6 +140,56 @@ export function deleteTarget(gl: WebGL2RenderingContext, target: Target | null):
   gl.deleteFramebuffer(target.framebuffer);
 }
 
+/**
+ * Reads a render target back (RGBA, bottom row first), for scene snapshots: half floats or
+ * floats for float targets (whichever the GPU reads directly), bytes for 8-bit targets.
+ */
+export function readTarget(
+  gl: WebGL2RenderingContext,
+  target: Target,
+  float: boolean,
+): Float32Array | Uint16Array | Uint8Array {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+  const { width, height } = target;
+  const count = width * height * 4;
+  let data: Float32Array | Uint16Array | Uint8Array;
+  if (!float) {
+    data = new Uint8Array(count);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  } else if (
+    gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_TYPE) === gl.HALF_FLOAT &&
+    gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_FORMAT) === gl.RGBA
+  ) {
+    data = new Uint16Array(count);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.HALF_FLOAT, data);
+  } else {
+    // RGBA/FLOAT reads always work on float color buffers.
+    data = new Float32Array(count);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, data);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return data;
+}
+
+/** Writes data from {@link readTarget} back into a target of the same size. */
+export function writeTarget(
+  gl: WebGL2RenderingContext,
+  target: Target,
+  data: Float32Array | Uint16Array | Uint8Array,
+): void {
+  if (data.length !== target.width * target.height * 4) {
+    throw new Error('Snapshot does not match the render target size');
+  }
+  const type =
+    data instanceof Uint8Array
+      ? gl.UNSIGNED_BYTE
+      : data instanceof Uint16Array
+        ? gl.HALF_FLOAT
+        : gl.FLOAT;
+  gl.bindTexture(gl.TEXTURE_2D, target.texture);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, target.width, target.height, gl.RGBA, type, data);
+}
+
 export function setSampling(gl: WebGL2RenderingContext, filter: number, wrap: number): void {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);

@@ -15,6 +15,10 @@
   const duration = $derived(current?.duration ?? 0);
   const shown = $derived(dragFraction !== null ? dragFraction * duration : position);
   const fraction = $derived(duration > 0 ? Math.min(1, shown / duration) : 0);
+  const marks = $derived(current?.marks ?? { in: null, out: null });
+  const marked = $derived(marks.in !== null || marks.out !== null);
+  const inFraction = $derived(duration > 0 ? (marks.in ?? 0) / duration : 0);
+  const outFraction = $derived(duration > 0 ? (marks.out ?? duration) / duration : 1);
 
   onMount(() => {
     let request = 0;
@@ -97,6 +101,39 @@
       <button class="icon" onclick={() => player.stop()} aria-label="Stop" disabled={!current}>
         <Icon name="stop" />
       </button>
+      <span class="divider"></span>
+      <button
+        class="icon"
+        onclick={() => player.mark('in')}
+        aria-label="Mark in"
+        title="Mark in (I): start of the export range"
+        disabled={!current}
+      >
+        <Icon name="markIn" />
+      </button>
+      <button
+        class="icon"
+        onclick={() => player.mark('out')}
+        aria-label="Mark out"
+        title="Mark out (O): end of the export range"
+        disabled={!current}
+      >
+        <Icon name="markOut" />
+      </button>
+      {#if marked}
+        <button
+          class="marks"
+          onclick={() => {
+            player.mark('in', null);
+            player.mark('out', null);
+          }}
+          title="Clear the markers"
+          data-testid="marks"
+        >
+          {formatDuration(marks.in ?? 0)}–{formatDuration(marks.out ?? duration)}
+          <Icon name="close" size={14} />
+        </button>
+      {/if}
     </div>
     <div class="timeline-row">
       <span class="time" data-testid="elapsed" data-seconds={position.toFixed(2)}>
@@ -119,6 +156,16 @@
         data-testid="timeline"
       >
         <div class="track"><div class="fill" style:width="{fraction * 100}%"></div></div>
+        {#if marked}
+          <div
+            class="range"
+            style:left="{inFraction * 100}%"
+            style:width="{Math.max(0, outFraction - inFraction) * 100}%"
+            data-testid="marked-range"
+          ></div>
+          {#if marks.in !== null}<div class="mark" style:left="{inFraction * 100}%"></div>{/if}
+          {#if marks.out !== null}<div class="mark" style:left="{outFraction * 100}%"></div>{/if}
+        {/if}
         <div class="knob" style:left="{fraction * 100}%"></div>
       </div>
       <span class="time">-{formatDuration(Math.max(0, duration - shown))}</span>
@@ -250,6 +297,39 @@
   .fill {
     height: 100%;
     background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  }
+  .range {
+    position: absolute;
+    top: 5px;
+    height: 10px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--accent-2) 22%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-2) 60%, transparent);
+    pointer-events: none;
+  }
+  .mark {
+    position: absolute;
+    top: 2px;
+    width: 2px;
+    height: 16px;
+    margin-left: -1px;
+    background: var(--accent-2);
+    pointer-events: none;
+  }
+  .divider {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+    background: var(--border);
+  }
+  .marks {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent-2);
   }
   .knob {
     position: absolute;

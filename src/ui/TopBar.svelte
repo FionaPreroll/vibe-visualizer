@@ -1,15 +1,19 @@
 <script lang="ts">
+  import { ASPECT_RATIOS, isAspectRatio } from '../core/export/video-format';
   import type { VisualMode } from '../core/state/app-state';
+  import { useExporter } from './exporter-context';
   import Icon, { type IconName } from './Icon.svelte';
   import { usePlayer } from './player-context';
 
   interface Props {
     onFullscreen: () => void;
+    onExport: () => void;
   }
-  let { onFullscreen }: Props = $props();
+  let { onFullscreen, onExport }: Props = $props();
 
   const player = usePlayer();
   const app = player.store;
+  const exporter = useExporter();
 
   const MODES: { id: VisualMode; label: string; title: string; icon: IconName }[] = [
     { id: 'logoSpectrum', label: 'Logo Spectrum', title: 'Logo Spectrum visuals', icon: 'ring' },
@@ -49,6 +53,30 @@
         </button>
       {/each}
     </div>
+    <select
+      class="aspect"
+      value={$app.settings.aspect}
+      onchange={(event) => {
+        const aspect = event.currentTarget.value;
+        if (isAspectRatio(aspect)) player.updateSettings({ aspect });
+      }}
+      aria-label="Aspect ratio"
+      title="Aspect ratio of the visuals and the video"
+      data-testid="aspect-select"
+    >
+      {#each ASPECT_RATIOS as entry (entry.id)}
+        <option value={entry.id}>{entry.id} · {entry.hint}</option>
+      {/each}
+    </select>
+    <button
+      class="toggle"
+      class:on={$app.settings.safeAreas}
+      onclick={() => player.updateSettings({ safeAreas: !$app.settings.safeAreas })}
+      aria-pressed={$app.settings.safeAreas}
+      title="Safe areas"
+    >
+      <Icon name="safe" size={18} />
+    </button>
     <button class="toggle" onclick={onFullscreen} title="Fullscreen (F)">
       <Icon name="fullscreen" size={18} />
     </button>
@@ -60,6 +88,15 @@
       title="Side panel"
     >
       <Icon name="panel" size={18} />
+    </button>
+    <button class="primary export" onclick={onExport} data-testid="export-button">
+      <Icon name="export" size={18} />
+      {#if $exporter.status === 'running'}
+        {$exporter.job.paused ? 'Paused' : 'Exporting'}
+        {Math.floor($exporter.job.progress * 100)} %
+      {:else}
+        Export
+      {/if}
     </button>
     <a class="lab" href="#/lab">Spike Lab</a>
   </nav>
@@ -109,6 +146,19 @@
   }
   .toggle.on {
     background: var(--surface-2);
+  }
+  .aspect {
+    margin-right: 2px;
+    padding: 4px 6px;
+    font-size: 13px;
+  }
+  .export {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 8px;
+    padding: 5px 12px;
+    font-variant-numeric: tabular-nums;
   }
   .lab {
     margin-left: 8px;

@@ -2,7 +2,7 @@
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
-> **Status:** P1 is done: audio engine, queue and transport (M1), analysis v2 with drum detection and beat tracking, the Logo Spectrum mode (M2) and the Kaleidoscope mode (M3). Next: P2, the video export.
+> **Status:** P1 and P2 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, and the video export (whole tracks or clips, in segments that survive a crash). Next: P3, cues, tempo and effects.
 > Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md) · [audio analysis](docs/ANALYSIS.md)
 
 ## Run it locally
@@ -18,7 +18,7 @@ Then open http://localhost:5173 in Chrome or Firefox. The dev server sends the c
 
 ## Using the app
 
-Drop audio files onto the window (or click **Add files**); several files make a queue. Double-click a track to play it. Shortcuts: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, F fullscreen; in the queue Alt+↑/↓ moves a track and Delete removes it.
+Drop audio files onto the window (or click **Add files**); several files make a queue. Double-click a track to play it. Shortcuts: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, F fullscreen, I/O set the in and out marker (with Shift they are cleared); in the queue Alt+↑/↓ moves a track and Delete removes it.
 
 The top bar switches the stage between three views:
 
@@ -27,6 +27,18 @@ The top bar switches the stage between three views:
 - **Analysis:** what the visuals react to: spectrum, band energies, kick/snare/hi-hat lamps, the beat (its ring shows the position within the beat) and the tempo.
 
 In fullscreen (F), only the visuals show; the mouse cursor hides when you do not move it.
+
+The stage shows the visuals in the aspect ratio of your video: 16:9 (YouTube), 9:16 (TikTok, Shorts, Reels), 1:1, 4:5 or 21:9, chosen in the top bar. The frame button next to it shows the safe areas: the title-safe frame, and on 9:16 the parts that the apps cover with their buttons and captions.
+
+## Exporting videos
+
+Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K30*, *TikTok / Shorts 1080×1920*, or your own aspect ratio, size and frame rate), the quality, and the range: the whole track or the part between the markers. For a 30-second clip, play the track and press I at the start and O at the end (or use the bracket buttons next to Stop). The dialog shows the codecs and the estimated file size. The export uses the same scenes, analysis and settings as the preview, so the video looks like what you see (the audio is the file's own; tempo and effects come with P3).
+
+- The video is rendered frame by frame, independent of the speed of your graphics card: a slower machine just takes longer, and the result is always smooth.
+- In Chrome and Edge you pick the file first; the video is written straight into it. Other browsers keep it in browser storage and download it at the end.
+- The format is MP4 (H.264 + AAC). A browser without H.264 encoding writes WebM (VP9 + Opus) instead.
+- You can pause or cancel the export, and close the dialog while it runs; the screen stays awake. The live visuals pause meanwhile.
+- Long exports are written in segments of up to five minutes. If the tab crashes or you reload, the app offers to resume, and it continues exactly where the last segment ended. (If it stopped while still preparing the audio, add the track to the queue again first.)
 
 ## Spike Lab (P0)
 
@@ -62,9 +74,10 @@ The app is a static site. On Cloudflare Pages use the build command `pnpm build`
 
 ```
 src/core/       framework-free core: audio engine (media worker, AudioWorklet, resampler, ring
-                buffer), analysis, WebGL2 renderer (render worker, Logo Spectrum scene), player
-                and state, Signalsmith Stretch binding, utilities
-src/ui/         Svelte app: top bar, stage, queue, visuals panel, transport
+                buffer), analysis, WebGL2 renderer (render worker, Logo Spectrum and Kaleidoscope
+                scenes), export (export worker, formats, job storage), player and state,
+                Signalsmith Stretch binding, utilities
+src/ui/         Svelte app: top bar, stage, queue, visuals panel, transport, export dialog
 src/spikes/     Spike Lab and the P0 prototypes
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core
 tests/e2e/      Playwright tests

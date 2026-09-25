@@ -1,3 +1,4 @@
+import type { AspectRatio } from '../export/video-format';
 import {
   DEFAULT_KALEIDO,
   sanitizeKaleido,
@@ -31,6 +32,13 @@ export interface Track {
   codec: string | null;
   format: string | null;
   coverUrl: string | null;
+  /** In/out markers in seconds (TR-09): the export range, e.g. a 30-second clip. */
+  marks: Marks;
+}
+
+export interface Marks {
+  in: number | null;
+  out: number | null;
 }
 
 /** What the stage shows: one of the two visual modes (VE-04) or the analysis. */
@@ -42,6 +50,10 @@ export interface Settings {
   visualMode: VisualMode;
   panel: 'queue' | 'visuals';
   panelOpen: boolean;
+  /** Frame of the visuals (VE-09): the stage is letterboxed to it, and the export uses it. */
+  aspect: AspectRatio;
+  /** Shows the safe areas of the platforms over the stage. */
+  safeAreas: boolean;
 }
 
 export interface AppState {
@@ -75,6 +87,8 @@ export type AppAction =
   | { type: 'tracks/removed'; id: string }
   | { type: 'tracks/moved'; from: number; to: number }
   | { type: 'tracks/cleared' }
+  /** Sets (or clears, with null) the in or out marker of a track. */
+  | { type: 'tracks/marked'; id: string; mark: 'in' | 'out'; seconds: number | null }
   | { type: 'player/current'; id: string | null }
   | { type: 'player/playing'; playing: boolean }
   | { type: 'player/seeked'; seconds: number }
@@ -94,6 +108,8 @@ export const DEFAULT_SETTINGS: Settings = {
   visualMode: 'logoSpectrum',
   panel: 'queue',
   panelOpen: true,
+  aspect: '16:9',
+  safeAreas: false,
 };
 
 export function initialState(
@@ -120,7 +136,33 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
     codec: null,
     format: null,
     coverUrl: null,
+    marks: { in: null, out: null },
   };
+}
+
+/**
+ * The markers after setting `mark` to `seconds` (clamped to the track). A marker on the wrong
+ * side of the other one clears the other.
+ */
+export function setMark(track: Track, mark: 'in' | 'out', seconds: number | null): Marks {
+  const value =
+    seconds === null ? null : Math.max(0, Math.min(track.duration ?? Infinity, seconds));
+  if (mark === 'in') {
+    const out = value !== null && track.marks.out !== null && track.marks.out <= value;
+    return { in: value, out: out ? null : track.marks.out };
+  }
+  const clearIn = value !== null && track.marks.in !== null && track.marks.in >= value;
+  return { in: clearIn ? null : track.marks.in, out: value };
+}
+
+/**
+ * The part of `track` to export: between the markers (a missing one means the start or the end)
+ * or the whole track. Null while the duration is unknown.
+ */
+export function trackRange(track: Track, useMarks: boolean): { start: number; end: number } | null {
+  if (track.duration === null) return null;
+  if (!useMarks) return { start: 0, end: track.duration };
+  return { start: track.marks.in ?? 0, end: track.marks.out ?? track.duration };
 }
 
 export function reducer(state: AppState, action: AppAction): AppState {
@@ -153,6 +195,15 @@ export function reducer(state: AppState, action: AppAction): AppState {
     }
     case 'tracks/cleared':
       return { ...state, tracks: [], currentId: null, playing: false };
+    case 'tracks/marked':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.id === action.id
+            ? { ...track, marks: setMark(track, action.mark, action.seconds) }
+            : track,
+        ),
+      };
     case 'player/current':
       return { ...state, currentId: action.id };
     case 'player/playing':

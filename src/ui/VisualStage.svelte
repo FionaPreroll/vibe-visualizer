@@ -1,21 +1,27 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { aspectRatio, type AspectRatio } from '../core/export/video-format';
   import type { ImageKind } from '../core/render/logo-spectrum';
   import type { SceneKind } from '../core/render/render-protocol';
   import { Renderer } from '../core/render/renderer';
   import { decodeImage, type StoredImage } from '../core/render/visual-assets';
   import { usePlayer } from './player-context';
+  import SafeAreas from './SafeAreas.svelte';
   import { useAssets } from './visuals-context';
 
   /**
    * The visuals (Logo Spectrum or Kaleidoscope), drawn by the render worker at the canvas's
-   * native resolution (VE-01). Switching between the two keeps the worker and both scenes;
-   * settings and images are forwarded as they change.
+   * native resolution (VE-01), letterboxed to the video's aspect ratio (VE-09). Switching between
+   * the two keeps the worker and both scenes; settings and images are forwarded as they change.
    */
   interface Props {
     mode: SceneKind;
+    aspect: AspectRatio;
+    safeAreas: boolean;
+    /** Stops drawing (while an export needs the graphics card). */
+    paused: boolean;
   }
-  let { mode }: Props = $props();
+  let { mode, aspect, safeAreas, paused }: Props = $props();
 
   const player = usePlayer();
   const assets = useAssets();
@@ -26,8 +32,14 @@
   let message = $state('');
   let fps = $state(0);
 
+  let visible = $state(true);
+
   $effect(() => {
     renderer?.setScene(mode);
+  });
+
+  $effect(() => {
+    renderer?.setRunning(visible && !paused);
   });
 
   onMount(() => {
@@ -100,10 +112,10 @@
       }
     });
 
-    const onVisibility = () => instance.setRunning(document.visibilityState === 'visible');
+    const onVisibility = () => (visible = document.visibilityState === 'visible');
     document.addEventListener('visibilitychange', onVisibility);
     onVisibility();
-    // The effect above sends mode changes from now on (and the current mode right away).
+    // The effects above send mode changes and pauses from now on (and the current ones now).
     renderer = instance;
 
     return () => {
@@ -117,19 +129,40 @@
   });
 </script>
 
-<canvas
-  bind:this={canvas}
-  data-testid="visual-stage"
-  data-status={status}
-  data-fps={fps.toFixed(0)}
-  data-scene={mode}
-  aria-label={mode === 'kaleidoscope' ? 'Kaleidoscope visuals' : 'Logo Spectrum visuals'}
-></canvas>
+<div class="box">
+  <div class="frame" style:--ratio={aspectRatio(aspect)} data-aspect={aspect}>
+    <canvas
+      bind:this={canvas}
+      data-testid="visual-stage"
+      data-status={status}
+      data-fps={fps.toFixed(0)}
+      data-scene={mode}
+      aria-label={mode === 'kaleidoscope' ? 'Kaleidoscope visuals' : 'Logo Spectrum visuals'}
+    ></canvas>
+    {#if safeAreas}
+      <SafeAreas {aspect} />
+    {/if}
+  </div>
+</div>
 {#if status === 'failed'}
   <p class="failed" role="alert">The visuals could not start: {message}</p>
 {/if}
 
 <style>
+  .box {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    container-type: size;
+    background: #000;
+  }
+  /* The largest box of the aspect ratio that fits the stage. */
+  .frame {
+    position: relative;
+    width: min(100cqw, 100cqh * var(--ratio));
+    height: min(100cqh, 100cqw / var(--ratio));
+  }
   canvas {
     position: absolute;
     inset: 0;

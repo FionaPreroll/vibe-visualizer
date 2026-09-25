@@ -7,8 +7,10 @@ import {
   FRAGMENT_HEADER,
   FULLSCREEN_VERTEX,
   Program,
+  readTarget,
   setSampling,
   supportsFloatTargets,
+  writeTarget,
   type Target,
 } from './gl';
 import {
@@ -21,7 +23,7 @@ import {
   type ParamSpec,
 } from './kaleido-settings';
 import { PostProcessing } from './post';
-import { FixedStepper, type Scene, type SceneInput } from './scene';
+import { FixedStepper, type Scene, type SceneInput, type SceneSnapshot } from './scene';
 import { parseColor } from './visual-settings';
 
 /**
@@ -415,6 +417,49 @@ export class KaleidoscopeScene implements Scene {
 
     this.post.present(scene, common['bloom'] as number, this.width, this.height, this.frameCount);
     gl.bindVertexArray(null);
+  }
+
+  saveState(): SceneSnapshot {
+    const values: SceneSnapshot['values'] = {
+      frameCount: this.frameCount,
+      simulationTime: this.simulationTime,
+      angle: this.angle,
+      hue: this.hue,
+      beats: this.beats,
+      paletteTarget: this.paletteTarget,
+      paletteOffset: this.paletteOffset,
+      kickPending: this.kickPending,
+      beatPending: this.beatPending,
+      pending: this.stepper.pendingTime,
+    };
+    for (const [name, follower] of Object.entries(this.drives))
+      values[`drive.${name}`] = follower.value;
+    const buffers = this.states
+      ? this.states.map((target) => readTarget(this.gl, target, this.floatTargets))
+      : [];
+    return { values, buffers };
+  }
+
+  restoreState(snapshot: SceneSnapshot): void {
+    const { values, buffers } = snapshot;
+    if (!this.states || buffers.length !== 2) {
+      throw new Error('Snapshot does not match the Kaleidoscope scene');
+    }
+    writeTarget(this.gl, this.states[0], buffers[0]!);
+    writeTarget(this.gl, this.states[1], buffers[1]!);
+    this.frameCount = Number(values['frameCount']);
+    this.simulationTime = Number(values['simulationTime']);
+    this.angle = Number(values['angle']);
+    this.hue = Number(values['hue']);
+    this.beats = Number(values['beats']);
+    this.paletteTarget = Number(values['paletteTarget']);
+    this.paletteOffset = Number(values['paletteOffset']);
+    this.kickPending = values['kickPending'] === true;
+    this.beatPending = values['beatPending'] === true;
+    this.stepper.pendingTime = Number(values['pending']);
+    for (const [name, follower] of Object.entries(this.drives)) {
+      follower.value = Number(values[`drive.${name}`]);
+    }
   }
 
   dispose(): void {

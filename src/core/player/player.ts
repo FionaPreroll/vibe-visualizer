@@ -278,6 +278,21 @@ export class Player {
     this.dispatch({ type: 'kaleido/replaced', kaleido });
   }
 
+  /**
+   * Sets the in or out marker of the current track (TR-09), at the playback position unless
+   * given; null clears it.
+   */
+  mark(mark: 'in' | 'out', seconds: number | null = this.position): void {
+    const id = this.state.currentId;
+    if (id === null) return;
+    this.dispatch({ type: 'tracks/marked', id, mark, seconds });
+  }
+
+  /** The file behind a queue entry (for the export). */
+  fileFor(id: string): File | null {
+    return this.files.get(id) ?? null;
+  }
+
   updateSettings(changes: Partial<Settings>): void {
     this.dispatch({ type: 'settings/changed', changes });
   }

@@ -8,6 +8,7 @@ import {
   type LogoSpectrumSettings,
   type VisualPreset,
 } from '../render/visual-settings';
+import { isAspectRatio, sanitizeExportOptions, type ExportOptions } from '../export/video-format';
 import { DEFAULT_SETTINGS, VISUAL_MODES, type Settings } from './app-state';
 
 const SETTINGS_KEY = 'vibe-visualizer:settings:v1';
@@ -15,6 +16,7 @@ const VISUALS_KEY = 'vibe-visualizer:visuals:v1';
 const PRESETS_KEY = 'vibe-visualizer:presets:v1';
 const KALEIDO_KEY = 'vibe-visualizer:kaleido:v1';
 const KALEIDO_PRESETS_KEY = 'vibe-visualizer:kaleido-presets:v1';
+const EXPORT_KEY = 'vibe-visualizer:export:v1';
 
 function read(key: string): unknown {
   try {
@@ -50,6 +52,7 @@ export function loadSettings(): Settings {
     if (!VISUAL_MODES.includes(settings.visualMode))
       settings.visualMode = DEFAULT_SETTINGS.visualMode;
     settings.volume = Math.max(0, Math.min(1, settings.volume));
+    if (!isAspectRatio(settings.aspect)) settings.aspect = DEFAULT_SETTINGS.aspect;
   } catch {
     // Unreadable storage: defaults.
   }
@@ -122,4 +125,13 @@ export function saveKaleidoPresets(presets: KaleidoPreset[]): void {
     KALEIDO_PRESETS_KEY,
     presets.filter((preset) => !preset.builtIn).map(({ name, settings }) => ({ name, settings })),
   );
+}
+
+/** What the export dialog remembers (format, quality, range). */
+export function loadExportOptions(): ExportOptions {
+  return sanitizeExportOptions(read(EXPORT_KEY));
+}
+
+export function saveExportOptions(options: ExportOptions): void {
+  write(EXPORT_KEY, options);
 }

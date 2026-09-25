@@ -22,7 +22,13 @@
     sliders: 'M4 6h9v2H4zM17 6h3v2h-3zM13 4h4v6h-4zM4 16h3v2H4zM11 16h9v2h-9zM7 14h4v6H7z',
     image: 'M3 5h18v14H3zM5 17h14l-4.5-6-3.5 4.5L8.5 12z',
     save: 'M5 3h11l3 3v15H5zM8 5v4h7V5zM8 13v6h8v-6z',
+    export: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+    safe: 'M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M9 9h6v6H9z',
+    markIn: 'M9 5v14M9 5h6M9 19h6',
+    markOut: 'M15 5v14M15 5H9M15 19H9',
   } as const;
+  /** Icons drawn as lines instead of filled shapes. */
+  const STROKED: readonly string[] = ['wave', 'export', 'safe', 'markIn', 'markOut'];
   export type IconName = keyof typeof ICONS;
 </script>
 
@@ -39,7 +45,7 @@
   height={size}
   viewBox="0 0 24 24"
   aria-hidden="true"
-  class:stroke={name === 'wave'}
+  class:stroke={STROKED.includes(name)}
 >
   <path d={ICONS[name]} />
 </svg>

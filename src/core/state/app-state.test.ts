@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { sceneDefaults } from '../render/kaleido-settings';
 import { DEFAULT_LOGO_SPECTRUM, RANGES } from '../render/visual-settings';
-import { initialState, newTrack, reducer, type AppAction, type AppState } from './app-state';
+import {
+  initialState,
+  newTrack,
+  reducer,
+  trackRange,
+  type AppAction,
+  type AppState,
+} from './app-state';
 import { createStore } from './store';
 
 function withTracks(...names: string[]): AppState {
@@ -94,5 +101,30 @@ describe('app state', () => {
     // Switching back keeps the other scene's own parameters.
     const back = reducer(common, { type: 'kaleido/scene', scene: 'vortex' });
     expect(back.kaleido.scenes.crystal['points']).toBe(12);
+  });
+
+  it('keeps in/out markers inside the track and in order (TR-09)', () => {
+    let state = reducer(initialState(), {
+      type: 'tracks/added',
+      tracks: [newTrack('a', { name: 'a.mp3', size: 1 })],
+    });
+    state = reducer(state, {
+      type: 'tracks/probed',
+      id: 'a',
+      info: { ...state.tracks[0]!, status: 'ready', duration: 200 },
+    });
+    const mark = (mark: 'in' | 'out', seconds: number | null) => {
+      state = reducer(state, { type: 'tracks/marked', id: 'a', mark, seconds });
+      return state.tracks[0]!.marks;
+    };
+    expect(trackRange(state.tracks[0]!, true)).toEqual({ start: 0, end: 200 });
+    expect(mark('in', 30)).toEqual({ in: 30, out: null });
+    expect(mark('out', 500)).toEqual({ in: 30, out: 200 });
+    expect(trackRange(state.tracks[0]!, true)).toEqual({ start: 30, end: 200 });
+    expect(trackRange(state.tracks[0]!, false)).toEqual({ start: 0, end: 200 });
+    // An in marker after the out marker clears the out marker, and the other way round.
+    expect(mark('in', 250)).toEqual({ in: 200, out: null });
+    expect(mark('out', 60)).toEqual({ in: null, out: 60 });
+    expect(mark('out', null)).toEqual({ in: null, out: null });
   });
 });
