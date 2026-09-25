@@ -212,7 +212,7 @@
           null,
           memory.kind === 'timeout'
             ? 'the browser did not answer in time; run the test again'
-            : 'not measurable in this browser (Chrome only)',
+            : `not measurable: ${memory.reason}`,
         );
       }
       run.done();
