@@ -1,4 +1,4 @@
-import { FeatureTimelineReader } from '../analysis/feature-timeline';
+import { FeatureSampler, FeatureTimelineReader } from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
 import { KaleidoscopeScene } from './kaleidoscope';
 import { LogoSpectrumScene } from './logo-spectrum';
@@ -26,9 +26,7 @@ let logoSpectrum: LogoSpectrumScene | null = null;
 let kaleidoscope: KaleidoscopeScene | null = null;
 let active: SceneKind = 'logoSpectrum';
 let scene: Scene | null = null;
-let reader: FeatureTimelineReader | null = null;
-/** Engine frame shown last time, to collect every hit exactly once. */
-let lastAudible = -1;
+let sampler: FeatureSampler | null = null;
 let sampleRate = 48000;
 let clock: { contextTime: number; performanceTime: number } | null = null;
 let running = false;
@@ -58,18 +56,9 @@ function frame(now: number): void {
   const dt = lastTime < 0 ? 1 / 60 : (now - lastTime) / 1000;
   lastTime = now;
 
-  const at = audibleFrame(now);
-  if (at === null || !reader || reader.sample(at, features) === null) {
-    features.fill(0);
-  } else if (lastAudible < 0) {
-    lastAudible = at;
-  } else {
-    // Hits between the last frame shown and this one, so none is missed or counted twice. The
-    // engine clock only moves forward; a small step back comes from a clock update and must not
-    // report the same hits again (collectHits then clears them).
-    reader.collectHits(lastAudible, at, features);
-    lastAudible = Math.max(lastAudible, at);
-  }
+  // Hits between the last frame shown and this one are collected, so none is missed.
+  if (sampler) sampler.sample(audibleFrame(now), features);
+  else features.fill(0);
   try {
     scene.render({ time: (now - startTime) / 1000, dt, features });
   } catch (error) {
@@ -116,7 +105,7 @@ scope.addEventListener('message', (event) => {
       case 'init': {
         canvas = message.canvas;
         sampleRate = message.sampleRate;
-        reader = new FeatureTimelineReader(message.timeline);
+        sampler = new FeatureSampler(new FeatureTimelineReader(message.timeline));
         canvas.addEventListener('webglcontextlost', (e) => {
           e.preventDefault();
           lost = true;

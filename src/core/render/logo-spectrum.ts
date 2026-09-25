@@ -1,5 +1,5 @@
 import { F } from '../analysis/features';
-import { createPrng } from '../util/prng';
+import { Prng } from '../util/prng';
 import {
   bindTarget,
   createFullscreenTriangle,
@@ -14,7 +14,7 @@ import {
   type Target,
 } from './gl';
 import { PostProcessing } from './post';
-import type { Scene, SceneInput } from './scene';
+import type { Scene, SceneInput, SceneSnapshot } from './scene';
 import { CURVE_POINTS, SpectrumShaper } from './spectrum-shaper';
 import {
   DEFAULT_LOGO_SPECTRUM,
@@ -251,7 +251,7 @@ export class LogoSpectrumScene implements Scene {
   private readonly colors = new Float32Array(MAX_LAYERS * 3);
   private readonly particleData = new Float32Array(MAX_PARTICLES * 4);
   private readonly particleState = new Float32Array(MAX_PARTICLES * 6);
-  private readonly random = createPrng(1234);
+  private readonly random = new Prng(1234);
   private particleCount = 0;
 
   constructor(gl: WebGL2RenderingContext) {
@@ -449,6 +449,40 @@ export class LogoSpectrumScene implements Scene {
     gl.bindVertexArray(null);
   }
 
+  saveState(): SceneSnapshot {
+    return {
+      values: {
+        frameCount: this.frameCount,
+        bass: this.bass.value,
+        energy: this.energy.value,
+        particleCount: this.particleCount,
+        random: this.random.state,
+      },
+      buffers: [...this.shaper.saveState(), this.particleState.slice(), this.particleData.slice()],
+    };
+  }
+
+  restoreState(snapshot: SceneSnapshot): void {
+    const { values, buffers } = snapshot;
+    const [curves, bands, particleState, particleData] = buffers;
+    if (
+      !(particleState instanceof Float32Array) ||
+      !(particleData instanceof Float32Array) ||
+      particleState.length !== this.particleState.length ||
+      particleData.length !== this.particleData.length
+    ) {
+      throw new Error('Snapshot does not match the Logo Spectrum scene');
+    }
+    this.shaper.restoreState([curves as Float32Array, bands as Float32Array]);
+    this.particleState.set(particleState);
+    this.particleData.set(particleData);
+    this.frameCount = Number(values['frameCount']);
+    this.bass.value = Number(values['bass']);
+    this.energy.value = Number(values['energy']);
+    this.particleCount = Number(values['particleCount']);
+    this.random.state = Number(values['random']);
+  }
+
   dispose(): void {
     const gl = this.gl;
     this.post.dispose();
@@ -556,7 +590,7 @@ export class LogoSpectrumScene implements Scene {
   }
 
   private spawnParticle(index: number, anywhere: boolean): void {
-    const random = this.random;
+    const random = () => this.random.next();
     const o = index * 6;
     const angle = random() * Math.PI * 2;
     const distance = anywhere ? 0.05 + random() * 0.9 : 0.08 + random() * 0.25;

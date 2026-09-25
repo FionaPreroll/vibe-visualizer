@@ -1,9 +1,12 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { Exporter } from '../core/export/exporter';
   import { Player } from '../core/player/player';
   import { VisualAssets } from '../core/render/visual-assets';
   import AnalysisView from './AnalysisView.svelte';
   import DropOverlay from './DropOverlay.svelte';
+  import ExportDialog from './ExportDialog.svelte';
+  import { provideExporter } from './exporter-context';
   import Icon from './Icon.svelte';
   import PhotosensitivityNotice from './PhotosensitivityNotice.svelte';
   import { providePlayer } from './player-context';
@@ -17,7 +20,10 @@
   const player = new Player();
   providePlayer(player);
   provideAssets(new VisualAssets());
+  const exporter = new Exporter();
+  provideExporter(exporter);
   const app = player.store;
+  let exportOpen = $state(false);
   let stage: HTMLElement;
   /** In fullscreen, the mouse cursor hides after a moment without movement (DS-01). */
   let idle = $state(false);
@@ -25,6 +31,7 @@
 
   onDestroy(() => {
     clearTimeout(idleTimer);
+    exporter.dispose();
     player.dispose();
   });
 
@@ -39,13 +46,21 @@
     else void stage.requestFullscreen();
   }
 
-  /** Keys that should not trigger shortcuts: typing, buttons, sliders and list items. */
-  function ownsKeys(target: EventTarget | null): boolean {
-    return (
-      target instanceof HTMLElement &&
-      (target.closest('input, textarea, select, button, [role="slider"], li') !== null ||
-        target.isContentEditable)
-    );
+  /**
+   * Whether the focused element needs `key` itself: text fields take every key; buttons,
+   * sliders and list items take Space and the arrow keys, but not letters (so I and O work
+   * right after clicking Play).
+   */
+  function ownsKey(target: EventTarget | null, key: string): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    const typing =
+      target.isContentEditable ||
+      target.closest(
+        'textarea, select, input:not([type="range"], [type="checkbox"], [type="radio"], [type="color"], [type="file"])',
+      ) !== null;
+    if (typing) return true;
+    if (key.length === 1 && key !== ' ') return false;
+    return target.closest('input, button, [role="slider"], li') !== null;
   }
 
   onMount(() => {
@@ -53,7 +68,10 @@
     const onFullscreen = () => onPointerMove();
     document.addEventListener('fullscreenchange', onFullscreen);
     const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || ownsKeys(event.target)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || ownsKey(event.target, event.key))
+        return;
+      // A modal dialog (the export) has the keyboard to itself.
+      if (document.querySelector('dialog[open]')) return;
       const step = event.shiftKey ? 30 : 5;
       switch (event.key) {
         case ' ':
@@ -74,6 +92,15 @@
         case 'f':
           toggleFullscreen();
           break;
+        // In/out markers of the export range (TR-09); with Shift they are cleared.
+        case 'i':
+        case 'I':
+          player.mark('in', event.shiftKey ? null : player.position);
+          break;
+        case 'o':
+        case 'O':
+          player.mark('out', event.shiftKey ? null : player.position);
+          break;
         default:
           return;
       }
@@ -88,7 +115,7 @@
 </script>
 
 <div class="shell" class:panel-open={$app.settings.panelOpen}>
-  <TopBar onFullscreen={toggleFullscreen} />
+  <TopBar onFullscreen={toggleFullscreen} onExport={() => (exportOpen = true)} />
 
   <main
     class="stage"
@@ -100,13 +127,30 @@
     {#if $app.settings.visualMode === 'analysis'}
       <AnalysisView />
     {:else}
-      <VisualStage mode={$app.settings.visualMode} />
+      <VisualStage
+        mode={$app.settings.visualMode}
+        aspect={$app.settings.aspect}
+        safeAreas={$app.settings.safeAreas}
+        paused={$exporter.status === 'running'}
+      />
     {/if}
     {#if $app.tracks.length === 0}
       <div class="welcome">
         <h1>Drop your music here</h1>
         <p>MP3, M4A, FLAC, Ogg, Opus or WAV. Several files make a queue.</p>
       </div>
+    {/if}
+    {#if !exportOpen && ['interrupted', 'done', 'failed'].includes($exporter.status)}
+      <button class="export-note" onclick={() => (exportOpen = true)} data-testid="export-note">
+        <Icon name="export" size={16} />
+        {#if $exporter.status === 'interrupted'}
+          An export was interrupted. Resume it…
+        {:else if $exporter.status === 'done'}
+          Your video is ready.
+        {:else}
+          The export stopped. Details…
+        {/if}
+      </button>
     {/if}
     {#if $app.error}
       <div class="error" role="alert">
@@ -148,6 +192,7 @@
   {/if}
 
   <TransportBar />
+  <ExportDialog open={exportOpen} onclose={() => (exportOpen = false)} />
   <DropOverlay />
   <PhotosensitivityNotice />
 </div>
@@ -226,6 +271,18 @@
   .welcome p {
     margin: 0;
     color: var(--muted);
+  }
+  .export-note {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 20%, var(--surface));
   }
   .error {
     position: absolute;

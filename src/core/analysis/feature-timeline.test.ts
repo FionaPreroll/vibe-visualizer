@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createFeatureTimeline,
+  FeatureSampler,
   FeatureTimelineReader,
   FeatureTimelineWriter,
 } from './feature-timeline';
@@ -77,5 +78,27 @@ describe('feature timeline', () => {
     out[F.kickHit] = 1;
     reader.collectHits(1024, 600, out);
     expect(out[F.kickHit]).toBe(0);
+  });
+
+  it('samples display times with every hit exactly once', () => {
+    const sab = createFeatureTimeline(16);
+    const writer = new FeatureTimelineWriter(sab);
+    const sampler = new FeatureSampler(new FeatureTimelineReader(sab));
+    for (let i = 0; i < 8; i++) writer.write(i * 512, 0, frameWith(0.5, i === 3 ? 1 : 0));
+    const out = new Float32Array(F.size);
+    expect(sampler.sample(null, out)).toBe(false);
+    expect(sampler.sample(700, out)).toBe(true);
+    expect(out[F.kickHit]).toBe(0);
+    // The hit at 1536 lies between two displays.
+    sampler.sample(2000, out);
+    expect(out[F.kickHit]).toBe(1);
+    sampler.sample(1900, out);
+    expect(out[F.kickHit]).toBe(0);
+    sampler.sample(2600, out);
+    expect(out[F.kickHit]).toBe(0);
+    // Resuming just before the hit reports it again, as a continuous run would.
+    sampler.resetTo(1500);
+    sampler.sample(1600, out);
+    expect(out[F.kickHit]).toBe(1);
   });
 });

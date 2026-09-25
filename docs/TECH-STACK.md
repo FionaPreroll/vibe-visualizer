@@ -1,6 +1,6 @@
 # Vibe Visualizer — Tech Stack
 
-> **Status:** v0.3 (2026-09-25), accepted (Q16). It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export. The P0 spikes passed on the main target machine (see [§5](#5-spikes-p0)).
+> **Status:** v0.4 (2026-09-25), accepted (Q16). It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export. The P0 spikes passed on the main target machine (see [§5](#5-spikes-p0)).
 
 ## 1. The stack at a glance
 
@@ -60,11 +60,14 @@ file ─► decode ─► DSP core ─► AAC encoder ────────�
 
 Realtime data moves through SharedArrayBuffer ring buffers; control commands go through a small RPC helper. Data handed to workers or worklets must not live in deep Svelte state: its proxies cannot be cloned (`$state.raw` instead).
 
-**Export**
+**Export** (built in P2; everything runs in one export worker, with its own OffscreenCanvas)
 
-1. The same decode → DSP → analysis code processes the chosen range in chunks, faster or slower than real time.
-2. The renderer draws frame n at time n / fps. WebCodecs encodes the video (H.264) and audio (AAC), and Mediabunny puts both into the MP4.
-3. Long renders are written as segments to the Origin Private File System. After an interruption the render resumes at the last complete segment. At the end the segments are joined without re-encoding and streamed into the MP4 file on disk.
+1. **Audio pass:** decodes the range with the same code as the media worker (shared decoder loop and resampler, so the samples are identical); for a clip it starts up to 10 s early, so the analysis has settled. The analyzer runs over it hop by hop; its frames are stored in a file (84 floats per frame, about 110 MB per hour; the waveform is left out). The range itself is encoded to AAC (Opus for WebM), exactly as long as the video. Later the DSP core joins this pass (EX-02).
+2. **Video pass:** the scene draws frame n at time n / fps (EX-01); for a clip it starts up to 3 s early, so trails and motion are already running. The stored analysis is replayed through a feature timeline and sampled with the same `FeatureSampler` as the live view, so every hit reaches the scene once. WebCodecs encodes H.264 (the level chosen per format; VP9 as the fallback) and Mediabunny writes it in segments of at most five minutes, at least three per export.
+3. **Resume (EX-15):** a manifest in the Origin Private File System records the job and what is done; it is written to two files in turn, so a crash while writing leaves the other intact. After each segment the scene's state (feedback buffers read back from the GPU, followers, particles, random state) is saved. A resumed export restores it and continues bit-exactly: all video packets are identical to an uninterrupted export.
+4. **Join:** the segments and the audio are copied into one MP4 (WebM with VP9) without re-encoding, straight into the file you picked (File System Access, Chromium; EX-07) or into browser storage for a download. A cancelled or failed join discards the half-written file.
+
+The main thread only starts, pauses, resumes and cancels the worker, decodes the Logo Spectrum images (SVG needs the DOM) and keeps a screen wake lock (EX-06).
 
 ## 3. Key decisions and alternatives
 
@@ -91,10 +94,13 @@ src/
                  Spectrum; Kaleidoscope with Vortex and Crystal Mandala), spectrum shaping,
                  fixed-step feedback, post-processing (bloom, dithering), settings, parameter specs
                  and presets, image storage
+    export/      export worker (audio pass, video pass, join), formats and presets, job plan,
+                 stored analysis replay, job storage in the Origin Private File System, Exporter
+                 facade
     player/      Player: connects the state with the engine
     state/       store with timestamped actions, app state, persistence
     env/, util/, video/
-  ui/            Svelte app: shell, top bar, stage, analysis view, queue, transport
+  ui/            Svelte app: shell, top bar, stage, analysis view, queue, transport, export dialog
   spikes/        Spike Lab and the P0 prototypes (throwaway)
 vite-plugins/    extraction of the Signalsmith Stretch WASM core
 tests/e2e/       Playwright tests
@@ -102,7 +108,7 @@ tests/eval/      evaluation on real recordings (optional dataset, see docs/ANALY
 docs/            FEATURES.md, TECH-STACK.md, ANALYSIS.md
 ```
 
-Next comes `core/export/` (P2). `core/` does not depend on the UI framework.
+`core/` does not depend on the UI framework.
 
 ## 5. Spikes (P0)
 
@@ -140,3 +146,4 @@ The development container (headless Chromium, software GPU) and CI run all five 
 - Manual checks: the listening test (S2) passed with the test signal; loading files into the S2 player failed and is fixed. The S3 sample plays in sync in QuickTime; the YouTube/TikTok upload is still open.
 - Second-priority machines (Q14): Chrome on Windows and Firefox on Linux. A hosted preview makes this easiest.
 - Hosting needs a (free) Cloudflare account.
+- Export on the main machine: the tests cover both paths, VP9 + Opus (WebM) in the development container, which has no H.264 encoder, and H.264 + AAC (MP4) in CI. The render speed on Chrome/macOS and a YouTube/TikTok upload of an export are still to be checked.
