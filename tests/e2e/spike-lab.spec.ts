@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { createWav } from './wav';
 
 // The spikes run in "quick" mode here; the real numbers come from running them on target machines.
 
@@ -46,5 +47,33 @@ test('S4 rendering spike runs to completion', async ({ page }) => {
   await expect(
     card.locator('tr[data-state="pass"]', { hasText: '4K offline without errors' }),
   ).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+test('S1 streaming spike plays a file and jumps between cues', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/?quick');
+  await page
+    .getByTestId('s1-file')
+    .setInputFiles({ name: 'tone.wav', mimeType: 'audio/wav', buffer: createWav(30) });
+  await expect(page.getByTestId('s1-run')).toBeEnabled({ timeout: 30_000 });
+  await page.getByTestId('s1-run').click();
+  const card = page.getByTestId('spike-S1');
+  await expect(card).toHaveAttribute('data-status', /done|error/, { timeout: 120_000 });
+  console.log(await card.innerText());
+  await expect(card).toHaveAttribute('data-status', 'done');
+  await expect(card.locator('tr[data-state="pass"]', { hasText: 'Playback starts' })).toHaveCount(
+    1,
+  );
+  await expect(
+    card.locator('tr[data-state="pass"]', { hasText: 'Cue jumps under 50 ms' }),
+  ).toHaveCount(1);
+
+  await page.getByTestId('s1-benchmark').click();
+  await expect(card.locator('tr', { hasText: 'Decoded length matches duration' })).toHaveAttribute(
+    'data-state',
+    'pass',
+    { timeout: 60_000 },
+  );
   expect(errors).toEqual([]);
 });
