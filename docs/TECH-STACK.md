@@ -1,6 +1,6 @@
 # Vibe Visualizer — Tech Stack Proposal
 
-> **Status:** Proposal v0.1 (2026-09-25), for review. It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export.
+> **Status:** v0.2 (2026-09-25), accepted (Q16). It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export. The P0 spikes are implemented (see [§5](#5-spikes-p0)).
 
 ## 1. The stack at a glance
 
@@ -12,17 +12,17 @@
 | UI building blocks | bits-ui (headless components) + own CSS with design tokens | Accessible dialogs, menus and sliders; the look stays fully ours |
 | Graphics | WebGL2 with GLSL shaders, own thin renderer | Works in every desktop browser and inside workers (OffscreenCanvas); float render targets for smooth HD feedback; huge pool of shader know-how (Shadertoy) |
 | Audio engine | Own streaming engine: a DSP core in TypeScript that runs in an AudioWorklet (live) and in a worker (export) | The export sounds exactly like the preview; 3-hour files stream instead of filling the RAM; sample-accurate cues |
-| Time-stretching (key lock) | Signalsmith Stretch (MIT), compiled to WebAssembly | High quality, permissive licence, official web build available |
+| Time-stretching (key lock) | Signalsmith Stretch (MIT) as WebAssembly | High quality, permissive licence. A Vite plugin extracts the WASM core from the npm package; our thin binding runs it in the AudioWorklet and in workers, with seeded randomness for bit-identical output |
 | Decoding & file writing | Mediabunny (MPL-2.0) on top of WebCodecs | Reads MP3, M4A, Ogg, FLAC and WAV in pieces with fast seeking; the same library writes the MP4 |
-| Tags & cover art | music-metadata (MIT) | ID3, Vorbis comments, MP4 atoms, FLAC |
+| Tags & cover art | Mediabunny (`getMetadataTags`) | Title, artist, album, BPM and cover art for MP3, MP4, FLAC, Ogg and WAV; a separate tag library is not needed |
 | Video/audio encoding | WebCodecs, hardware-accelerated where available; `@mediabunny/aac-encoder` (WebAssembly) as AAC fallback | Fast and native; no 30 MB ffmpeg.wasm download |
-| Thread communication | SharedArrayBuffer ring buffers for realtime data; Comlink for control calls | No memory allocation on the audio thread, so no crackles; simple async APIs between workers |
+| Thread communication | SharedArrayBuffer ring buffers for realtime data; a small RPC helper for control calls | No memory allocation on the audio thread, so no crackles. The spikes use a 100-line helper; whether Comlink is worth it is decided in P1 |
 | Storage | IndexedDB (via `idb`) for settings, presets, cues and file handles; Origin Private File System for caches and render segments | Persistent, large, usable from workers |
 | Validation | Zod 4 | Checks imported preset and project files; TypeScript types come from the schemas |
 | FFT | fft.js (MIT) | Fast radix-4 FFT in plain JS; easy to replace |
 | Tests | Vitest 5 (unit and DSP golden tests; browser mode for WebGL and WebCodecs), Playwright (end-to-end) | Shares Vite's config; GPU and codec tests run in real Chromium |
 | Lint & format | ESLint with typescript-eslint and eslint-plugin-svelte; Prettier | Standard for Svelte + TypeScript |
-| Tooling | pnpm, Node 24 LTS | Fast, strict installs; current Vite and Vitest need at least Node 22.12 |
+| Tooling | pnpm, Node 24 LTS (CI) | Fast, strict installs; locally Node 22.13 or newer works |
 | CI | GitHub Actions | Type check, lint, tests, build and an end-to-end smoke test on every push |
 | Hosting | Cloudflare Pages (static, free) | Preview deploy per branch; can send the COOP/COEP headers that SharedArrayBuffer requires (GitHub Pages can't) |
 
@@ -76,26 +76,26 @@ Realtime data moves through SharedArrayBuffer ring buffers; control commands go 
 | Reverb | Algorithmic reverb (feedback delay network) in the DSP core | The browser's ConvolverNode cannot be used inside our worker-based core. Convolution with your own impulse responses can follow later (FX-07) |
 | Hosting | Cloudflare Pages | GitHub Pages cannot set COOP/COEP headers (only via a service-worker workaround). Netlify would work equally well |
 
-## 4. Project layout (planned)
+## 4. Project layout
 
 ```
 src/
   core/          framework-free TypeScript
-    audio/       media worker, DSP core, AudioWorklet processor
-    analysis/    FFT, features, beat tracking
-    render/      WebGL2 renderer, layers, scenes, shaders (*.glsl)
-    export/      offline pipeline, encoders, file writing, segments
-    state/       app state, actions, persistence
-  ui/            Svelte components
-public/          static assets (default logo, backgrounds)
+    audio/       ring buffer, Signalsmith Stretch binding, rate player, test signal
+    env/         capability probe
+    util/        worker RPC, hashing, formatting
+    video/       test pattern
+  spikes/        Spike Lab and the P0 prototypes (throwaway)
+vite-plugins/    extraction of the Signalsmith Stretch WASM core
+tests/e2e/       Playwright tests
 docs/            FEATURES.md, TECH-STACK.md
 ```
 
-`core/` does not depend on the UI framework.
+From P1 on, `src/core/` grows the planned modules (`analysis/`, `render/`, `export/`, `state/`) and `src/ui/` holds the Svelte app. `core/` does not depend on the UI framework.
 
 ## 5. Spikes (P0)
 
-Before P1 we test the risky parts in small throwaway prototypes:
+Before P1 we test the risky parts in small throwaway prototypes. They live in the Spike Lab (the app's start page for now) and report pass/fail per criterion:
 
 | Spike | Question | Passes when |
 |---|---|---|
@@ -105,7 +105,16 @@ Before P1 we test the risky parts in small throwaway prototypes:
 | S4 Rendering | Does WebGL2 in a worker handle float feedback and bloom? | 1080p60 live on integrated graphics; 4K offline without errors |
 | S5 Long render | Does a 3-hour dummy export with segments work? | Valid output file; resumes after the tab was killed; segments joined without re-encoding |
 
+**Results in the development container** (headless Chromium 141 on Linux, software GPU, no H.264 encoder). All five spikes run end to end, and CI runs them on every push. What these results already show:
+
+- **S2:** Worker and AudioWorklet output are bit-identical; stretching costs at most 3 % of one CPU core, even here.
+- **S1:** Cue jumps take about 10 ms; no dropouts (WAV test file).
+- **S5:** A render killed by a page reload resumes and joins into a valid file without re-encoding (120 of 120 frames).
+- **S3:** The AAC WebAssembly fallback works. The container has no H.264 encoder, so the sample file used VP9.
+
+Frame rates and encoder speeds are meaningless here. They come from the target machines.
+
 ## 6. Open points
 
-- Which operating system and browser will you mainly render on (Q14 in FEATURES.md)? S3 has to pass there.
+- Spike results from the target machines (Q14): Chrome on macOS first, then Chrome on Windows and Firefox on Linux. How to run them: [README](../README.md#spike-lab-p0).
 - Hosting needs a (free) Cloudflare account. That only matters once we deploy.

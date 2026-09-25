@@ -1,10 +1,10 @@
 # Vibe Visualizer — Feature List
 
-> **Status:** Draft v0.2 (2026-09-25). The answers to Q1–Q13 are applied (see [§8 Decision log](#8-decision-log)). The tech stack proposal is in [TECH-STACK.md](TECH-STACK.md).
+> **Status:** v0.3 (2026-09-25). The answers to Q1–Q16 are applied (see [§8 Decision log](#8-decision-log)). The tech stack is in [TECH-STACK.md](TECH-STACK.md).
 
 ## How to use this document
 
-- Every feature has an **ID** (e.g. `FX-02`), so we can discuss it in short form: "FX-09 → S", "drop TR-07", "Q14: Windows".
+- Every feature has an **ID** (e.g. `FX-02`), so we can discuss it in short form: "FX-09 → S", "drop TR-07", "Q17: a".
 - **Priority:** **M** = Must (v1.0 core) · **S** = Should (v1.0, after the core) · **C** = Could (nice to have, if cheap) · **L** = Later (idea for after v1.0)
 - `*` after an ID = a suggested addition that was not in the original brief. Veto freely.
 - Open decisions are in [§6 Open questions](#6-open-questions). Agreed decisions go into [§8 Decision log](#8-decision-log).
@@ -96,7 +96,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | FX-07* | C | Custom reverb impulse responses (upload a WAV) |
 | FX-08* | C | Loudness normalisation between tracks (ReplayGain-like) |
 | FX-09* | C | More FX: 3-band EQ with kills, flanger/phaser, bitcrusher |
-| FX-10* | S | One-click presets for popular edits: "Slowed + Reverb", "Sped up", "Nightcore". They set tempo mode, rate and FX, and everything stays adjustable (see Q15) |
+| FX-10* | M | One-click presets for popular edits: "Slowed + Reverb", "Sped up", "Nightcore". They set tempo mode, rate and FX, and everything stays adjustable (Q15) |
 
 ### 3.6 Live input (IN)
 
@@ -258,7 +258,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | ID | Prio | Requirement |
 |---|---|---|
 | NF-01 | M | 100 % client-side: no server, no upload, no account. Audio never leaves the machine; the app is hosted as a static website |
-| NF-02 | M | Browsers: Chrome/Edge first; Firefox and Safari supported via feature detection (some features are Chromium-only, e.g. writing exports straight to disk) |
+| NF-02 | M | Browsers (Q14): Chrome on macOS first; Chrome on Windows and Firefox on Linux second; Safari best effort. Features are detected, not assumed (some are Chromium-only, e.g. writing exports straight to disk) |
 | NF-03 | M | Desktop first; mobile is not a v1 target (Q2) |
 | NF-04 | M | Performance: Mode B at 1080p60 on integrated graphics; Mode A scenes with quality levels; 4K on dedicated GPUs |
 | NF-05 | M | Determinism: same audio + settings + random seed → identical frames, so the live view and the export look the same |
@@ -280,7 +280,7 @@ Reordered after Q1: the export comes right after the core, because it is the mai
 
 | Phase | Goal | Features |
 |---|---|---|
-| P0 Setup & spikes | Project skeleton, CI, hosting; test the risky parts first | Spikes S1–S5 in [TECH-STACK.md](TECH-STACK.md#5-spikes-p0) |
+| P0 Setup & spikes | Project skeleton, CI, hosting; test the risky parts first | Spikes S1–S5 in [TECH-STACK.md](TECH-STACK.md#5-spikes-p0). Built; waiting for results from the target machines |
 | P1 Core | Play files and see both modes | SRC-01/02, PL-01–03, TR-01/02, AN-01–05, VE-01–05, KA-01/02, KA-05–08, LS-01, LS-05–09, LS-12–14, PR-01, DS-01, UI-01–03, NF-08 |
 | P2 Export | Render a track or an in/out range to MP4 | EX-01–04, EX-05 (whole track, in/out), EX-06/07, EX-15, TR-09, VE-09 |
 | P3 Player & FX | Cues, tempo, effects | TR-03–05, TR-08, TMP-01–04, FX-01–04, FX-06, FX-10, AN-06/07, PL-04/05, SRC-03–05, UI-04 |
@@ -292,11 +292,7 @@ Frame-rate independence (VE-03), determinism (NF-05) and timestamped actions (NF
 
 ## 6. Open questions
 
-| # | Question | Proposal |
-|---|---|---|
-| Q14 | Which operating system and browser will you mainly render on? | Spike S3 (encoding) has to pass there |
-| Q15 | Are tempo and reverb meant for "slowed + reverb" / "sped up" edits? | If yes, FX-10 (one-click presets) moves up to M |
-| Q16 | Tech stack as proposed in [TECH-STACK.md](TECH-STACK.md)? | Yes. If you prefer React over Svelte, only the UI layer changes |
+None right now. The next questions will come from the spike results on your machines.
 
 ## 7. Technical notes (constraints that shape features)
 
@@ -327,3 +323,6 @@ Details and library choices: [TECH-STACK.md](TECH-STACK.md).
 | 2026-09-25 | Q11 | MP4 (H.264 + AAC) is the main format; presets YouTube 1080p60, YouTube 4K30, TikTok/Shorts 1080×1920 |
 | 2026-09-25 | Q12 | Round logo in v1; free-form logos later (LS-20) |
 | 2026-09-25 | Q13 | No constraints on tech or hosting; stack proposal in [TECH-STACK.md](TECH-STACK.md) |
+| 2026-09-25 | Q14 | Main render machine: Chrome on macOS. Second priority: Chrome on Windows, Firefox on Linux (NF-02) |
+| 2026-09-25 | Q15 | Tempo and reverb are meant for "slowed + reverb" / "sped up" edits: one-click presets (FX-10 → M) |
+| 2026-09-25 | Q16 | Tech stack accepted as proposed, with Svelte 5 for the UI |

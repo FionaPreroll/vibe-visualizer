@@ -8,8 +8,12 @@
 
   onMount(() => {
     probeCapabilities()
-      .then((report) => (lab.env = report))
-      .catch((e: unknown) => (error = String(e)));
+      .then((report) => {
+        lab.env = report;
+      })
+      .catch((e: unknown) => {
+        error = String(e);
+      });
   });
 
   const env = $derived(lab.env);
