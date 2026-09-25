@@ -131,16 +131,7 @@ export class AudioRingConsumer extends AudioRingView {
     contextTime: number,
     sampleRateHz: number,
   ): number {
-    const generation = Atomics.load(this.control, GENERATION);
-    if (generation !== this.generation) {
-      // Drop everything that belongs to older generations.
-      Atomics.store(this.control, READ, Atomics.load(this.control, WRITE));
-      this.generation = generation;
-      this.generationStart = this.floats[START_FRAME]!;
-      this.generationPlayed = 0;
-      this.awaitingFirstFrame = true;
-      Atomics.store(this.control, ACK_GENERATION, generation);
-    }
+    const generation = this.syncGeneration();
 
     const write = Atomics.load(this.control, WRITE) >>> 0;
     const read = Atomics.load(this.control, READ) >>> 0;
@@ -172,6 +163,30 @@ export class AudioRingConsumer extends AudioRingView {
     this.floats[POSITION] = this.generationStart + this.generationPlayed;
     this.floats[RENDER_TIME] = contextTime + frames / sampleRateHz;
     return count;
+  }
+
+  /**
+   * Switches to a new generation if the producer started one (dropping older frames) and
+   * acknowledges it. {@link read} does this itself; call it directly while paused, so seeks do
+   * not wait for playback.
+   */
+  syncGeneration(): number {
+    const generation = Atomics.load(this.control, GENERATION);
+    if (generation !== this.generation) {
+      Atomics.store(this.control, READ, Atomics.load(this.control, WRITE));
+      this.generation = generation;
+      this.generationStart = this.floats[START_FRAME]!;
+      this.generationPlayed = 0;
+      this.awaitingFirstFrame = true;
+      this.floats[POSITION] = this.generationStart;
+      Atomics.store(this.control, ACK_GENERATION, generation);
+    }
+    return generation;
+  }
+
+  /** Source frame that the next read starts at. */
+  get positionFrames(): number {
+    return this.generationStart + this.generationPlayed;
   }
 }
 

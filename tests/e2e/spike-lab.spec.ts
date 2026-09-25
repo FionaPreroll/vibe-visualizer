@@ -11,7 +11,7 @@ function collectErrors(page: Page): string[] {
 
 test('page is cross-origin isolated and probes the environment', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/?quick');
+  await page.goto('/?quick#/lab');
   await expect(page.getByTestId('env-panel')).toHaveAttribute('data-ready', 'true');
   await expect(page.getByTestId('isolated')).toHaveText('yes');
   expect(errors).toEqual([]);
@@ -19,7 +19,7 @@ test('page is cross-origin isolated and probes the environment', async ({ page }
 
 test('S3 encoding spike runs to completion', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/?quick');
+  await page.goto('/?quick#/lab');
   await page.getByTestId('s3-run').click();
   const card = page.getByTestId('spike-S3');
   await expect(card).toHaveAttribute('data-status', /done|error/, { timeout: 180_000 });
@@ -35,7 +35,7 @@ test('S3 encoding spike runs to completion', async ({ page }) => {
 
 test('S4 rendering spike runs to completion, also a second time', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/?quick');
+  await page.goto('/?quick#/lab');
   const card = page.getByTestId('spike-S4');
   // The second run needs a fresh canvas: a canvas can only be handed to a worker once.
   for (let run = 1; run <= 2; run++) {
@@ -56,7 +56,7 @@ test('S4 rendering spike runs to completion, also a second time', async ({ page 
 
 test('S1 streaming spike plays a file and jumps between cues', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/?quick');
+  await page.goto('/?quick#/lab');
   await page
     .getByTestId('s1-file')
     .setInputFiles({ name: 'tone.wav', mimeType: 'audio/wav', buffer: createWav(30) });
@@ -84,7 +84,7 @@ test('S1 streaming spike plays a file and jumps between cues', async ({ page }) 
 
 test('S2 key lock spike: fast and bit-identical in worker and AudioWorklet', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/?quick');
+  await page.goto('/?quick#/lab');
   await page.getByTestId('s2-run').click();
   const card = page.getByTestId('spike-S2');
   await expect(card).toHaveAttribute('data-status', /done|error/, { timeout: 180_000 });
@@ -99,7 +99,7 @@ test('S2 key lock spike: fast and bit-identical in worker and AudioWorklet', asy
 
 test('S5 long render survives a page reload and joins into a valid file', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/?quick');
+  await page.goto('/?quick#/lab');
   await page.getByTestId('s5-start').click();
   await expect(page.getByTestId('s5-progress')).toContainText('segment 2/3', { timeout: 120_000 });
 
@@ -126,7 +126,7 @@ test('S5 long render survives a page reload and joins into a valid file', async 
 
 test('S2 player plays a loaded file, and lab results survive a reload', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/?quick');
+  await page.goto('/?quick#/lab');
   await page.getByTestId('s2-run').click();
   const card = page.getByTestId('spike-S2');
   await expect(card).toHaveAttribute('data-status', 'done', { timeout: 120_000 });

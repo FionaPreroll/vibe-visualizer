@@ -37,10 +37,17 @@ export function renderTestSignal(
     const kick = 0.8 * Math.sin(kickPhase) * Math.exp(-18 * sinceBeat);
 
     const beatIndex = Math.floor(n / beat);
-    const snare = beatIndex % 2 === 1 ? 0.35 * hashNoise(n) * Math.exp(-25 * sinceBeat) : 0;
+    // Snare: tonal body around 190 Hz plus noise, on beats 2 and 4.
+    const snare =
+      beatIndex % 2 === 1
+        ? 0.35 *
+          (0.6 * hashNoise(n) + 0.5 * Math.sin(TWO_PI * 190 * sinceBeat)) *
+          Math.exp(-25 * sinceBeat)
+        : 0;
 
+    // Hi-hat: high-passed noise (first difference) on every 8th note.
     const sinceEighth = (n % (beat / 2)) / sampleRate;
-    const hat = 0.12 * hashNoise(n + 7919) * Math.exp(-80 * sinceEighth);
+    const hat = 0.1 * (hashNoise(n + 7919) - hashNoise(n + 7918)) * Math.exp(-80 * sinceEighth);
 
     const tremolo = 0.6 + 0.4 * Math.sin(TWO_PI * 0.25 * t);
     const pad =

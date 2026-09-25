@@ -2,7 +2,7 @@
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
-> **Status:** Phase P0, technical spikes. The app itself starts in P1.
+> **Status:** P1, milestone M1: audio engine, queue, transport and analysis. The visual modes follow in M2 and M3.
 > Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md)
 
 ## Run it locally
@@ -16,9 +16,13 @@ pnpm dev
 
 Then open http://localhost:5173 in Chrome or Firefox. The dev server sends the cross-origin isolation headers the audio engine needs.
 
+## Using the app
+
+Drop audio files onto the window (or click **Add files**); several files make a queue. Double-click a track to play it. Shortcuts: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, F fullscreen; in the queue Alt+↑/↓ moves a track and Delete removes it. The analysis view shows what the visuals will react to.
+
 ## Spike Lab (P0)
 
-The start page is the Spike Lab: five small prototypes that test the risky parts on your machine.
+The Spike Lab (http://localhost:5173/#/lab, or the link in the top bar) has five small prototypes that test the risky parts on your machine.
 
 | Spike | Tests | You need |
 |---|---|---|
@@ -48,8 +52,9 @@ The app is a static site. On Cloudflare Pages use the build command `pnpm build`
 ## Project layout
 
 ```
-src/core/       framework-free building blocks: audio ring buffer, Signalsmith Stretch binding,
-                rate player, test signal, worker RPC, capability probe
+src/core/       framework-free core: audio engine (media worker, AudioWorklet, resampler, ring
+                buffer), analysis, player and state, Signalsmith Stretch binding, utilities
+src/ui/         Svelte app: top bar, stage, queue, transport
 src/spikes/     Spike Lab and the P0 prototypes
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core
 tests/e2e/      Playwright tests
