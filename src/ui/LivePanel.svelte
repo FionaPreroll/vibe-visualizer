@@ -23,6 +23,12 @@
 
   async function refresh() {
     devices = await listInputDevices().catch(() => []);
+    // The input used last may have a new id in this session: find it by its name.
+    const last = untrack(() => player.lastInputDevice);
+    if (last && chosen === last.id && !devices.some((device) => device.id === chosen)) {
+      const match = devices.find((device) => device.label === last.label);
+      if (match) chosen = match.id;
+    }
   }
 
   onMount(() => {
@@ -38,8 +44,18 @@
     chosen = untrack(() => $app.settings.inputDevice);
   });
 
+  /** The input in the picker: from the list, or the one used last (its id may be outdated). */
+  function wanted(): InputDevice | null {
+    if (!chosen) return null;
+    const last = player.lastInputDevice;
+    return (
+      devices.find((device) => device.id === chosen) ??
+      (last?.id === chosen ? last : { id: chosen, label: '' })
+    );
+  }
+
   async function startDevice() {
-    await player.startLive('device', chosen || null);
+    await player.startLive('device', wanted());
   }
 
   function chooseDevice(id: string) {

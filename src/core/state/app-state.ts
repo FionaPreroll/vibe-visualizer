@@ -61,8 +61,9 @@ export interface Settings {
   aspect: AspectRatio;
   /** Shows the safe areas of the platforms over the stage. */
   safeAreas: boolean;
-  /** The audio input used last ('' for the default one). */
+  /** The audio input used last ('' for the default one), and its name (ids can change). */
   inputDevice: string;
+  inputDeviceLabel: string;
   /** Gain of the live input in dB. */
   inputGain: number;
 }
@@ -152,6 +153,7 @@ export const DEFAULT_SETTINGS: Settings = {
   aspect: '16:9',
   safeAreas: false,
   inputDevice: '',
+  inputDeviceLabel: '',
   inputGain: 0,
 };
 

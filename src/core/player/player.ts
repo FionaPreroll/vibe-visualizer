@@ -3,6 +3,7 @@ import {
   closeInput,
   openDevice,
   openDisplay,
+  type InputDevice,
   type LiveSourceKind,
   type OpenedInput,
 } from '../audio/live-input';
@@ -163,20 +164,23 @@ export class Player {
     return this.state.live.status !== 'off';
   }
 
+  /** The audio input used last, or null for the default input. */
+  get lastInputDevice(): InputDevice | null {
+    const { inputDevice, inputDeviceLabel } = this.state.settings;
+    return inputDevice ? { id: inputDevice, label: inputDeviceLabel } : null;
+  }
+
   /**
-   * Makes live input the source (IN-01, IN-02): an audio input (`device`; the given one, or the
-   * one used last) or a tab or the screen (`display`). The queue pauses. Call from a user
-   * gesture: the browser asks for permission.
+   * Makes live input the source (IN-01, IN-02): an audio input (`device`: that input, or the
+   * default one for null) or a tab or the screen (`display`). The queue pauses. Call from a
+   * user gesture: the browser asks for permission.
    */
-  async startLive(kind: LiveSourceKind, deviceId?: string | null): Promise<void> {
+  async startLive(kind: LiveSourceKind, device: InputDevice | null = null): Promise<void> {
     const token = ++this.liveToken;
     this.dispatch({ type: 'live/starting', kind });
     try {
       await this.engine.start();
-      const opened =
-        kind === 'device'
-          ? await openDevice(deviceId ?? (this.state.settings.inputDevice || null))
-          : await openDisplay();
+      const opened = kind === 'device' ? await openDevice(device) : await openDisplay();
       if (token !== this.liveToken) {
         closeInput(opened.stream);
         return;
@@ -210,8 +214,13 @@ export class Player {
         });
       }
       this.dispatch({ type: 'live/started', kind, label: opened.label });
-      if (opened.deviceId && opened.deviceId !== this.state.settings.inputDevice) {
-        this.updateSettings({ inputDevice: opened.deviceId });
+      if (kind === 'device') {
+        const { inputDevice, inputDeviceLabel } = this.state.settings;
+        const id = opened.device?.id ?? '';
+        const label = opened.device?.label ?? '';
+        if (id !== inputDevice || label !== inputDeviceLabel) {
+          this.updateSettings({ inputDevice: id, inputDeviceLabel: label });
+        }
       }
     } catch (error) {
       if (token !== this.liveToken) return;

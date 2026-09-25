@@ -6,6 +6,7 @@
 
 export type LiveSourceKind = 'device' | 'display';
 
+/** An audio input. Ids can change between sessions, so the name is kept too. */
 export interface InputDevice {
   id: string;
   label: string;
@@ -14,10 +15,13 @@ export interface InputDevice {
 export interface OpenedInput {
   stream: MediaStream;
   kind: LiveSourceKind;
-  /** The device (for audio inputs); null for shared tabs and screens. */
-  deviceId: string | null;
+  /** The input that was opened; null for the default input and for shared tabs and screens. */
+  device: InputDevice | null;
   label: string;
 }
+
+/** Chromium's aliases for the system's default devices ("Default input" covers them). */
+const ALIASES = ['default', 'communications'];
 
 /** Music, not speech: no echo cancellation, noise suppression or automatic gain. */
 const MUSIC: MediaTrackConstraints = {
@@ -41,38 +45,67 @@ export async function listInputDevices(): Promise<InputDevice[]> {
   if (!liveInputSupport().devices) return [];
   const devices = await navigator.mediaDevices.enumerateDevices();
   return devices
-    .filter((device) => device.kind === 'audioinput' && device.deviceId)
+    .filter(
+      (device) =>
+        device.kind === 'audioinput' && device.deviceId && !ALIASES.includes(device.deviceId),
+    )
     .map((device, index) => ({ id: device.deviceId, label: device.label || `Input ${index + 1}` }));
 }
 
-/** Opens an audio input: `deviceId`, or the default input for null (or when it is gone). */
-export async function openDevice(deviceId: string | null): Promise<OpenedInput> {
+/**
+ * Opens an audio input: `wanted`, or the default input for null. Browsers may give a device a
+ * new id in a new session (unless access was allowed permanently), so an input whose id is
+ * unknown is looked up by its name once access is allowed; if it is gone, the default input
+ * is used.
+ */
+export async function openDevice(wanted: InputDevice | null): Promise<OpenedInput> {
   if (!liveInputSupport().devices) throw new Error(unsupported());
   const open = (id: string | null) =>
     navigator.mediaDevices.getUserMedia({
       audio: id ? { ...MUSIC, deviceId: { exact: id } } : MUSIC,
       video: false,
     });
-  let stream: MediaStream;
-  try {
-    stream = await open(deviceId);
-  } catch (error) {
-    // The remembered device may be unplugged: fall back to the default input.
-    const gone =
-      errorName(error) === 'OverconstrainedError' || errorName(error) === 'NotFoundError';
-    if (!deviceId || !gone) throw new Error(describeError(error, 'device'), { cause: error });
+  if (wanted) {
     try {
-      stream = await open(null);
-    } catch (fallback) {
-      throw new Error(describeError(fallback, 'device'), { cause: fallback });
+      return opened(await open(wanted.id));
+    } catch (error) {
+      const gone =
+        errorName(error) === 'OverconstrainedError' || errorName(error) === 'NotFoundError';
+      if (!gone) throw new Error(describeError(error, 'device'), { cause: error });
     }
   }
+  let stream: MediaStream;
+  try {
+    stream = await open(null);
+  } catch (error) {
+    throw new Error(describeError(error, 'device'), { cause: error });
+  }
+  const current = stream.getAudioTracks()[0]?.label;
+  const match =
+    wanted && wanted.label !== current
+      ? (await listInputDevices()).find((device) => device.label === wanted.label)
+      : undefined;
+  if (match) {
+    try {
+      const again = await open(match.id);
+      closeInput(stream);
+      stream = again;
+    } catch {
+      // Keep the default input.
+    }
+  }
+  return opened(stream);
+}
+
+function opened(stream: MediaStream): OpenedInput {
   const track = stream.getAudioTracks()[0]!;
+  const id = track.getSettings().deviceId ?? '';
+  const label = track.label || 'Audio input';
   return {
     stream,
     kind: 'device',
-    deviceId: track.getSettings().deviceId ?? deviceId,
-    label: track.label || 'Audio input',
+    device: id && !ALIASES.includes(id) ? { id, label } : null,
+    label,
   };
 }
 
@@ -114,7 +147,7 @@ export async function openDisplay(): Promise<OpenedInput> {
   return {
     stream: new MediaStream(audio),
     kind: 'display',
-    deviceId: null,
+    device: null,
     label: labels[surface ?? ''] ?? 'Shared audio',
   };
 }
