@@ -19,7 +19,7 @@ export default defineConfig({
   server: { headers: crossOriginIsolation },
   preview: { headers: crossOriginIsolation },
   test: {
-    include: ['src/**/*.test.ts', 'vite-plugins/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'vite-plugins/**/*.test.ts', 'tests/eval/**/*.test.ts'],
     environment: 'node',
   },
 });

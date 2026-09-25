@@ -2,8 +2,8 @@
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
-> **Status:** P1, milestone M1: audio engine, queue, transport and analysis. The visual modes follow in M2 and M3.
-> Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md)
+> **Status:** P1. Milestone M1 (audio engine, queue, transport, analysis) is done, with analysis v2 (drum detection and beat tracking). The visual modes follow in M2 and M3.
+> Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md) · [audio analysis](docs/ANALYSIS.md)
 
 ## Run it locally
 
@@ -18,7 +18,7 @@ Then open http://localhost:5173 in Chrome or Firefox. The dev server sends the c
 
 ## Using the app
 
-Drop audio files onto the window (or click **Add files**); several files make a queue. Double-click a track to play it. Shortcuts: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, F fullscreen; in the queue Alt+↑/↓ moves a track and Delete removes it. The analysis view shows what the visuals will react to.
+Drop audio files onto the window (or click **Add files**); several files make a queue. Double-click a track to play it. Shortcuts: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, F fullscreen; in the queue Alt+↑/↓ moves a track and Delete removes it. The analysis view shows what the visuals will react to: spectrum, band energies, kick/snare/hi-hat lamps, the beat (its ring shows the position within the beat) and the tempo.
 
 ## Spike Lab (P0)
 
@@ -44,6 +44,7 @@ Run the spikes, click **Copy report** and paste the report into the chat.
 | `pnpm lint`, `pnpm format` | ESLint, Prettier |
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm test:e2e` | End-to-end tests (Playwright); run the spikes in quick mode |
+| `pnpm eval:drums` | Drum and beat detection scores on real recordings (needs the MDB Drums dataset, see [ANALYSIS.md](docs/ANALYSIS.md#4-evaluation)) |
 
 ## Hosting
 
@@ -58,5 +59,6 @@ src/ui/         Svelte app: top bar, stage, queue, transport
 src/spikes/     Spike Lab and the P0 prototypes
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core
 tests/e2e/      Playwright tests
-docs/           feature list and tech stack
+tests/eval/     analysis evaluation on real recordings
+docs/           feature list, tech stack, audio analysis
 ```

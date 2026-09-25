@@ -84,7 +84,8 @@ src/
   core/          framework-free TypeScript
     audio/       ring buffer, resampler, rate player, test signal, Signalsmith Stretch binding
       engine/    media worker, engine AudioWorklet, AudioEngine facade
-    analysis/    analyzer (FFT, bands, onsets), feature layout, feature timeline
+    analysis/    analyzer (FFT, bands), drum detection, beat tracker, feature layout, feature
+                 timeline; eval/ has the synthetic test mix and the scoring (docs/ANALYSIS.md)
     library/     probe worker (tags, duration, cover art)
     player/      Player: connects the state with the engine
     state/       store with timestamped actions, app state, persistence
@@ -93,7 +94,8 @@ src/
   spikes/        Spike Lab and the P0 prototypes (throwaway)
 vite-plugins/    extraction of the Signalsmith Stretch WASM core
 tests/e2e/       Playwright tests
-docs/            FEATURES.md, TECH-STACK.md
+tests/eval/      evaluation on real recordings (optional dataset, see docs/ANALYSIS.md)
+docs/            FEATURES.md, TECH-STACK.md, ANALYSIS.md
 ```
 
 Next come `core/render/` (M2/M3) and `core/export/` (P2). `core/` does not depend on the UI framework.

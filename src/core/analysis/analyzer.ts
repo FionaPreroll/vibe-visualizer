@@ -1,16 +1,22 @@
 import FFT from 'fft.js';
+import { BeatTracker } from './beat-tracker';
+import { DRUM_TICK, DrumDetector, type DrumDetectorOptions } from './drums';
 import { BAND_NAMES, BAND_RANGES, F, SPECTRUM_BANDS, WAVEFORM_POINTS } from './features';
 
 /**
  * Turns an audio stream into analysis frames at a fixed hop (default every 512 samples, about
- * 94 frames per second at 48 kHz). The frame rate does not depend on the display, so live view
- * and offline export see the same values. Allocation-free after construction: safe to run in
- * the AudioWorklet.
+ * 94 frames per second at 48 kHz): spectrum, band energies and loudness from an FFT, drum hits
+ * from the {@link DrumDetector} (which works in finer steps) and the beat from the
+ * {@link BeatTracker}. The frame rate does not depend on the display, so live view and offline
+ * export see the same values. Allocation-free after construction: safe to run in the
+ * AudioWorklet. Background and measurements: docs/ANALYSIS.md.
  */
 
 export interface AnalyzerOptions {
   fftSize?: number;
+  /** Samples per analysis frame; a multiple of {@link DRUM_TICK}. */
   hop?: number;
+  drums?: DrumDetectorOptions;
 }
 
 const MIN_HZ = 30;
@@ -21,25 +27,14 @@ const TILT_DB_PER_OCTAVE = 3;
 const RELEASE_DB_PER_SECOND = 3;
 const FLOOR_DB = -70;
 
-interface OnsetDetector {
-  bins: Int32Array;
-  /**
-   * A hit also needs the region's power to rise by at least this fraction of its recent peak.
-   * This rejects relative jumps at low levels, e.g. hi-hat noise leaking into the kick band.
-   */
-  minRise: number;
-  peakDb: number;
-  previousPower: number;
-  /** Frames to wait after a hit. */
-  refractory: number;
-  /** Envelope decay per hop. */
-  decay: number;
-  sensitivity: number;
-  mean: number;
-  deviation: number;
-  sinceHit: number;
-  envelope: number;
-}
+/** Decay times of the kick, snare and hi-hat envelopes, in seconds. */
+export const DRUM_DECAY_SECONDS: readonly number[] = [0.12, 0.1, 0.06];
+const BEAT_DECAY = 0.1;
+/** Hops quieter than this (RMS, about -80 dBFS) count as silence for the beat tracker. */
+const SILENCE_RMS = 1e-4;
+/** Frequency range of the spectral flux that drives the beat tracker. */
+const FLUX_MIN_HZ = 30;
+const FLUX_MAX_HZ = 16000;
 
 export class Analyzer {
   readonly sampleRate: number;
@@ -72,7 +67,21 @@ export class Analyzer {
   private readonly bandReference = new Float64Array(BAND_NAMES.length).fill(-40);
   private energyReference = -40;
   private readonly releasePerHop: number;
-  private readonly onsets: OnsetDetector[];
+  private readonly fluxFirstBin: number;
+  private readonly fluxLastBin: number;
+
+  private readonly drums: DrumDetector;
+  private readonly beats: BeatTracker;
+  private sinceTick = 0;
+  /** Samples processed so far. */
+  private samples = 0;
+  /** Sample index of the latest kick, snare and hi-hat onset, or -1. */
+  private readonly lastOnset = new Float64Array(3).fill(-1);
+  private readonly hopHits = new Uint8Array(3);
+  /** Largest rise of the kick and drum-body bands within the current hop (the beat accent). */
+  private hopAccent = 0;
+  /** Frames since the last reported beat. */
+  private sinceBeat = 1e9;
 
   constructor(sampleRate: number, options: AnalyzerOptions = {}) {
     this.sampleRate = sampleRate;
@@ -117,33 +126,13 @@ export class Analyzer {
     };
     this.energyBins = BAND_NAMES.map((name) => binsIn([BAND_RANGES[name]]));
 
-    const hopSeconds = this.hop / sampleRate;
-    this.releasePerHop = RELEASE_DB_PER_SECOND * hopSeconds;
-    const detector = (
-      ranges: (readonly [number, number])[],
-      refractorySeconds: number,
-      decaySeconds: number,
-      sensitivity: number,
-      minRise: number,
-    ): OnsetDetector => ({
-      bins: binsIn(ranges),
-      minRise,
-      peakDb: FLOOR_DB,
-      previousPower: 0,
-      refractory: Math.round(refractorySeconds / hopSeconds),
-      decay: Math.exp(-hopSeconds / decaySeconds),
-      sensitivity,
-      mean: 0,
-      deviation: 0,
-      sinceHit: 1e9,
-      envelope: 0,
-    });
-    // Thresholds tuned on the test signal (kick 20/20, snare 10/10, hi-hat 39/40 in 10 s).
-    this.onsets = [
-      detector([[40, 120]], 0.12, 0.12, 1.6, 0.03),
-      detector([[1000, 5000]], 0.1, 0.1, 1.8, 0.08),
-      detector([[7000, 16000]], 0.06, 0.06, 1.8, 0.005),
-    ];
+    if (this.hop % DRUM_TICK !== 0) throw new Error(`hop must be a multiple of ${DRUM_TICK}`);
+    this.releasePerHop = RELEASE_DB_PER_SECOND * (this.hop / sampleRate);
+    this.fluxFirstBin = Math.ceil(FLUX_MIN_HZ / binHz);
+    this.fluxLastBin = Math.min(bins - 1, Math.floor(FLUX_MAX_HZ / binHz));
+    this.drums = new DrumDetector(sampleRate, options.drums);
+    // Beats are reported ~21 ms early: the spectral flux peaks about that much after an onset.
+    this.beats = new BeatTracker(sampleRate / this.hop, Math.round((0.02 * sampleRate) / this.hop));
   }
 
   reset(): void {
@@ -154,14 +143,14 @@ export class Analyzer {
     this.hopSquares = 0;
     this.previousLogMagnitude.fill(0);
     this.frame.fill(0);
-    for (const onset of this.onsets) {
-      onset.mean = 0;
-      onset.deviation = 0;
-      onset.sinceHit = 1e9;
-      onset.envelope = 0;
-      onset.peakDb = FLOOR_DB;
-      onset.previousPower = 0;
-    }
+    this.drums.reset();
+    this.beats.reset();
+    this.sinceTick = 0;
+    this.samples = 0;
+    this.lastOnset.fill(-1);
+    this.hopHits.fill(0);
+    this.hopAccent = 0;
+    this.sinceBeat = 1e9;
   }
 
   /**
@@ -183,6 +172,19 @@ export class Analyzer {
       const magnitude = Math.max(Math.abs(left[i]!), Math.abs(right[i]!));
       if (magnitude > this.hopPeak) this.hopPeak = magnitude;
       this.hopSquares += sample * sample;
+      this.samples++;
+      this.drums.add(sample);
+      if (++this.sinceTick === DRUM_TICK) {
+        this.sinceTick = 0;
+        this.drums.endTick();
+        this.hopAccent = Math.max(this.hopAccent, this.drums.accent);
+        const ages = this.drums.hitAge;
+        for (let d = 0; d < 3; d++) {
+          if (ages[d]! < 0) continue;
+          this.hopHits[d] = 1;
+          this.lastOnset[d] = this.samples - ages[d]! * DRUM_TICK;
+        }
+      }
       if (++this.sinceHop === this.hop) {
         this.analyze();
         this.sinceHop = 0;
@@ -214,7 +216,7 @@ export class Analyzer {
       const im = this.complex[2 * k + 1]!;
       const power = (re * re + im * im) * this.powerScale;
       this.power[k] = power;
-      current[k] = Math.log(power + 1e-12);
+      current[k] = Math.log(power + 1e-9);
     }
 
     // Spectrum bands with auto-gain.
@@ -247,33 +249,32 @@ export class Analyzer {
     frame[F.rms] = Math.sqrt(this.hopSquares / this.hop);
     frame[F.peak] = this.hopPeak;
 
-    // Onsets: spectral flux against an adaptive threshold.
-    for (let n = 0; n < this.onsets.length; n++) {
-      const onset = this.onsets[n]!;
-      let flux = 0;
-      let power = 0;
-      for (let i = 0; i < onset.bins.length; i++) {
-        const k = onset.bins[i]!;
-        const rise = current[k]! - previous[k]!;
-        if (rise > 0) flux += rise;
-        power += this.power[k]!;
-      }
-      flux /= Math.max(1, onset.bins.length);
-      onset.peakDb = this.follow(onset.peakDb, 10 * Math.log10(power + 1e-12));
-      const rise = power - onset.previousPower;
-      onset.previousPower = power;
-      const threshold = onset.mean + onset.sensitivity * onset.deviation + 0.3;
-      const hit =
-        flux > threshold &&
-        rise > onset.minRise * 10 ** (onset.peakDb / 10) &&
-        onset.sinceHit >= onset.refractory;
-      onset.mean += 0.05 * (flux - onset.mean);
-      onset.deviation += 0.05 * (Math.abs(flux - onset.mean) - onset.deviation);
-      onset.sinceHit = hit ? 0 : onset.sinceHit + 1;
-      onset.envelope = hit ? 1 : onset.envelope * onset.decay;
-      frame[F.kick + n] = onset.envelope;
-      frame[F.kickHit + n] = hit ? 1 : 0;
+    // Drums: envelopes decay from the estimated onset time.
+    for (let d = 0; d < 3; d++) {
+      const onset = this.lastOnset[d]!;
+      frame[F.kick + d] =
+        onset < 0
+          ? 0
+          : Math.exp(-(this.samples - onset) / (DRUM_DECAY_SECONDS[d]! * this.sampleRate));
+      frame[F.kickHit + d] = this.hopHits[d]!;
+      this.hopHits[d] = 0;
     }
+
+    // Beat: spectral flux (mean rise in dB over all bins) drives the tracker.
+    let flux = 0;
+    for (let k = this.fluxFirstBin; k <= this.fluxLastBin; k++) {
+      const rise = current[k]! - previous[k]!;
+      if (rise > 0) flux += rise;
+    }
+    flux *= 10 / Math.LN10 / (this.fluxLastBin - this.fluxFirstBin + 1);
+    const beat = this.beats.process(flux, this.hopAccent, frame[F.rms]! > SILENCE_RMS);
+    this.hopAccent = 0;
+    this.sinceBeat = beat ? 0 : this.sinceBeat + 1;
+    frame[F.beatHit] = beat ? 1 : 0;
+    frame[F.beat] = Math.exp(-(this.sinceBeat * this.hop) / (BEAT_DECAY * this.sampleRate));
+    frame[F.beatPhase] = this.beats.phase;
+    frame[F.bpm] = this.beats.bpm;
+    frame[F.beatConfidence] = this.beats.confidence;
 
     // Oscilloscope snapshot: the last WAVEFORM_POINTS × 8 samples, every 8th sample.
     const stride = 8;

@@ -41,6 +41,26 @@ describe('feature timeline', () => {
     expect(reader.latestEngineFrame()).toBe(99 * 512);
   });
 
+  it('interpolates the beat phase across the wrap to the next beat', () => {
+    const sab = createFeatureTimeline(16);
+    const writer = new FeatureTimelineWriter(sab);
+    const reader = new FeatureTimelineReader(sab);
+    const before = new Float32Array(F.size);
+    before[F.beatPhase] = 0.9;
+    const after = new Float32Array(F.size);
+    after[F.beatPhase] = 0.1;
+    after[F.beatHit] = 1;
+    writer.write(0, 0, before);
+    writer.write(512, 0, after);
+    const out = new Float32Array(F.size);
+    reader.sample(128, out);
+    expect(out[F.beatPhase]).toBeCloseTo(0.95);
+    reader.sample(384, out);
+    expect(out[F.beatPhase]).toBeCloseTo(0.05);
+    // Events stay with their own frame.
+    expect(out[F.beatHit]).toBe(0);
+  });
+
   it('collects hits that a slow renderer would skip', () => {
     const sab = createFeatureTimeline(16);
     const writer = new FeatureTimelineWriter(sab);

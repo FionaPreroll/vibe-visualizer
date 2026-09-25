@@ -1,4 +1,4 @@
-import { F } from './features';
+import { F, HIT_FIELDS } from './features';
 
 /**
  * Shared-memory history of analysis frames with their timestamps. The AudioWorklet writes one
@@ -50,8 +50,6 @@ export class FeatureTimelineWriter extends TimelineView {
   }
 }
 
-const HIT_FIELDS: readonly number[] = [F.kickHit, F.snareHit, F.hatHit];
-
 export class FeatureTimelineReader extends TimelineView {
   /** Engine frame of the newest analysis frame, or -1. */
   latestEngineFrame(): number {
@@ -61,8 +59,8 @@ export class FeatureTimelineReader extends TimelineView {
 
   /**
    * Writes the analysis values at `engineFrame` into `out`, interpolating between the two
-   * nearest frames (hit flags are taken from the earlier frame). Returns the source position in
-   * seconds, or null if no frame is old enough.
+   * nearest frames (hit flags are taken from the earlier frame; the beat phase wraps around).
+   * Returns the source position in seconds, or null if no frame is old enough.
    */
   sample(engineFrame: number, out: Float32Array): number | null {
     const count = this.count;
@@ -84,6 +82,10 @@ export class FeatureTimelineReader extends TimelineView {
         for (let h = 0; h < HIT_FIELDS.length; h++) {
           out[HIT_FIELDS[h]!] = this.features[base + HIT_FIELDS[h]!]!;
         }
+        const phase = this.features[base + F.beatPhase]!;
+        let nextPhase = this.features[nextBase + F.beatPhase]!;
+        if (nextPhase < phase) nextPhase += 1;
+        out[F.beatPhase] = (phase + (nextPhase - phase) * t) % 1;
       } else {
         for (let i = 0; i < F.size; i++) out[i] = this.features[base + i]!;
       }
