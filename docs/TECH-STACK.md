@@ -1,6 +1,6 @@
 # Vibe Visualizer — Tech Stack
 
-> **Status:** v0.2 (2026-09-25), accepted (Q16). It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export. The P0 spikes are implemented (see [§5](#5-spikes-p0)).
+> **Status:** v0.3 (2026-09-25), accepted (Q16). It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export. The P0 spikes passed on the main target machine (see [§5](#5-spikes-p0)).
 
 ## 1. The stack at a glance
 
@@ -105,16 +105,27 @@ Before P1 we test the risky parts in small throwaway prototypes. They live in th
 | S4 Rendering | Does WebGL2 in a worker handle float feedback and bloom? | 1080p60 live on integrated graphics; 4K offline without errors |
 | S5 Long render | Does a 3-hour dummy export with segments work? | Valid output file; resumes after the tab was killed; segments joined without re-encoding |
 
-**Results in the development container** (headless Chromium 141 on Linux, software GPU, no H.264 encoder). All five spikes run end to end, and CI runs them on every push. What these results already show:
+**Results on the main target** (Chrome 153 on macOS, Apple M3, 16 GB RAM, 2026-09-25): all measured criteria met.
 
-- **S2:** Worker and AudioWorklet output are bit-identical; stretching costs at most 3 % of one CPU core, even here.
-- **S1:** Cue jumps take about 10 ms; no dropouts (WAV test file).
-- **S5:** A render killed by a page reload resumes and joins into a valid file without re-encoding (120 of 120 frames).
-- **S3:** The AAC WebAssembly fallback works. The container has no H.264 encoder, so the sample file used VP9.
+| Spike | Result | Key numbers |
+|---|---|---|
+| S1 Streaming audio | pass | 1-hour MP3: 71.5 MB for page and workers; start 8 ms; cue jumps 5 ms; seeks without cache 13 ms; 0 dropouts; full decode 515× real time (3 hours in about 21 s); decoded length exact |
+| S2 Key lock | pass (listening test open) | 0.9 % of one CPU core at 0.5–1.5×; bit-identical output in AudioWorklet and worker |
+| S3 Encoding | pass (upload test open) | Hardware H.264: 1080p60 at 177 fps (2.9× real time), 4K30 at 53 fps (1.8×), 1080×1920 at 186 fps (6.2×); native AAC 154×, WebAssembly fallback 16× |
+| S4 Rendering | pass | 1080p live at 59.7 fps (1 % low 39 fps); 4K offline at 117 fps; float render targets available |
+| S5 Long render | pass | 3-hour export: 18 segments, 21,600 of 21,600 frames, audio 10,800.06 s; resumed 8 times; joined in 19 s |
 
-Frame rates and encoder speeds are meaningless here. They come from the target machines.
+What this means:
+
+- **The stack carries.** Every risky part works on the main target, with a lot of headroom.
+- **Export time**, estimated with the prototype scene; the encoder is the bottleneck. One hour at 1080p60 takes about 20–25 minutes, one hour at 4K30 about 35–40 minutes, and a 60-second TikTok clip about 10–15 seconds.
+- **A/V sync (AN-06):** Chrome on macOS reports an output latency of 0 ms, so the offset cannot be detected automatically there. P1 needs a calibration step.
+- **Frame pacing:** the 1 % low of 39 fps in the live test probably comes from shader warm-up in the first frames. P1 measures it without the warm-up.
+
+The development container (headless Chromium, software GPU) and CI run all five spikes on every push; their frame rates and encoder speeds are not meaningful.
 
 ## 6. Open points
 
-- Spike results from the target machines (Q14): Chrome on macOS first, then Chrome on Windows and Firefox on Linux. How to run them: [README](../README.md#spike-lab-p0).
-- Hosting needs a (free) Cloudflare account. That only matters once we deploy.
+- Manual checks: listening test at 0.5–1.5× (S2) and uploading the sample MP4 to YouTube and TikTok (S3).
+- Second-priority machines (Q14): Chrome on Windows and Firefox on Linux. A hosted preview makes this easiest.
+- Hosting needs a (free) Cloudflare account.
