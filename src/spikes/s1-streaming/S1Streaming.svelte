@@ -28,6 +28,7 @@
     info: OpenResult;
     cues: number[];
     context: AudioContext | null;
+    node: AudioWorkletNode | null;
   }
 
   let engine = $state<Engine | null>(null);
@@ -98,6 +99,7 @@
         info,
         cues,
         context: null,
+        node: null,
       };
       pollStatus();
       phase = 'ready';
@@ -127,6 +129,7 @@
       processorOptions: { sab: current.sab, channels: CHANNELS },
     });
     node.connect(context.destination);
+    current.node = node;
   }
 
   /** Jumps to `seconds` and measures until the first new frame is rendered (audio clock). */
@@ -150,7 +153,8 @@
     try {
       const context = ensureContext(current);
       await context.resume();
-      await connectWorklet(current, context);
+      // One consumer per ring: connect the worklet only on the first run.
+      if (!current.node) await connectWorklet(current, context);
       run.metric(
         'Audio output',
         `${context.sampleRate} Hz, base latency ${formatMs(context.baseLatency * 1000)}, output latency ${formatMs((context.outputLatency ?? 0) * 1000)}`,

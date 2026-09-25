@@ -33,14 +33,18 @@ test('S3 encoding spike runs to completion', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('S4 rendering spike runs to completion', async ({ page }) => {
+test('S4 rendering spike runs to completion, also a second time', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/?quick');
-  await page.getByTestId('s4-run').click();
   const card = page.getByTestId('spike-S4');
-  await expect(card).toHaveAttribute('data-status', /done|error/, { timeout: 180_000 });
-  console.log(await card.innerText());
-  await expect(card).toHaveAttribute('data-status', 'done');
+  // The second run needs a fresh canvas: a canvas can only be handed to a worker once.
+  for (let run = 1; run <= 2; run++) {
+    await page.getByTestId('s4-run').click();
+    await expect(card).toHaveAttribute('data-status', 'running');
+    await expect(card).toHaveAttribute('data-status', /done|error/, { timeout: 180_000 });
+    if (run === 1) console.log(await card.innerText());
+    await expect(card).toHaveAttribute('data-status', 'done');
+  }
   await expect(
     card.locator('tr[data-state="pass"]', { hasText: 'Float render targets' }),
   ).toHaveCount(1);

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { errorMessage } from '../../core/util/format';
   import { WorkerClient } from '../../core/util/worker-rpc';
   import { quickMode } from '../quick';
@@ -17,7 +18,7 @@
     liveFps = null;
     runId++;
     // A canvas can hand its control to a worker only once: re-create it per run.
-    await Promise.resolve();
+    await tick();
     const spike = new SpikeRun('S4');
     const client = new WorkerClient(new RenderWorker());
     try {
