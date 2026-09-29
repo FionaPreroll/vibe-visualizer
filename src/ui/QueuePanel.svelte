@@ -1,6 +1,14 @@
 <script lang="ts">
   import { gridTempo } from '../core/analysis/grid-beats';
-  import { formatDuration } from '../core/util/format';
+  import {
+    AUDIO_ACCEPT,
+    entriesFromFiles,
+    hasHandlePickers,
+    pickFiles,
+    pickFolder,
+  } from '../core/library/folder-reader';
+  import type { Track } from '../core/state/app-state';
+  import { errorMessage, formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
 
@@ -16,6 +24,7 @@
   }
 
   let fileInput: HTMLInputElement;
+  let folderInput: HTMLInputElement;
   let dragIndex = $state<number | null>(null);
   let dropIndex = $state<number | null>(null);
 
@@ -23,9 +32,45 @@
     $app.tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0),
   );
 
+  /** Entries of the last visit whose files are not readable yet (SRC-05). */
+  const locked = $derived($app.tracks.filter((track) => track.status === 'locked').length);
+  const missing = $derived($app.tracks.filter((track) => track.status === 'missing').length);
+
   function addFromInput() {
     if (fileInput.files) player.addFiles(fileInput.files);
     fileInput.value = '';
+  }
+
+  function addFromFolderInput() {
+    if (folderInput.files) player.addEntries(entriesFromFiles(folderInput.files));
+    folderInput.value = '';
+  }
+
+  /**
+   * Chromium's pickers give handles, so the files stay available after a reload; elsewhere the
+   * file inputs (opened right in the click, as some browsers require).
+   */
+  async function addFiles() {
+    if (!hasHandlePickers()) return fileInput.click();
+    const picked = await pickFiles();
+    if (picked) player.addEntries(picked);
+    else fileInput.click();
+  }
+
+  async function addFolder() {
+    if (!hasHandlePickers()) return folderInput.click();
+    try {
+      const picked = await pickFolder();
+      if (picked) player.addEntries(picked);
+      else folderInput.click();
+    } catch (error) {
+      player.reportError(`Cannot read the folder: ${errorMessage(error)}`);
+    }
+  }
+
+  function play(track: Track) {
+    if (track.status === 'missing') void addFiles();
+    else if (track.status !== 'unsupported') void player.playTrack(track.id);
   }
 
   function onDragStart(event: DragEvent, index: number) {
@@ -50,8 +95,9 @@
     dropIndex = null;
   }
 
-  function onKey(event: KeyboardEvent, index: number, id: string) {
-    if (event.key === 'Enter') void player.playTrack(id);
+  function onKey(event: KeyboardEvent, index: number, track: Track) {
+    const id = track.id;
+    if (event.key === 'Enter') play(track);
     else if (event.key === 'Delete' || event.key === 'Backspace') void player.remove(id);
     else if (event.altKey && event.key === 'ArrowUp' && index > 0) player.move(index, index - 1);
     else if (event.altKey && event.key === 'ArrowDown') player.move(index, index + 1);
@@ -72,8 +118,17 @@
       </span>
     </div>
     <div class="actions">
-      <button onclick={() => fileInput.click()} data-testid="add-files">
+      <button onclick={addFiles} data-testid="add-files">
         <Icon name="plus" size={18} /> Add files
+      </button>
+      <button
+        class="ghost"
+        onclick={addFolder}
+        aria-label="Add a folder"
+        title="Add a folder (with its subfolders)"
+        data-testid="add-folder"
+      >
+        <Icon name="folder" size={18} />
       </button>
       <button
         class="ghost"
@@ -89,12 +144,37 @@
       bind:this={fileInput}
       type="file"
       multiple
-      accept="audio/*,.mp3,.m4a,.aac,.flac,.ogg,.opus,.wav,.aif,.aiff,.webm"
+      accept={['audio/*', ...AUDIO_ACCEPT].join(',')}
       onchange={addFromInput}
       hidden
       data-testid="file-input"
     />
+    <input
+      bind:this={folderInput}
+      type="file"
+      webkitdirectory
+      onchange={addFromFolderInput}
+      hidden
+      data-testid="folder-input"
+    />
   </header>
+
+  {#if locked > 0}
+    <div class="notice" data-testid="queue-locked">
+      <Icon name="lock" size={18} />
+      <span>The browser asks before the app may read your files again.</span>
+      <button onclick={() => player.unlock()} data-testid="unlock">Allow</button>
+    </div>
+  {/if}
+  {#if missing > 0}
+    <div class="notice" data-testid="queue-missing">
+      <Icon name="alert" size={18} />
+      <span>
+        {missing === 1 ? 'One track needs its file' : `${missing} tracks need their files`} again: add
+        the files or their folder, and they come back with their cues.
+      </span>
+    </div>
+  {/if}
 
   {#if $app.tracks.length === 0}
     <p class="empty">Drop audio files anywhere, or click “Add files”.</p>
@@ -104,6 +184,7 @@
         <li
           class:current={track.id === $app.currentId}
           class:unsupported={track.status === 'unsupported'}
+          class:offline={track.status === 'locked' || track.status === 'missing'}
           class:drop-before={dropIndex === index && dragIndex !== null}
           class:drop-after={dropIndex === index + 1 && index === $app.tracks.length - 1}
           draggable="true"
@@ -114,14 +195,18 @@
             dragIndex = null;
             dropIndex = null;
           }}
-          ondblclick={() => track.status !== 'unsupported' && player.playTrack(track.id)}
-          onkeydown={(event) => onKey(event, index, track.id)}
+          ondblclick={() => play(track)}
+          onkeydown={(event) => onKey(event, index, track)}
           tabindex="0"
           role="option"
           aria-selected={track.id === $app.currentId}
           data-testid="queue-item"
           data-status={track.status}
-          title={track.reason ?? track.fileName}
+          title={track.status === 'locked'
+            ? 'Double-click to allow access and play'
+            : track.status === 'missing'
+              ? `Add ${track.fileName} again to play it`
+              : (track.reason ?? track.fileName)}
         >
           <span class="grip" aria-hidden="true"><Icon name="grip" size={16} /></span>
           {#if track.coverUrl}
@@ -134,6 +219,10 @@
             <span class="artist">
               {#if track.status === 'unsupported'}
                 <Icon name="alert" size={12} /> {track.reason}
+              {:else if track.status === 'locked'}
+                <Icon name="lock" size={12} /> Needs your permission
+              {:else if track.status === 'missing'}
+                <Icon name="alert" size={12} /> File not available
               {:else}
                 {track.artist ?? track.fileName}
               {/if}
@@ -240,8 +329,27 @@
   li.current .title {
     color: var(--accent);
   }
-  li.unsupported {
+  li.unsupported,
+  li.offline {
     opacity: 0.55;
+  }
+  .notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 16px 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .notice span {
+    flex: 1;
+  }
+  .notice button {
+    padding: 4px 10px;
   }
   li.drop-before {
     border-top-color: var(--accent-2);

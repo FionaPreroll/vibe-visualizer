@@ -1,4 +1,4 @@
-import type { RepeatMode, Track } from '../state/app-state';
+import { isPlayable, type RepeatMode, type Track } from '../state/app-state';
 
 /**
  * The order of play (PL-04): the queue in order or shuffled, and what happens at the end: stop,
@@ -12,7 +12,7 @@ export interface PlayOrder {
 }
 
 function playable(tracks: readonly Track[]): Track[] {
-  return tracks.filter((track) => track.status !== 'unsupported');
+  return tracks.filter(isPlayable);
 }
 
 /**

@@ -12,6 +12,9 @@ export type ProbeResult =
       title: string | null;
       artist: string | null;
       album: string | null;
+      /** Position on the album, for sorting a folder (SRC-03). */
+      trackNumber: number | null;
+      discNumber: number | null;
       duration: number;
       sampleRate: number;
       channels: number;
@@ -43,6 +46,8 @@ async function probe(args: { file: File }) {
       title: tags?.title ?? null,
       artist: tags?.artist ?? null,
       album: tags?.album ?? null,
+      trackNumber: tags?.trackNumber ?? null,
+      discNumber: tags?.discNumber ?? null,
       duration,
       sampleRate: track.sampleRate,
       channels: track.numberOfChannels,

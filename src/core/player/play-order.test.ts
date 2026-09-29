@@ -17,10 +17,13 @@ describe('play order', () => {
     expect(previousTrack(tracks, 'a', [], inOrder)).toBeNull();
   });
 
-  it('skips files that cannot play', () => {
-    const tracks = queue('a', 'b', 'c');
+  it('skips files that cannot play, and files of the last visit that are not there', () => {
+    const tracks = queue('a', 'b', 'c', 'd', 'e');
     tracks[1] = { ...tracks[1]!, status: 'unsupported' };
-    expect(nextTrack(tracks, 'a', [], inOrder, true)).toBe('c');
+    tracks[2] = { ...tracks[2]!, status: 'locked' };
+    tracks[3] = { ...tracks[3]!, status: 'missing' };
+    expect(nextTrack(tracks, 'a', [], inOrder, true)).toBe('e');
+    expect(previousTrack(tracks, 'e', [], inOrder)).toBe('a');
   });
 
   it('starts again with repeat all, and repeats the track with repeat one', () => {

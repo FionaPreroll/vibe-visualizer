@@ -7,6 +7,7 @@ import {
   LIVE_OFF,
   newTrack,
   reducer,
+  restoredTrack,
   trackRange,
   type AppAction,
   type AppState,
@@ -78,6 +79,43 @@ describe('app state', () => {
   it('moves tracks', () => {
     const state = reducer(withTracks('a', 'b', 'c'), { type: 'tracks/moved', from: 0, to: 2 });
     expect(state.tracks.map((t) => t.title)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('brings back the last queue ahead of new files, with the file status of each entry', () => {
+    const info = {
+      fileName: 'Old.mp3',
+      size: 5,
+      title: 'Old song',
+      artist: 'Band',
+      album: null,
+      duration: 200,
+      sampleRate: 44100,
+      codec: 'mp3',
+      format: 'MP3',
+      fingerprint: 'fp',
+    };
+    const cues = [5, null, null, null, null, null, null, null];
+    let state = reducer(withTracks('New.mp3'), {
+      type: 'tracks/restored',
+      tracks: [
+        restoredTrack('r0', info, 'locked', { cues, marks: { in: null, out: 20 } }),
+        restoredTrack('r1', { ...info, fileName: 'Gone.mp3' }, 'missing'),
+      ],
+      currentId: 'r1',
+    });
+    expect(state.tracks.map((t) => t.id)).toEqual(['r0', 'r1', 't0']);
+    expect(state.tracks[0]).toMatchObject({ status: 'locked', title: 'Old song', cues });
+    expect(state.tracks[0]!.marks).toEqual({ in: null, out: 20 });
+    expect(state.currentId).toBe('r1');
+    state = reducer(state, { type: 'tracks/access', id: 'r0', status: 'probing' });
+    expect(state.tracks[0]!.status).toBe('probing');
+  });
+
+  it('arranges tracks within the places they hold', () => {
+    let state = withTracks('a', 'b', 'c', 'd');
+    // A folder's files t1–t3, sorted by track number: they keep their places, in a new order.
+    state = reducer(state, { type: 'tracks/arranged', ids: ['t3', 't1', 'gone', 't2'] });
+    expect(state.tracks.map((t) => t.id)).toEqual(['t0', 't3', 't1', 't2']);
   });
 
   it('removing the current track stops playback', () => {

@@ -22,7 +22,17 @@ import {
 
 /** Application state: the queue, what plays, and user settings. Pure data, no side effects. */
 
-export type TrackStatus = 'probing' | 'ready' | 'unsupported';
+/**
+ * Where a queue entry stands. From the last visit (SRC-05), an entry may be `locked` (the
+ * browser asks the user before the app may read the file again) or `missing` (the file is not
+ * there: it has to be added again).
+ */
+export type TrackStatus = 'probing' | 'ready' | 'unsupported' | 'locked' | 'missing';
+
+/** True for the entries that can play now (or once probed). */
+export function isPlayable(track: Track): boolean {
+  return track.status === 'ready' || track.status === 'probing';
+}
 
 export interface Track {
   id: string;
@@ -149,6 +159,12 @@ export type ProbedInfo = Pick<
 
 export type AppAction =
   | { type: 'tracks/added'; tracks: Track[] }
+  /** The queue of the last visit, ahead of anything added meanwhile (SRC-05). */
+  | { type: 'tracks/restored'; tracks: Track[]; currentId: string | null }
+  /** The entry's file became readable (probing), or is not available (locked, missing). */
+  | { type: 'tracks/access'; id: string; status: 'probing' | 'locked' | 'missing' }
+  /** The listed tracks take the places they hold, in this order (sorted by track number). */
+  | { type: 'tracks/arranged'; ids: string[] }
   | { type: 'tracks/probed'; id: string; info: ProbedInfo }
   | { type: 'tracks/removed'; id: string }
   | { type: 'tracks/moved'; from: number; to: number }
@@ -237,6 +253,36 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
   };
 }
 
+/**
+ * An entry of the last visit's queue (SRC-05) with what was known about it; `status` says
+ * whether its file is there (probing) or not.
+ */
+export function restoredTrack(
+  id: string,
+  info: Pick<
+    Track,
+    | 'fileName'
+    | 'size'
+    | 'title'
+    | 'artist'
+    | 'album'
+    | 'duration'
+    | 'sampleRate'
+    | 'codec'
+    | 'format'
+    | 'fingerprint'
+  >,
+  status: 'probing' | 'locked' | 'missing',
+  stored: { cues: Cues; marks: Marks } | null = null,
+): Track {
+  return {
+    ...newTrack(id, { name: info.fileName, size: info.size }),
+    ...info,
+    status,
+    ...(stored ? { cues: stored.cues, marks: stored.marks } : {}),
+  };
+}
+
 /** The cues after setting cue `index` to `seconds` (clamped to the track), or clearing it. */
 export function setCue(track: Track, index: number, seconds: number | null): Cues {
   if (index < 0 || index >= CUE_COUNT) return track.cues;
@@ -275,6 +321,34 @@ export function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'tracks/added':
       return { ...state, tracks: [...state.tracks, ...action.tracks] };
+    case 'tracks/restored': {
+      const tracks = [...action.tracks, ...state.tracks];
+      const known = tracks.some((track) => track.id === action.currentId);
+      return {
+        ...state,
+        tracks,
+        currentId: state.currentId ?? (known ? action.currentId : null),
+      };
+    }
+    case 'tracks/access':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.id === action.id ? { ...track, status: action.status, reason: null } : track,
+        ),
+      };
+    case 'tracks/arranged': {
+      const byId = new Map(state.tracks.map((track) => [track.id, track]));
+      const order = action.ids.filter((id) => byId.has(id));
+      const listed = new Set(order);
+      let next = 0;
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          listed.has(track.id) ? byId.get(order[next++]!)! : track,
+        ),
+      };
+    }
     case 'tracks/probed':
       return {
         ...state,

@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { entriesFromDrop } from '../core/library/folder-reader';
+  import { errorMessage } from '../core/util/format';
   import { usePlayer } from './player-context';
 
-  /** Accepts audio files dropped anywhere on the window (SRC-01). */
+  /** Accepts audio files and folders dropped anywhere on the window (SRC-01, SRC-03). */
   const player = usePlayer();
   let visible = $state(false);
   let depth = 0;
@@ -26,11 +28,16 @@
       if (depth === 0) visible = false;
     };
     const drop = (event: DragEvent) => {
-      if (!hasFiles(event)) return;
+      if (!hasFiles(event) || !event.dataTransfer) return;
       event.preventDefault();
       depth = 0;
       visible = false;
-      if (event.dataTransfer?.files.length) player.addFiles(event.dataTransfer.files);
+      // The dropped items are taken now; reading folders goes on after the event.
+      entriesFromDrop(event.dataTransfer).then(
+        (entries) => player.addEntries(entries),
+        (error: unknown) =>
+          player.reportError(`Cannot read what was dropped: ${errorMessage(error)}`),
+      );
     };
     window.addEventListener('dragenter', enter);
     window.addEventListener('dragover', over);
