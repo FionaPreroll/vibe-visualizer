@@ -280,6 +280,19 @@ export class DrumDetector {
     return this.low.rise(0) + this.body.rise(0);
   }
 
+  /** Rise of the kick band in the last tick, in dB (the beat grid looks for bars with it). */
+  get kickRise(): number {
+    return this.low.rise(0);
+  }
+
+  /**
+   * Rise of the snare band in the last tick where the drum body rises too, in dB: snares and
+   * claps, which mostly fall on the second and fourth beat of a bar.
+   */
+  get snareRise(): number {
+    return this.body.maxRise(6) >= this.snareSettings.minBodyRise ? this.mid.rise(0) : 0;
+  }
+
   reset(): void {
     for (const band of [this.low, this.body, this.mid, this.high]) band.reset();
     for (const picker of [this.kick, this.snare, this.hat]) picker.reset();

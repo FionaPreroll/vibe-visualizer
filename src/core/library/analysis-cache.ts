@@ -17,7 +17,7 @@ export interface TrackAnalysisResult {
 
 const DIRECTORY = 'track-analysis';
 const MAGIC = 0x56564741; // "VVGA"
-const VERSION = 1;
+const VERSION = 2;
 /** Cached tracks kept; the least recently written go first. */
 const MAX_ENTRIES = 60;
 const HEADER_BYTES = 32;

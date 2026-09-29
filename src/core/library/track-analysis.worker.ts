@@ -30,20 +30,24 @@ const REPORT_INTERVAL_MS = 500;
 
 const cancelled = new Set<string>();
 
-/** A growable Float32Array/Uint8Array pair of lists, for the per-frame onset features. */
+/** Growable lists of the per-frame onset features. */
 class FrameLists {
   onset: Float32Array;
   accent: Float32Array;
   active: Uint8Array;
+  kick: Float32Array;
+  snare: Float32Array;
   length = 0;
 
   constructor(capacity: number) {
     this.onset = new Float32Array(capacity);
     this.accent = new Float32Array(capacity);
     this.active = new Uint8Array(capacity);
+    this.kick = new Float32Array(capacity);
+    this.snare = new Float32Array(capacity);
   }
 
-  push(onset: number, accent: number, active: boolean): void {
+  push(analyzer: Analyzer): void {
     if (this.length === this.onset.length) {
       const grow = <T extends Float32Array | Uint8Array>(old: T, next: T) => {
         next.set(old);
@@ -53,10 +57,14 @@ class FrameLists {
       this.onset = grow(this.onset, new Float32Array(capacity));
       this.accent = grow(this.accent, new Float32Array(capacity));
       this.active = grow(this.active, new Uint8Array(capacity));
+      this.kick = grow(this.kick, new Float32Array(capacity));
+      this.snare = grow(this.snare, new Float32Array(capacity));
     }
-    this.onset[this.length] = onset;
-    this.accent[this.length] = accent;
-    this.active[this.length] = active ? 1 : 0;
+    this.onset[this.length] = analyzer.flux;
+    this.accent[this.length] = analyzer.accent;
+    this.active[this.length] = analyzer.active ? 1 : 0;
+    this.kick[this.length] = analyzer.kick;
+    this.snare[this.length] = analyzer.snare;
     this.length++;
   }
 }
@@ -77,7 +85,7 @@ async function analyse(
     const analyzer = new Analyzer(rate);
     const waveform = new WaveformBuilder(rate, expected);
     const frames = new FrameLists(Math.ceil((expected * rate) / analyzer.hop) + 16);
-    const onFrame = () => frames.push(analyzer.flux, analyzer.accent, analyzer.active);
+    const onFrame = () => frames.push(analyzer);
     let samples = 0;
     let sent = 0;
     let reported = performance.now();
@@ -105,6 +113,8 @@ async function analyse(
       onset: frames.onset.subarray(0, frames.length),
       accent: frames.accent.subarray(0, frames.length),
       active: frames.active.subarray(0, frames.length),
+      kick: frames.kick.subarray(0, frames.length),
+      snare: frames.snare.subarray(0, frames.length),
       delay: FLUX_DELAY,
     });
     const result: TrackAnalysisResult = {

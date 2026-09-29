@@ -31,6 +31,8 @@ export function detectHits(
   const onset: number[] = [];
   const accent: number[] = [];
   const active: number[] = [];
+  const kick: number[] = [];
+  const snare: number[] = [];
   let bpm = 0;
   for (let start = 0; start < left.length; start += block) {
     const count = Math.min(block, left.length - start);
@@ -48,6 +50,8 @@ export function detectHits(
       onset.push(analyzer.flux);
       accent.push(analyzer.accent);
       active.push(analyzer.active ? 1 : 0);
+      kick.push(analyzer.kick);
+      snare.push(analyzer.snare);
     });
   }
   return {
@@ -61,6 +65,8 @@ export function detectHits(
       onset: Float32Array.from(onset),
       accent: Float32Array.from(accent),
       active: Uint8Array.from(active),
+      kick: Float32Array.from(kick),
+      snare: Float32Array.from(snare),
       delay: FLUX_DELAY,
     },
   };

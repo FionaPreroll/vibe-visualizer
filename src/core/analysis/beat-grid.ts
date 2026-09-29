@@ -12,6 +12,11 @@
  *    close to the local period. Accents (kicks and drum bodies) count extra, so beats land on
  *    the kicks rather than on the offbeat hi-hats.
  * 3. Each beat gets a confidence: how much stronger the onsets are on the beats than around them.
+ * 4. The tempo is checked against the snares: double or 3/2 of the tempo found wins where it
+ *    puts them clearly on the second and fourth beat of each bar (drum & bass read as 87 or 116
+ *    instead of 174, hardcore as 89 instead of 178). Slower tempos are not tried, since a
+ *    half-time feel (dubstep, trap) and swing show a backbeat there too. This is decided in
+ *    windows of a few seconds, so a mix may change its tempo.
  */
 
 export interface OnsetFeatures {
@@ -23,6 +28,13 @@ export interface OnsetFeatures {
   accent: Float32Array;
   /** 1 for frames with sound. */
   active: Uint8Array;
+  /**
+   * Rise of the kick band and of the snare band per frame (dB): where the bars start, and
+   * whether a tempo puts the snares on the second and fourth beat. Optional: without them the
+   * grid has no bars and keeps the tempo it finds.
+   */
+  kick?: Float32Array;
+  snare?: Float32Array;
   /**
    * Seconds between an onset in the audio and the moment its frame reports it (the flux peaks
    * a little after the onset; frame i reports at (i + 1) / frameRate).
@@ -56,6 +68,15 @@ const TIGHTNESS = 200;
 const ACCENT_WEIGHT = 1;
 /** Beats on each side used for the confidence. */
 const CONFIDENCE_BEATS = 8;
+/** Faster tempos tried against the snares (factors of the tempo found), up to this BPM. */
+const FASTER_TEMPOS = [2, 1.5];
+const FASTER_MAX_BPM = 200;
+/** Windows (seconds) in which the snares decide the tempo, and their hop. */
+const BACKBEAT_WINDOW_SECONDS = 12;
+const BACKBEAT_HOP_SECONDS = 6;
+/** A related tempo wins with a backbeat at least this clear, and this much clearer. */
+const BACKBEAT_MIN = 0.3;
+const BACKBEAT_MARGIN = 0.15;
 /**
  * Ratios of the score on the beats to the typical score between them, for no and for full
  * confidence. Measured: noise 2.1, a sustained pad 1.5, real recordings (MDB Drums) 5.2–8.8.
@@ -68,9 +89,16 @@ export function computeBeatGrid(features: OnsetFeatures): BeatGrid {
   const frames = features.onset.length;
   if (frames < 4) return { beats: new Float64Array(0), confidence: new Float32Array(0) };
   const onset = detrend(features.onset);
-  const periods = tempoPath(onset, features.frameRate);
   const score = beatScore(onset, detrend(features.accent));
-  const beatFrames = trackBeats(score, periods);
+  let periods = tempoPath(onset, features.frameRate);
+  let beatFrames = trackBeats(score, periods);
+  if (features.snare) {
+    const checked = checkBackbeat(score, periods, beatFrames, features.snare, features.frameRate);
+    if (checked !== periods) {
+      periods = checked;
+      beatFrames = trackBeats(score, periods);
+    }
+  }
   const beats = new Float64Array(beatFrames.length);
   for (let k = 0; k < beatFrames.length; k++) {
     beats[k] = (refine(onset, beatFrames[k]!) + 1) / features.frameRate - features.delay;
@@ -244,6 +272,92 @@ function trackBeats(score: Float64Array, periods: Float64Array): number[] {
   const beats: number[] = [];
   for (let t = last; t >= 0; t = back[t]!) beats.push(t);
   return beats.reverse();
+}
+
+/**
+ * How clearly the snares fall on the second and fourth beat, from -1 to 1: the weaker of the two
+ * backbeats against the stronger of the other two beats, for the best way to count the bar.
+ * Half or 2/3 of the right tempo puts the snares between the beats, double of it leaves only one
+ * backbeat per bar.
+ */
+function backbeatClarity(beatFrames: readonly number[], snare: Float32Array): number {
+  if (beatFrames.length < 8) return -1;
+  const sums = [0, 0, 0, 0];
+  const counts = [0, 0, 0, 0];
+  for (let k = 0; k < beatFrames.length; k++) {
+    const at = beatFrames[k]!;
+    // The snare band rises during the frame of the beat or just after it.
+    let strength = 0;
+    for (let f = at - 1; f <= at + 3; f++) strength = Math.max(strength, snare[f] ?? 0);
+    sums[k % 4]! += strength;
+    counts[k % 4]!++;
+  }
+  const profile = sums.map((sum, j) => sum / Math.max(1, counts[j]!));
+  const total = profile.reduce((a, b) => a + b, 0) / 2;
+  if (total <= 1e-6) return -1;
+  let best = -1;
+  for (let phase = 0; phase < 4; phase++) {
+    const backbeat = Math.min(profile[(phase + 1) % 4]!, profile[(phase + 3) % 4]!);
+    const other = Math.max(profile[phase]!, profile[(phase + 2) % 4]!);
+    best = Math.max(best, (backbeat - other) / total);
+  }
+  return best;
+}
+
+/**
+ * Checks the tempo against the snares, window by window: where a faster related tempo puts them
+ * much more clearly on the second and fourth beat, that tempo wins. Returns `periods` when
+ * nothing changes, otherwise the corrected periods.
+ */
+function checkBackbeat(
+  score: Float64Array,
+  periods: Float64Array,
+  beatFrames: number[],
+  snare: Float32Array,
+  frameRate: number,
+): Float64Array {
+  const frames = periods.length;
+  const window = Math.round(BACKBEAT_WINDOW_SECONDS * frameRate);
+  const hop = Math.round(BACKBEAT_HOP_SECONDS * frameRate);
+  const minPeriod = (60 * frameRate) / FASTER_MAX_BPM;
+  const candidates = [1, ...FASTER_TEMPOS];
+  // The beats with each faster tempo.
+  const tracks = candidates.map((factor) => {
+    if (factor === 1) return beatFrames;
+    const scaled = periods.map((period) => period / factor);
+    return trackBeats(score, scaled);
+  });
+  const starts: number[] = [];
+  for (let start = 0; start === 0 || start + window / 2 < frames; start += hop) starts.push(start);
+  const choice = starts.map((start) => {
+    const end = Math.min(frames, start + window);
+    const middle = periods[Math.min(frames - 1, Math.floor((start + end) / 2))]!;
+    const inWindow = (beats: number[]) => beats.filter((at) => at >= start && at < end);
+    const found = backbeatClarity(inWindow(tracks[0]!), snare);
+    let best = 0;
+    let bestClarity = found;
+    for (let c = 1; c < candidates.length; c++) {
+      if (middle / candidates[c]! < minPeriod) continue;
+      const clarity = backbeatClarity(inWindow(tracks[c]!), snare);
+      if (clarity >= BACKBEAT_MIN && clarity >= found + BACKBEAT_MARGIN && clarity > bestClarity) {
+        best = c;
+        bestClarity = clarity;
+      }
+    }
+    return best;
+  });
+  // A choice holds only where its neighbours agree (no flicker between windows).
+  const smoothed = choice.map((value, w) => {
+    const around = [choice[w - 1], value, choice[w + 1]].filter((v) => v !== undefined);
+    return around.filter((v) => v === value).length * 2 > around.length ? value : 0;
+  });
+  if (smoothed.every((value) => value === 0)) return periods;
+  const corrected = new Float64Array(frames);
+  for (let n = 0; n < frames; n++) {
+    const w = Math.min(starts.length - 1, Math.max(0, Math.round((n - window / 2) / hop)));
+    corrected[n] = periods[n]! / candidates[smoothed[w]!]!;
+  }
+  return corrected;
 }
 
 /** Sub-frame position of the onset peak near frame `t` (parabolic interpolation). */
