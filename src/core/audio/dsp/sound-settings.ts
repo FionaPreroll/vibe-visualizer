@@ -103,14 +103,15 @@ export const SOUND_PRESETS: readonly SoundPreset[] = [
   { name: 'Clean', hint: 'Original speed, no effects', settings: DEFAULT_SOUND },
   {
     name: 'Slowed + Reverb',
-    hint: '85 % speed, deeper, with a big reverb',
+    hint: '85 % speed, deeper, with reverb',
     settings: {
       ...DEFAULT_SOUND,
       rate: 0.85,
       tempoRange: 16,
       reverbOn: true,
       reverbSize: 0.85,
-      reverbDecay: 5,
+      // Short: the first version's long hall (5 s) was too much in the listening test.
+      reverbDecay: 0.7,
       reverbPreDelay: 30,
       reverbDamping: 0.45,
       reverbMix: 0.35,

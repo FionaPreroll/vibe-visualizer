@@ -32,7 +32,7 @@ In fullscreen (F), only the visuals show; the mouse cursor hides when you do not
 
 The **Sound** tab in the side panel changes how the music sounds, while you listen and in exported videos. A dot on the tab shows that the sound is changed.
 
-- **Presets:** *Slowed + Reverb* (85 %, deeper, with a big reverb), *Sped up* (120 %), *Nightcore* (130 %) and *Clean*. Everything stays adjustable afterwards.
+- **Presets:** *Slowed + Reverb* (85 %, deeper, with a reverb of 0.7 s), *Sped up* (120 %), *Nightcore* (130 %) and *Clean*. Everything stays adjustable afterwards.
 - **Tempo:** a fader with a range of ±8 %, ±16 % or ±50 %, fine steps of 0.1 %, reset (or double-click the fader), and *Nudge*: 4 % slower or faster while you hold the button. *Vinyl* changes the pitch with the speed, like a record; *Key lock* keeps the pitch. The tempo display shows the detected BPM, and the original BPM when the speed is changed.
 - **Filter:** one knob from low-pass (left) to high-pass (right), with resonance; the middle is off.
 - **Delay:** in time with the beat (1/16 to 1/1, straight, dotted or triplet) or in milliseconds, with feedback, a tone filter for the echoes, ping-pong and mix.
