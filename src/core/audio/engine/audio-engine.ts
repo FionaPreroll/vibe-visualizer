@@ -6,10 +6,10 @@ import { AudioRingMonitor, createAudioRing } from '../ring-buffer';
 import { createEngineControl, EngineControl } from './engine-control';
 import type { EngineMessage, EngineProcessorOptions } from './engine.worklet';
 import workletUrl from './engine.worklet.ts?worker&url';
-import type { LoadResult } from './media.worker';
+import type { LoadResult, NextFile } from './media.worker';
 import MediaWorker from './media.worker.ts?worker';
 
-export type { LoadResult };
+export type { LoadResult, NextFile };
 
 /**
  * Main-thread face of the audio engine. The engine always runs at 48 kHz: files are converted
@@ -181,13 +181,13 @@ export class AudioEngine {
   }
 
   /**
-   * The beat grid of the file that was loaded as ring generation `generation` (AN-07): the
-   * analysis then takes its beats from it. Null while the file has none yet.
+   * The beat grid of the file with `token` (AN-07): while it plays, the analysis takes its
+   * beats from it. Null forgets it.
    */
-  setBeatGrid(grid: BeatGrid | null, generation: number): void {
+  setBeatGrid(token: number, grid: BeatGrid | null): void {
     this.post({
       type: 'grid',
-      generation,
+      token,
       beats: grid?.beats ?? null,
       confidence: grid?.confidence ?? null,
     });
@@ -197,15 +197,45 @@ export class AudioEngine {
     this.node?.port.postMessage(message);
   }
 
-  /** Opens `file` and positions it at `startSeconds` (paused state is unchanged). */
-  async load(file: File, startSeconds = 0): Promise<LoadResult> {
+  /**
+   * Opens `file` as the file with `token` and positions it at `startSeconds` (paused state is
+   * unchanged). `next` follows it without a gap (PL-05). A newer load or seek meanwhile makes
+   * it fail.
+   */
+  async load(
+    file: File,
+    startSeconds: number,
+    token: number,
+    next: NextFile | null = null,
+  ): Promise<LoadResult> {
     await this.start();
-    return this.media.call<LoadResult>('load', { file, startSeconds });
+    return this.media.call<LoadResult>('load', { file, startSeconds, token, next });
   }
 
-  async seek(seconds: number): Promise<void> {
+  /** Jumps to `seconds` in `file` (known by `token`); `next` follows it without a gap. */
+  async seek(
+    seconds: number,
+    token: number,
+    file: File,
+    next: NextFile | null = null,
+  ): Promise<void> {
     await this.start();
-    await this.media.call('seek', { seconds });
+    await this.media.call('seek', { seconds, token, file, next });
+  }
+
+  /**
+   * What follows the file with token `after` without a gap (PL-05); null: nothing, the stream
+   * ends there. At the end of a file the stream waits for this. False when it comes too late:
+   * the stream is already past that file.
+   */
+  async queueNext(after: number, next: NextFile | null): Promise<boolean> {
+    if (!this.started) return true;
+    return this.media.call<boolean>('queueNext', { after, next });
+  }
+
+  /** Token of the file being heard: it changes when a queued file follows without a gap. */
+  get heardToken(): number {
+    return this.monitor.heardToken;
   }
 
   /** Stops streaming and silences the output. */

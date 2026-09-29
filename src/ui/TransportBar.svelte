@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { REPEAT_MODES, type RepeatMode } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
@@ -8,6 +9,12 @@
   const player = usePlayer();
   const app = player.store;
   const analyses = player.analysis;
+
+  const REPEAT_LABELS: Record<RepeatMode, string> = {
+    off: 'Repeat off',
+    all: 'Repeat the queue',
+    one: 'Repeat the track',
+  };
 
   let position = $state(0);
   let dragFraction = $state<number | null>(null);
@@ -150,6 +157,32 @@
         </button>
         <button class="icon" onclick={() => player.stop()} aria-label="Stop" disabled={!current}>
           <Icon name="stop" />
+        </button>
+        <button
+          class="icon"
+          class:on={$app.settings.shuffle}
+          onclick={() => player.updateSettings({ shuffle: !$app.settings.shuffle })}
+          aria-label="Shuffle"
+          aria-pressed={$app.settings.shuffle}
+          title="Shuffle: play the queue in random order"
+          data-testid="shuffle"
+        >
+          <Icon name="shuffle" />
+        </button>
+        <button
+          class="icon repeat"
+          class:on={$app.settings.repeat !== 'off'}
+          onclick={() =>
+            player.updateSettings({
+              repeat: REPEAT_MODES[(REPEAT_MODES.indexOf($app.settings.repeat) + 1) % 3]!,
+            })}
+          aria-label={REPEAT_LABELS[$app.settings.repeat]}
+          title={`${REPEAT_LABELS[$app.settings.repeat]} (click to change)`}
+          data-testid="repeat"
+          data-mode={$app.settings.repeat}
+        >
+          <Icon name="repeat" />
+          {#if $app.settings.repeat === 'one'}<span class="one">1</span>{/if}
         </button>
         <span class="divider"></span>
         <button
@@ -370,6 +403,15 @@
   }
   .icon.on {
     color: var(--accent-2);
+  }
+  .repeat {
+    position: relative;
+  }
+  .repeat .one {
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    font: 700 9px var(--mono);
   }
   .icon.play {
     width: 44px;

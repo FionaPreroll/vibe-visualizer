@@ -1,6 +1,6 @@
 import type { BeatGrid } from '../analysis/beat-grid';
 import { rateLimits, TEMPO_STEP, type SoundSettings } from '../audio/dsp/sound-settings';
-import { AudioEngine } from '../audio/engine/audio-engine';
+import { AudioEngine, type NextFile } from '../audio/engine/audio-engine';
 import {
   closeInput,
   openDevice,
@@ -12,6 +12,7 @@ import {
 import type { ProbeResult } from '../library/probe.worker';
 import ProbeWorker from '../library/probe.worker.ts?worker';
 import { TrackAnalyzer, type TrackAnalysisState } from '../library/track-analyzer';
+import { nextTrack, previousTrack, type PlayOrder } from './play-order';
 import {
   CUE_COUNT,
   initialState,
@@ -56,10 +57,26 @@ export class Player {
   private readonly probeClient = new WorkerClient(new ProbeWorker());
   private probing: Promise<void> = Promise.resolve();
   private loadedId: string | null = null;
-  /** Ring generation the loaded file started with, and the beat grid the engine has for it. */
-  private loadedGeneration = 0;
-  private sentGrid: BeatGrid | null = null;
+  /** The engine knows files by tokens: the heard one, and which track each token stands for. */
+  private loadedToken = 0;
+  private lastToken = 0;
+  private readonly tokenTracks = new Map<number, string>();
+  /**
+   * What follows the heard file without a gap (PL-04, PL-05): planned for the file with token
+   * `after`, with the shuffle and repeat settings `order`; `next` is null when nothing follows.
+   */
+  private plan: {
+    after: number;
+    order: string;
+    next: { id: string; token: number } | null;
+  } | null = null;
+  /** Beat grids the engine has, by token. */
+  private readonly sentGrids = new Map<number, BeatGrid | null>();
+  /** Tracks played in this shuffle round, oldest first (PL-04). */
+  private played: string[] = [];
   private busy = false;
+  /** Counts loads and seeks: a newer one replaces older ones in the engine. */
+  private request = 0;
   private readonly endCheck: ReturnType<typeof setInterval>;
   /** The live input's stream while it is the source. */
   private liveInput: OpenedInput | null = null;
@@ -80,10 +97,16 @@ export class Player {
     let lastSound = this.state.sound;
     let lastTracks = this.state.tracks;
     this.store.subscribe((state) => {
+      const queueChanged =
+        state.tracks !== lastTracks ||
+        state.settings.shuffle !== lastSettings.shuffle ||
+        state.settings.repeat !== lastSettings.repeat;
       if (state.tracks !== lastTracks) {
         this.storeTrackData(lastTracks, state.tracks);
         lastTracks = state.tracks;
       }
+      // The queue or the order changed: the track that follows may be another one.
+      if (queueChanged) this.planNext();
       if (state.sound !== lastSound) {
         lastSound = state.sound;
         saveSound(state.sound);
@@ -103,19 +126,129 @@ export class Player {
       this.engine.volume = state.settings.volume;
       this.engine.inputGainDecibels = state.settings.inputGain;
     });
-    this.endCheck = setInterval(() => this.advanceAtEnd(), 100);
-    // The beat grid of the playing file goes to the engine once it is known.
-    this.analysis.subscribe(() => this.sendBeatGrid(false));
+    this.endCheck = setInterval(() => {
+      this.followStream();
+      this.advanceAtEnd();
+    }, 50);
+    // Beat grids go to the engine once they are known.
+    this.analysis.subscribe(() => this.sendBeatGrids());
   }
 
-  /** Gives the engine the beat grid of the loaded file (`reload`: after loading it). */
-  private sendBeatGrid(reload: boolean): void {
-    if (this.loadedId === null) return;
-    const track = this.state.tracks.find((entry) => entry.id === this.loadedId) ?? null;
-    const grid = this.analysisOf(track)?.grid ?? null;
-    if (!reload && grid === this.sentGrid) return;
-    this.sentGrid = grid;
-    this.engine.setBeatGrid(grid, this.loadedGeneration);
+  /** A new token for the file of track `id`. */
+  private newToken(id: string): number {
+    const token = ++this.lastToken;
+    this.tokenTracks.set(token, id);
+    // Only recent tokens can still come back from the engine.
+    for (const old of this.tokenTracks.keys()) {
+      if (old > token - 32) break;
+      this.tokenTracks.delete(old);
+    }
+    return token;
+  }
+
+  /** Gives the engine the beat grids of the heard and the next file, when they change. */
+  private sendBeatGrids(): void {
+    const wanted = new Map<number, string>();
+    if (this.loadedId !== null) wanted.set(this.loadedToken, this.loadedId);
+    const next = this.plan?.next;
+    if (next) wanted.set(next.token, next.id);
+    for (const [token, id] of wanted) {
+      const track = this.state.tracks.find((entry) => entry.id === id) ?? null;
+      const grid = this.analysisOf(track)?.grid ?? null;
+      if (this.sentGrids.has(token) && this.sentGrids.get(token) === grid) continue;
+      this.sentGrids.set(token, grid);
+      this.engine.setBeatGrid(token, grid);
+    }
+    for (const token of this.sentGrids.keys()) {
+      if (!wanted.has(token)) this.sentGrids.delete(token);
+    }
+  }
+
+  private get order(): PlayOrder {
+    return { shuffle: this.state.settings.shuffle, repeat: this.state.settings.repeat };
+  }
+
+  /**
+   * Plans what follows the file with token `after`, the track `currentId` (PL-04, PL-05). A plan
+   * for the same file stays while it still fits (a shuffled pick is kept). Returns true if it
+   * changed.
+   */
+  private updatePlan(after: number, currentId: string): boolean {
+    const order = this.order;
+    const key = `${order.shuffle}:${order.repeat}`;
+    const old = this.plan?.after === after ? this.plan : null;
+    const kept = old?.next ?? null;
+    const keep =
+      kept !== null &&
+      order.shuffle &&
+      order.repeat !== 'one' &&
+      old?.order === key &&
+      kept.id !== currentId &&
+      this.state.tracks.some((track) => track.id === kept.id && track.status !== 'unsupported');
+    const id = keep ? kept.id : nextTrack(this.state.tracks, currentId, this.played, order, true);
+    const nextId = id !== null && this.files.has(id) ? id : null;
+    if (old && (old.next?.id ?? null) === nextId) {
+      old.order = key;
+      return false;
+    }
+    this.plan = {
+      after,
+      order: key,
+      next: nextId === null ? null : { id: nextId, token: this.newToken(nextId) },
+    };
+    return true;
+  }
+
+  /** The planned next file, as the engine takes it. */
+  private nextFile(): NextFile | null {
+    const next = this.plan?.next;
+    const file = next ? this.files.get(next.id) : undefined;
+    return next && file ? { file, token: next.token } : null;
+  }
+
+  /**
+   * Plans again what follows the heard file (the queue or the order changed, or another file is
+   * heard) and tells the engine. If the stream already runs into the file planned before, it
+   * starts again at the current position, with the new plan.
+   */
+  private planNext(): void {
+    if (this.loadedId === null || this.live || this.busy) return;
+    const heard = this.loadedToken;
+    if (!this.updatePlan(heard, this.loadedId)) return;
+    this.sendBeatGrids();
+    void this.engine.queueNext(heard, this.nextFile()).then(
+      (taken) => {
+        const still = heard === this.loadedToken && this.engine.heardToken === heard;
+        if (!taken && still && !this.busy) void this.seek(this.position);
+      },
+      () => undefined,
+    );
+  }
+
+  /** Follows the stream into the next file once it is heard (a gapless transition). */
+  private followStream(): void {
+    if (this.loadedId === null || this.live || this.busy) return;
+    const token = this.engine.heardToken;
+    if (token === this.loadedToken) return;
+    const id = this.tokenTracks.get(token);
+    if (!id || !this.files.has(id)) return;
+    this.loadedId = id;
+    this.loadedToken = token;
+    this.dispatch({ type: 'player/current', id });
+    this.notePlayed(id);
+    const fingerprint = this.currentTrack?.fingerprint;
+    const file = this.files.get(id);
+    if (fingerprint && file) this.analysis.request(fingerprint, file, true);
+    // What follows this file: the stream waits for the answer at its end.
+    this.planNext();
+  }
+
+  /** Remembers `id` as played in this shuffle round; a new round starts once all have. */
+  private notePlayed(id: string): void {
+    const playable = this.state.tracks.filter((track) => track.status !== 'unsupported');
+    const played = [...this.played.filter((entry) => entry !== id), id];
+    const round = playable.every((track) => played.includes(track.id));
+    this.played = round ? [id] : played;
   }
 
   get state(): AppState {
@@ -128,7 +261,12 @@ export class Player {
 
   /** Playback position of the current track in seconds. */
   get position(): number {
-    return this.loadedId !== null ? this.engine.position : 0;
+    if (this.loadedId === null) return 0;
+    // Just after a gapless transition the engine counts in the next file already; until the
+    // player follows (within one check), the current track stays at its end.
+    const next = this.plan?.next;
+    if (next && this.engine.heardToken === next.token) return this.currentTrack?.duration ?? 0;
+    return this.engine.position;
   }
 
   private dispatch(action: AppAction): void {
@@ -305,21 +443,30 @@ export class Player {
     if (!file) return;
     // Choosing a track explicitly switches back from live input.
     if (this.live) this.stopLive();
+    const request = ++this.request;
     this.busy = true;
     try {
       await this.engine.start();
       this.engine.paused = true;
-      const loaded = await this.engine.load(file, startSeconds);
+      // The planned next track is open in the engine already.
+      const planned = this.plan?.next;
+      const token = planned?.id === id ? planned.token : this.newToken(id);
+      // What follows is planned first: the engine opens it right away, for a gapless start.
+      this.notePlayed(id);
+      this.updatePlan(token, id);
+      await this.engine.load(file, startSeconds, token, this.nextFile());
+      if (request !== this.request) return;
       this.loadedId = id;
-      this.loadedGeneration = loaded.generation;
+      this.loadedToken = token;
       this.dispatch({ type: 'player/current', id });
       const fingerprint = this.currentTrack?.fingerprint;
       if (fingerprint) this.analysis.request(fingerprint, file, true);
-      this.sendBeatGrid(true);
+      this.sendBeatGrids();
       this.engine.paused = false;
       this.dispatch({ type: 'player/playing', playing: true });
       this.dispatch({ type: 'player/error', message: null });
     } catch (error) {
+      if (request !== this.request) return;
       this.engine.paused = true;
       this.dispatch({ type: 'player/playing', playing: false });
       this.dispatch({
@@ -327,8 +474,15 @@ export class Player {
         message: `Cannot play ${file.name}: ${errorMessage(error)}`,
       });
     } finally {
-      this.busy = false;
+      this.settle(request);
     }
+  }
+
+  /** After a load or seek: the queue may have changed meanwhile. */
+  private settle(request: number): void {
+    if (request !== this.request) return;
+    this.busy = false;
+    this.planNext();
   }
 
   async play(): Promise<void> {
@@ -364,40 +518,48 @@ export class Player {
   }
 
   async seek(seconds: number): Promise<void> {
-    if (this.loadedId === null || this.live) return;
+    const id = this.loadedId;
+    const file = id !== null ? this.files.get(id) : undefined;
+    if (id === null || !file || this.live) return;
     const duration = this.currentTrack?.duration ?? Infinity;
     const target = Math.max(0, Math.min(seconds, duration - 0.05));
+    const request = ++this.request;
     this.busy = true;
     try {
-      await this.engine.seek(target);
+      // A seek starts a new stream: what follows goes with it again.
+      this.updatePlan(this.loadedToken, id);
+      await this.engine.seek(target, this.loadedToken, file, this.nextFile());
+      if (request !== this.request) return;
       this.dispatch({ type: 'player/seeked', seconds: target });
     } catch (error) {
+      if (request !== this.request) return;
       this.dispatch({ type: 'player/error', message: errorMessage(error) });
     } finally {
-      this.busy = false;
+      this.settle(request);
     }
   }
 
   async next(): Promise<void> {
     if (this.live) return;
-    const id = this.neighbour(1);
+    // The planned track (open in the engine already), unless that is this one again.
+    const planned = this.plan?.after === this.loadedToken ? this.plan.next : null;
+    const id =
+      planned && planned.id !== this.state.currentId
+        ? planned.id
+        : nextTrack(this.state.tracks, this.state.currentId, this.played, this.order, false);
     if (id) await this.playTrack(id);
   }
 
   /** Restarts the track, or goes to the previous one when near its start. */
   async previous(): Promise<void> {
     if (this.live) return;
-    const id = this.neighbour(-1);
+    const id = previousTrack(this.state.tracks, this.state.currentId, this.played, this.order);
     if (this.position > 3 || !id) await this.seek(0);
     else await this.playTrack(id);
   }
 
   async remove(id: string): Promise<void> {
-    if (id === this.loadedId) {
-      this.pause();
-      this.loadedId = null;
-      await this.engine.unload();
-    }
+    if (id === this.loadedId) await this.unload();
     this.releaseCover(id);
     this.files.delete(id);
     const fingerprint = this.state.tracks.find((track) => track.id === id)?.fingerprint;
@@ -413,9 +575,7 @@ export class Player {
   }
 
   async clear(): Promise<void> {
-    this.pause();
-    this.loadedId = null;
-    await this.engine.unload();
+    await this.unload();
     for (const track of this.state.tracks) {
       this.releaseCover(track.id);
       if (track.fingerprint) this.analysis.forget(track.fingerprint);
@@ -541,21 +701,26 @@ export class Player {
     if (url) URL.revokeObjectURL(url);
   }
 
-  /** The next playable track in `direction`, or null. */
-  private neighbour(direction: 1 | -1): string | null {
-    const tracks = this.state.tracks;
-    let index = tracks.findIndex((track) => track.id === this.state.currentId);
-    if (index < 0) return null;
-    for (index += direction; index >= 0 && index < tracks.length; index += direction) {
-      if (tracks[index]!.status !== 'unsupported') return tracks[index]!.id;
-    }
-    return null;
+  /** Stops playing the loaded track and empties the engine (a newer load or seek is dropped). */
+  private async unload(): Promise<void> {
+    this.pause();
+    this.request++;
+    this.busy = false;
+    this.loadedId = null;
+    this.plan = null;
+    await this.engine.unload();
   }
 
-  /** Moves on when the current track has played to its end. */
+  /**
+   * When the stream has played to its end: the queue is over, or the next track could not
+   * follow without a gap (then it starts now).
+   */
   private advanceAtEnd(): void {
     if (!this.state.playing || this.busy || this.loadedId === null || !this.engine.ended) return;
-    const next = this.neighbour(1);
+    const plan = this.plan?.after === this.loadedToken ? this.plan : null;
+    const next = plan
+      ? (plan.next?.id ?? null)
+      : nextTrack(this.state.tracks, this.loadedId, this.played, this.order, true);
     if (next) void this.playTrack(next);
     else this.pause();
   }

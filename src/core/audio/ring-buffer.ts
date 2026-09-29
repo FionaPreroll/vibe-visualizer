@@ -23,18 +23,21 @@ const ENDED_GENERATION = 5; // producer: generation whose source reached its end
 const FIRST_FRAME_GENERATION = 6; // consumer: generation whose first frame has been output
 const PLAYED_OUT_GENERATION = 7; // consumer: generation that has been played to its end
 const GENERATION_TOKEN = 8; // producer: token of the file the current generation starts with
-const NEXT_GENERATION = 9; // producer: generation in which the next file follows
-const NEXT_TOKEN = 10; // producer: token of that next file
-const HEARD_TOKEN = 11; // consumer: token of the file heard at RENDER_TIME
-const CONTROL_INTS = 12;
+const HEARD_TOKEN = 9; // consumer: token of the file heard at RENDER_TIME
+const BOUNDARIES = 10; // producer: file boundaries written so far (all generations)
+/** Boundaries are kept in a small ring: short files can follow each other quickly. */
+const BOUNDARY_SLOTS = 4;
+const BOUNDARY_GENERATION = 11; // per slot: generation of the boundary
+const BOUNDARY_TOKEN = BOUNDARY_GENERATION + BOUNDARY_SLOTS; // per slot: token of the next file
+const CONTROL_INTS = BOUNDARY_TOKEN + BOUNDARY_SLOTS + 1; // 20: keeps the floats 8-byte aligned
 
 // Float64 fields
 const START_FRAME = 0; // producer: source frame at which the current generation starts
 const POSITION = 1; // consumer: frame of the heard file that is heard at RENDER_TIME
 const RENDER_TIME = 2; // consumer: context time at the end of the last render quantum
 const FIRST_FRAME_TIME = 3; // consumer: context time at which the generation's first frame played
-const NEXT_START = 4; // producer: frame of the generation at which the next file starts
-const FLOAT_FIELDS = 5;
+const BOUNDARY_START = 4; // per slot: frame of the generation at which the next file starts
+const FLOAT_FIELDS = BOUNDARY_START + BOUNDARY_SLOTS;
 
 const HEADER_BYTES = CONTROL_INTS * 4 + FLOAT_FIELDS * 8;
 
@@ -48,7 +51,7 @@ export function createAudioRing(channels: number, minCapacity: number): SharedAr
   const sab = new SharedArrayBuffer(HEADER_BYTES + channels * capacity * 4);
   const control = new Int32Array(sab, 0, CONTROL_INTS);
   control[FIRST_FRAME_GENERATION] = -1;
-  control[NEXT_GENERATION] = -1;
+  control.fill(-1, BOUNDARY_GENERATION, BOUNDARY_GENERATION + BOUNDARY_SLOTS);
   return sab;
 }
 
@@ -124,9 +127,12 @@ export class AudioRingProducer extends AudioRingView {
    * on (the frames written so far). Call it before writing that file's first frame.
    */
   markNext(generation: number, streamFrame: number, token: number): void {
-    this.floats[NEXT_START] = streamFrame;
-    Atomics.store(this.control, NEXT_TOKEN, token);
-    Atomics.store(this.control, NEXT_GENERATION, generation);
+    const count = Atomics.load(this.control, BOUNDARIES);
+    const slot = count % BOUNDARY_SLOTS;
+    this.floats[BOUNDARY_START + slot] = streamFrame;
+    Atomics.store(this.control, BOUNDARY_TOKEN + slot, token);
+    Atomics.store(this.control, BOUNDARY_GENERATION + slot, generation);
+    Atomics.store(this.control, BOUNDARIES, count + 1);
   }
 
   isAcknowledged(generation: number): boolean {
@@ -145,6 +151,8 @@ export class AudioRingConsumer extends AudioRingView {
   private generationToken = 0;
   private generationPlayed = 0;
   private awaitingFirstFrame = true;
+  /** The next file boundary to pass (an index into the producer's boundaries). */
+  private boundary = 0;
 
   /**
    * Copies up to `frames` frames to `planes[c][offset…]` without padding and returns how many:
@@ -192,14 +200,21 @@ export class AudioRingConsumer extends AudioRingView {
 
   /** Frame of the current generation at which the next file starts, or -1 (none yet). */
   get nextStart(): number {
-    return Atomics.load(this.control, NEXT_GENERATION) === this.generation
-      ? this.floats[NEXT_START]!
+    if (this.boundary >= Atomics.load(this.control, BOUNDARIES)) return -1;
+    const slot = this.boundary % BOUNDARY_SLOTS;
+    return Atomics.load(this.control, BOUNDARY_GENERATION + slot) === this.generation
+      ? this.floats[BOUNDARY_START + slot]!
       : -1;
   }
 
   /** Token of the next file (valid while {@link nextStart} is not -1). */
   get nextToken(): number {
-    return Atomics.load(this.control, NEXT_TOKEN);
+    return Atomics.load(this.control, BOUNDARY_TOKEN + (this.boundary % BOUNDARY_SLOTS));
+  }
+
+  /** The next file is being heard now: the following boundary becomes the next one. */
+  passBoundary(): void {
+    this.boundary++;
   }
 
   /**
@@ -280,6 +295,8 @@ export class AudioRingConsumer extends AudioRingView {
       this.generationToken = Atomics.load(this.control, GENERATION_TOKEN);
       this.generationPlayed = 0;
       this.awaitingFirstFrame = true;
+      // Boundaries written before this generation belong to older streams.
+      this.boundary = Atomics.load(this.control, BOUNDARIES);
       this.floats[POSITION] = this.generationStart;
       Atomics.store(this.control, HEARD_TOKEN, this.generationToken);
       Atomics.store(this.control, ACK_GENERATION, generation);

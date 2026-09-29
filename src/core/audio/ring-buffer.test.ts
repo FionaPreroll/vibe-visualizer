@@ -119,10 +119,16 @@ describe('audio ring buffer', () => {
     expect(monitor.heardToken).toBe(7);
     expect(consumer.nextStart).toBe(-1);
     producer.markNext(generation, 40, 8);
+    producer.markNext(generation, 60, 9); // a short file right after
     expect(consumer.nextStart).toBe(40);
     expect(consumer.nextToken).toBe(8);
-    consumer.publish(12, 1.5, 8);
-    expect(monitor.heardToken).toBe(8);
+    consumer.passBoundary();
+    expect(consumer.nextStart).toBe(60);
+    expect(consumer.nextToken).toBe(9);
+    consumer.passBoundary();
+    expect(consumer.nextStart).toBe(-1);
+    consumer.publish(12, 1.5, 9);
+    expect(monitor.heardToken).toBe(9);
     expect(monitor.position).toBe(12);
     // A new generation (a seek) has no next file until the producer says so again.
     producer.beginGeneration(0, 8);
