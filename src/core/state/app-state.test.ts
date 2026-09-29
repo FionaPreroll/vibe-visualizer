@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { sceneDefaults } from '../render/kaleido-settings';
 import { DEFAULT_LOGO_SPECTRUM, RANGES } from '../render/visual-settings';
 import {
+  CUE_COUNT,
   initialState,
   LIVE_OFF,
   newTrack,
   reducer,
+  restoredTrack,
   trackRange,
   type AppAction,
   type AppState,
@@ -37,14 +39,83 @@ describe('app state', () => {
         codec: 'mp3',
         format: 'MP3',
         coverUrl: null,
+        fingerprint: 'abc',
       },
     });
     expect(probed.tracks[0]).toMatchObject({ title: 'Song', artist: 'Artist', status: 'ready' });
+    expect(probed.tracks[0]!.cues).toEqual(Array(CUE_COUNT).fill(null));
+  });
+
+  it('brings back stored cues and markers, and sets and clears cues within the track', () => {
+    const cues = [12, null, 30, null, null, null, null, 170];
+    let state = reducer(withTracks('Song.mp3'), {
+      type: 'tracks/probed',
+      id: 't0',
+      info: {
+        status: 'ready',
+        reason: null,
+        title: null,
+        artist: null,
+        album: null,
+        duration: 180,
+        sampleRate: 44100,
+        codec: 'mp3',
+        format: 'MP3',
+        coverUrl: null,
+        fingerprint: 'abc',
+        stored: { cues, marks: { in: 10, out: 40 } },
+      },
+    });
+    expect(state.tracks[0]).toMatchObject({ cues, marks: { in: 10, out: 40 } });
+    state = reducer(state, { type: 'tracks/cue', id: 't0', index: 1, seconds: 500 });
+    expect(state.tracks[0]!.cues[1]).toBe(180);
+    state = reducer(state, { type: 'tracks/cue', id: 't0', index: 0, seconds: null });
+    expect(state.tracks[0]!.cues.slice(0, 3)).toEqual([null, 180, 30]);
+    // Slots beyond the eight are ignored.
+    const same = reducer(state, { type: 'tracks/cue', id: 't0', index: 8, seconds: 5 });
+    expect(same.tracks[0]!.cues).toEqual(state.tracks[0]!.cues);
   });
 
   it('moves tracks', () => {
     const state = reducer(withTracks('a', 'b', 'c'), { type: 'tracks/moved', from: 0, to: 2 });
     expect(state.tracks.map((t) => t.title)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('brings back the last queue ahead of new files, with the file status of each entry', () => {
+    const info = {
+      fileName: 'Old.mp3',
+      size: 5,
+      title: 'Old song',
+      artist: 'Band',
+      album: null,
+      duration: 200,
+      sampleRate: 44100,
+      codec: 'mp3',
+      format: 'MP3',
+      fingerprint: 'fp',
+    };
+    const cues = [5, null, null, null, null, null, null, null];
+    let state = reducer(withTracks('New.mp3'), {
+      type: 'tracks/restored',
+      tracks: [
+        restoredTrack('r0', info, 'locked', { cues, marks: { in: null, out: 20 } }),
+        restoredTrack('r1', { ...info, fileName: 'Gone.mp3' }, 'missing'),
+      ],
+      currentId: 'r1',
+    });
+    expect(state.tracks.map((t) => t.id)).toEqual(['r0', 'r1', 't0']);
+    expect(state.tracks[0]).toMatchObject({ status: 'locked', title: 'Old song', cues });
+    expect(state.tracks[0]!.marks).toEqual({ in: null, out: 20 });
+    expect(state.currentId).toBe('r1');
+    state = reducer(state, { type: 'tracks/access', id: 'r0', status: 'probing' });
+    expect(state.tracks[0]!.status).toBe('probing');
+  });
+
+  it('arranges tracks within the places they hold', () => {
+    let state = withTracks('a', 'b', 'c', 'd');
+    // A folder's files t1–t3, sorted by track number: they keep their places, in a new order.
+    state = reducer(state, { type: 'tracks/arranged', ids: ['t3', 't1', 'gone', 't2'] });
+    expect(state.tracks.map((t) => t.id)).toEqual(['t0', 't3', 't1', 't2']);
   });
 
   it('removing the current track stops playback', () => {

@@ -1,14 +1,20 @@
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny';
 import { exposeWorker, withTransfer } from '../util/worker-rpc';
+import { fingerprint } from './fingerprint';
 
 /** Reads what the queue shows about a file, without decoding the audio. */
 
 export type ProbeResult =
   | {
       status: 'ready';
+      /** Recognises the file again (its cues, its cached analysis). */
+      fingerprint: string;
       title: string | null;
       artist: string | null;
       album: string | null;
+      /** Position on the album, for sorting a folder (SRC-03). */
+      trackNumber: number | null;
+      discNumber: number | null;
       duration: number;
       sampleRate: number;
       channels: number;
@@ -36,9 +42,12 @@ async function probe(args: { file: File }) {
       : null;
     const result: ProbeResult = {
       status: 'ready',
+      fingerprint: await fingerprint(args.file),
       title: tags?.title ?? null,
       artist: tags?.artist ?? null,
       album: tags?.album ?? null,
+      trackNumber: tags?.trackNumber ?? null,
+      discNumber: tags?.discNumber ?? null,
       duration,
       sampleRate: track.sampleRate,
       channels: track.numberOfChannels,

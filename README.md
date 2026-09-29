@@ -2,7 +2,7 @@
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
-> **Status:** P1, P2 and P5 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, the video export (whole tracks or clips, in segments that survive a crash), and live input from audio devices and other apps. P3 is half done: tempo (vinyl and key lock) and effects (DJ filter, delay, reverb, one-click "Slowed + Reverb", "Sped up" and "Nightcore"), live and in the export. Next: the rest of P3 (cues, waveforms, playlists, beat grid) and P4 (more scenes and video polish).
+> **Status:** P1, P2, P3 and P5 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, the video export (whole tracks or clips, in segments that survive a crash), live input from audio devices and other apps, tempo (vinyl and key lock) and effects (DJ filter, delay, reverb, one-click "Slowed + Reverb", "Sped up" and "Nightcore"), waveforms and hot cues, a beat grid for files, gapless playback with shuffle and repeat, folders, a queue that survives reloads, A/V sync calibration and a shortcut overview. Next: P4 (more scenes and video polish).
 > Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md) · [audio analysis](docs/ANALYSIS.md)
 
 ## Run it locally
@@ -18,7 +18,12 @@ Then open http://localhost:5173 in Chrome or Firefox. The dev server sends the c
 
 ## Using the app
 
-Drop audio files onto the window (or click **Add files**); several files make a queue. Double-click a track to play it. Shortcuts: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, F fullscreen, I/O set the in and out marker (with Shift they are cleared), −/+ tempo in steps of 0.1 %, hold , or . to nudge slower or faster; in the queue Alt+↑/↓ moves a track and Delete removes it.
+Drop audio files or whole folders onto the window (or click **Add files**, or the folder button next to it); several files make a queue. Folders are read with their subfolders and sorted by track number (or else by file name, so "2 …" comes before "10 …"); covers and playlists in them are skipped. Double-click a track to play it.
+
+- **Shortcuts:** press **?** (or the ? in the top bar) for all of them. The main ones: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, 1–8 hot cues, I/O in and out markers, −/+ tempo in steps of 0.1 %, V the next visual mode, [ and ] the previous or next preset, F fullscreen.
+- **Queue:** tracks follow each other without a gap, also between files with different sample rates. The buttons next to Stop switch shuffle and repeat (off, the whole queue, or the track); S and R do the same. The queue and the current track are still there after a reload. In Chrome and Edge the files come back too (after restarting the browser, click **Allow** once in the queue); other browsers keep the entries, and adding the files or their folder again brings them back, with their cues.
+- **Waveforms and cues:** the timeline shows the track's waveform (colours: bass red, mids green, highs blue), computed in the background, also for mixes of several hours. Above it, the detail waveform (W switches it on and off) shows a few seconds around the playhead with the beats; drag it to seek, scroll to zoom. Eight hot cues per track: press 1–8 (or click a pad) to set a cue where it is empty or to jump to it, Shift+1–8 deletes it. Cues and markers are kept per file and come back whenever you add the file again.
+- **Beat grid:** each file is analysed as a whole in the background. The visuals then follow its beats and its tempo (also through tempo changes within a mix) instead of guessing them live; the queue shows each track's BPM.
 
 The top bar switches the stage between three views:
 
@@ -27,6 +32,8 @@ The top bar switches the stage between three views:
 - **Analysis:** what the visuals react to: spectrum, band energies, kick/snare/hi-hat lamps, the beat (its ring shows the position within the beat) and the tempo.
 
 In fullscreen (F), only the visuals show; the mouse cursor hides when you do not move it.
+
+If the visuals run ahead of the sound (Bluetooth headphones, a TV, or Chrome on a Mac, which reports no output latency), open **Visuals → A/V sync** and click **Calibrate…**: a tick plays every second and a circle flashes; move the slider until both come together. The latency the browser reports is taken into account already. Exports are always in sync.
 
 ## Tempo and effects
 
@@ -88,7 +95,7 @@ Run the spikes, click **Copy report** and paste the report into the chat.
 | `pnpm lint`, `pnpm format` | ESLint, Prettier |
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm test:e2e` | End-to-end tests (Playwright); run the spikes in quick mode |
-| `pnpm eval:drums` | Drum and beat detection scores on real recordings (needs the MDB Drums dataset, see [ANALYSIS.md](docs/ANALYSIS.md#4-evaluation)) |
+| `pnpm eval:drums` | Drum detection, beat tracking and beat grid scores on real recordings (needs the MDB Drums dataset, see [ANALYSIS.md](docs/ANALYSIS.md#5-evaluation)) |
 
 ## Hosting
 
@@ -99,11 +106,12 @@ The app is a static site. On Cloudflare Pages use the build command `pnpm build`
 ```
 src/core/       framework-free core: audio engine (media worker, AudioWorklet, resampler, ring
                 buffer, live input), sound chain (tempo, filter, delay, reverb, limiter),
-                analysis, WebGL2 renderer (render worker, Logo Spectrum and Kaleidoscope
-                scenes), export (export worker, formats, job storage), player and state,
-                Signalsmith Stretch binding, utilities
-src/ui/         Svelte app: top bar, stage, queue, sound, visuals and live panels, transport,
-                export dialog
+                analysis (live, and per file: waveform and beat grid), library (fingerprints,
+                analysis cache, folders, stored queue), WebGL2 renderer (render worker, Logo
+                Spectrum and Kaleidoscope scenes), export (export worker, formats, job
+                storage), player (play order) and state, Signalsmith Stretch binding, utilities
+src/ui/         Svelte app: top bar, stage, queue, sound, visuals and live panels, transport
+                with waveforms and cues, export, sync and shortcut dialogs
 src/spikes/     Spike Lab and the P0 prototypes
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core
 tests/e2e/      Playwright tests

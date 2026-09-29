@@ -1,4 +1,5 @@
-import { Analyzer, DRUM_DECAY_SECONDS, type AnalyzerOptions } from '../analyzer';
+import { Analyzer, DRUM_DECAY_SECONDS, FLUX_DELAY, type AnalyzerOptions } from '../analyzer';
+import type { OnsetFeatures } from '../beat-grid';
 import { F } from '../features';
 import type { OnsetScore } from './score';
 
@@ -8,10 +9,12 @@ export interface DetectedHits {
   kicks: number[];
   snares: number[];
   hats: number[];
-  /** Beat times (the end of the frame that reported the beat). */
+  /** Beat times of the live tracker (the end of the frame that reported the beat). */
   beats: number[];
   /** Tempo estimate at the end of the input. */
   bpm: number;
+  /** The onset features of every frame, as the beat grid of a file takes them (AN-07). */
+  onsets: OnsetFeatures;
 }
 
 /** Runs a fresh analyzer over stereo input in blocks of `block` samples and collects hits. */
@@ -23,8 +26,12 @@ export function detectHits(
   block = 128,
 ): DetectedHits {
   const analyzer = new Analyzer(sampleRate, options);
-  const hits: DetectedHits = { kicks: [], snares: [], hats: [], beats: [], bpm: 0 };
-  const lists = [hits.kicks, hits.snares, hits.hats];
+  const lists: [number[], number[], number[]] = [[], [], []];
+  const beats: number[] = [];
+  const onset: number[] = [];
+  const accent: number[] = [];
+  const active: number[] = [];
+  let bpm = 0;
   for (let start = 0; start < left.length; start += block) {
     const count = Math.min(block, left.length - start);
     analyzer.process(left.subarray(start), right.subarray(start), count, (offset) => {
@@ -36,11 +43,27 @@ export function detectHits(
         const age = -Math.log(Math.max(1e-9, frame[F.kick + d]!)) * DRUM_DECAY_SECONDS[d]!;
         lists[d]!.push(time - age);
       }
-      if (frame[F.beatHit] === 1) hits.beats.push(time);
-      hits.bpm = frame[F.bpm]!;
+      if (frame[F.beatHit] === 1) beats.push(time);
+      bpm = frame[F.bpm]!;
+      onset.push(analyzer.flux);
+      accent.push(analyzer.accent);
+      active.push(analyzer.active ? 1 : 0);
     });
   }
-  return hits;
+  return {
+    kicks: lists[0],
+    snares: lists[1],
+    hats: lists[2],
+    beats,
+    bpm,
+    onsets: {
+      frameRate: sampleRate / analyzer.hop,
+      onset: Float32Array.from(onset),
+      accent: Float32Array.from(accent),
+      active: Uint8Array.from(active),
+      delay: FLUX_DELAY,
+    },
+  };
 }
 
 export function formatScore(name: string, score: OnsetScore): string {

@@ -1,3 +1,4 @@
+import type { BeatGrid } from '../../analysis/beat-grid';
 import { createFeatureTimeline, FeatureTimelineReader } from '../../analysis/feature-timeline';
 import { WorkerClient } from '../../util/worker-rpc';
 import { DEFAULT_SOUND, type SoundSettings } from '../dsp/sound-settings';
@@ -5,10 +6,10 @@ import { AudioRingMonitor, createAudioRing } from '../ring-buffer';
 import { createEngineControl, EngineControl } from './engine-control';
 import type { EngineMessage, EngineProcessorOptions } from './engine.worklet';
 import workletUrl from './engine.worklet.ts?worker&url';
-import type { LoadResult } from './media.worker';
+import type { LoadResult, NextFile } from './media.worker';
 import MediaWorker from './media.worker.ts?worker';
 
-export type { LoadResult };
+export type { LoadResult, NextFile };
 
 /**
  * Main-thread face of the audio engine. The engine always runs at 48 kHz: files are converted
@@ -45,6 +46,7 @@ export class AudioEngine {
   private monitoring = false;
   private soundSettings: SoundSettings = DEFAULT_SOUND;
   private nudgeFactor = 1;
+  private offset = 0;
 
   constructor() {
     this.timeline = new FeatureTimelineReader(this.timelineBuffer);
@@ -179,19 +181,105 @@ export class AudioEngine {
     this.post({ type: 'nudge', factor });
   }
 
+  /**
+   * The beat grid of the file with `token` (AN-07): while it plays, the analysis takes its
+   * beats from it. Null forgets it.
+   */
+  setBeatGrid(token: number, grid: BeatGrid | null): void {
+    this.post({
+      type: 'grid',
+      token,
+      beats: grid?.beats ?? null,
+      confidence: grid?.confidence ?? null,
+    });
+  }
+
+  /**
+   * How much later the sound is heard than the browser reports, in seconds (AN-06): the visuals
+   * follow {@link outputClock}, which counts it in. Live input is unaffected (it is heard
+   * directly).
+   */
+  get syncOffset(): number {
+    return this.offset;
+  }
+
+  set syncOffset(seconds: number) {
+    this.offset = seconds;
+  }
+
+  /** The output latency the browser reports in seconds (null before {@link start}). */
+  get reportedLatency(): number | null {
+    const context = this.context;
+    return context ? context.baseLatency + (context.outputLatency || 0) : null;
+  }
+
+  /** The audio clock (seconds); 0 before {@link start}. */
+  get contextTime(): number {
+    return this.context?.currentTime ?? 0;
+  }
+
+  /**
+   * A short tick at context time `at`, next to the music (for the sync calibration); it goes
+   * through the volume.
+   */
+  beep(at: number): void {
+    const context = this.context;
+    if (!context || !this.gain) return;
+    const tone = context.createOscillator();
+    tone.frequency.value = 1500;
+    const envelope = context.createGain();
+    envelope.gain.setValueAtTime(0, at);
+    envelope.gain.linearRampToValueAtTime(0.5, at + 0.002);
+    envelope.gain.exponentialRampToValueAtTime(0.001, at + 0.06);
+    tone.connect(envelope).connect(this.gain);
+    tone.start(at);
+    tone.stop(at + 0.07);
+    tone.onended = () => envelope.disconnect();
+  }
+
   private post(message: EngineMessage): void {
     this.node?.port.postMessage(message);
   }
 
-  /** Opens `file` and positions it at `startSeconds` (paused state is unchanged). */
-  async load(file: File, startSeconds = 0): Promise<LoadResult> {
+  /**
+   * Opens `file` as the file with `token` and positions it at `startSeconds` (paused state is
+   * unchanged). `next` follows it without a gap (PL-05). A newer load or seek meanwhile makes
+   * it fail.
+   */
+  async load(
+    file: File,
+    startSeconds: number,
+    token: number,
+    next: NextFile | null = null,
+  ): Promise<LoadResult> {
     await this.start();
-    return this.media.call<LoadResult>('load', { file, startSeconds });
+    return this.media.call<LoadResult>('load', { file, startSeconds, token, next });
   }
 
-  async seek(seconds: number): Promise<void> {
+  /** Jumps to `seconds` in `file` (known by `token`); `next` follows it without a gap. */
+  async seek(
+    seconds: number,
+    token: number,
+    file: File,
+    next: NextFile | null = null,
+  ): Promise<void> {
     await this.start();
-    await this.media.call('seek', { seconds });
+    await this.media.call('seek', { seconds, token, file, next });
+  }
+
+  /**
+   * What follows the file with token `after` without a gap (PL-05); null: nothing, the stream
+   * ends there. At the end of a file the stream waits for this. False when it comes too late:
+   * the stream is already past that file.
+   */
+  async queueNext(after: number, next: NextFile | null): Promise<boolean> {
+    if (!this.started) return true;
+    return this.media.call<boolean>('queueNext', { after, next });
+  }
+
+  /** Token of the file being heard: it changes when a queued file follows without a gap. */
+  get heardToken(): number {
+    return this.monitor.heardToken;
   }
 
   /** Stops streaming and silences the output. */
@@ -245,7 +333,8 @@ export class AudioEngine {
   /**
    * A pair of matching times: `contextTime` (seconds on the audio clock) is being heard at
    * `performanceTime` (milliseconds since the epoch, `performance.timeOrigin + now()`, so that
-   * workers with their own time origin can use it). Null before {@link start}.
+   * workers with their own time origin can use it). It counts in the latency the browser
+   * reports and the {@link syncOffset}. Null before {@link start}.
    */
   outputClock(): { contextTime: number; performanceTime: number } | null {
     const context = this.context;
@@ -257,13 +346,13 @@ export class AudioEngine {
       stamp.performanceTime > 0
     ) {
       return {
-        contextTime: stamp.contextTime,
+        contextTime: stamp.contextTime - this.offset,
         performanceTime: performance.timeOrigin + stamp.performanceTime,
       };
     }
     const latency = context.baseLatency + (context.outputLatency || 0);
     return {
-      contextTime: context.currentTime - latency,
+      contextTime: context.currentTime - latency - this.offset,
       performanceTime: performance.timeOrigin + performance.now(),
     };
   }

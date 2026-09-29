@@ -1,6 +1,7 @@
 import { Analyzer } from '../../analysis/analyzer';
 import { FeatureTimelineWriter } from '../../analysis/feature-timeline';
 import { F } from '../../analysis/features';
+import { GridBeats } from '../../analysis/grid-beats';
 import { DspCore } from '../dsp/dsp-core';
 import type { SoundSettings } from '../dsp/sound-settings';
 import { AudioRingConsumer } from '../ring-buffer';
@@ -15,7 +16,18 @@ export interface EngineProcessorOptions {
 
 /** Messages from the main thread to the engine. */
 export type EngineMessage =
-  { type: 'sound'; settings: SoundSettings } | { type: 'nudge'; factor: number };
+  | { type: 'sound'; settings: SoundSettings }
+  | { type: 'nudge'; factor: number }
+  /** The beat grid of the file with `token` (null: forget it). */
+  | {
+      type: 'grid';
+      token: number;
+      beats: Float64Array | null;
+      confidence: Float32Array | null;
+    };
+
+/** Beat grids kept (the playing file, the next ones, the one before). */
+const KEEP_GRIDS = 6;
 
 /**
  * Plays the stream from the media worker through the sound chain (tempo, filter, delay, reverb,
@@ -23,6 +35,9 @@ export type EngineMessage =
  * but effect tails ring out, seeks still take effect, and the analysis goes on (the visuals calm
  * down). In live mode it analyses its input instead (IN-01); monitoring the input runs past the
  * worklet.
+ *
+ * A stream may run from one file into the next (gapless, PL-05): the worklet follows the file
+ * boundaries the media worker records, for the position it publishes and for the beat grid.
  */
 class EngineProcessor extends AudioWorkletProcessor {
   private readonly consumer: AudioRingConsumer;
@@ -35,11 +50,20 @@ class EngineProcessor extends AudioWorkletProcessor {
   private generation = -1;
   /** Engine frame of this block's first frame, plus the delay until the music is heard. */
   private blockStart = 0;
-  /** Source frame (of the stream) and speed of this block's music, for the timeline. */
+  /** Stream frame and speed of this block's music, for the timeline. */
   private blockSource = 0;
   private blockRate = 0;
   /** Speed the analysis last heard: a change is passed on to the beat tracking. */
   private analysedRate = 1;
+  /** The heard file: its token, the stream frame it starts at, and its own frame there. */
+  private heardToken = 0;
+  private heardOffset = 0;
+  private heardBase = 0;
+  /** The next file boundary of the stream (-1: none) and the next file's token. */
+  private nextStart = -1;
+  private nextToken = 0;
+  /** Beat grids of the files (AN-07), by token: they replace the live beat tracking. */
+  private readonly grids = new Map<number, GridBeats>();
   private readonly onAnalysisFrame: (offset: number) => void;
 
   constructor(options: AudioWorkletNodeOptions) {
@@ -59,14 +83,39 @@ class EngineProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (event: MessageEvent<EngineMessage>) => this.receive(event.data);
     // Bound once: no allocation per analysis frame.
     this.onAnalysisFrame = (offset: number) => {
-      const source = this.consumer.startFrame + this.blockSource + offset * this.blockRate;
-      this.timeline.write(this.blockStart + offset, source / sampleRate, this.analyzer.frame);
+      // The music is ahead of what is heard: it may already be in the next file.
+      const stream = this.blockSource + offset * this.blockRate;
+      let token = this.heardToken;
+      let frame = this.heardBase + stream - this.heardOffset;
+      if (this.nextStart >= 0 && stream >= this.nextStart) {
+        token = this.nextToken;
+        frame = stream - this.nextStart;
+      }
+      const seconds = frame / sampleRate;
+      if (this.blockRate > 0) {
+        this.grids.get(token)?.apply(this.analyzer.frame, seconds, this.blockRate);
+      }
+      this.timeline.write(this.blockStart + offset, seconds, this.analyzer.frame);
     };
   }
 
   private receive(message: EngineMessage): void {
-    if (message.type === 'sound') this.dsp.setSettings(message.settings);
-    else this.dsp.nudge = message.factor;
+    if (message.type === 'sound') {
+      this.dsp.setSettings(message.settings);
+    } else if (message.type === 'nudge') {
+      this.dsp.nudge = message.factor;
+    } else if (message.beats && message.confidence) {
+      const beats = new GridBeats();
+      beats.set({ beats: message.beats, confidence: message.confidence });
+      this.grids.delete(message.token);
+      this.grids.set(message.token, beats);
+      for (const token of this.grids.keys()) {
+        if (this.grids.size <= KEEP_GRIDS) break;
+        this.grids.delete(token);
+      }
+    } else {
+      this.grids.delete(message.token);
+    }
   }
 
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
@@ -82,7 +131,14 @@ class EngineProcessor extends AudioWorkletProcessor {
     if (generation !== this.generation) {
       this.generation = generation;
       this.dsp.reset();
+      this.heardToken = this.consumer.startToken;
+      this.heardOffset = 0;
+      this.heardBase = this.consumer.startFrame;
+      // No beat hits across the jump.
+      for (const beats of this.grids.values()) beats.set(beats.grid);
     }
+    this.nextStart = this.consumer.nextStart;
+    this.nextToken = this.consumer.nextToken;
     this.blockSource = this.dsp.musicPosition;
     if (this.control.live) {
       this.dsp.renderMusic(null, music, frames);
@@ -104,10 +160,20 @@ class EngineProcessor extends AudioWorkletProcessor {
     }
     this.dsp.renderEffects(music, frames);
     for (let c = 0; c < output.length; c++) output[c]!.set(music[Math.min(c, 1)]!);
-    this.consumer.publish(this.dsp.sourcePosition, currentTime + frames / sampleRate);
-    if (this.consumer.ended && this.dsp.sourcePosition >= this.consumer.takenFrames) {
-      this.consumer.markPlayedOut();
+    // Once the next file is heard, the position counts in it.
+    const heard = this.dsp.sourcePosition;
+    if (this.nextStart >= 0 && heard >= this.nextStart) {
+      this.heardToken = this.nextToken;
+      this.heardOffset = this.nextStart;
+      this.heardBase = 0;
+      this.consumer.passBoundary();
     }
+    this.consumer.publish(
+      this.heardBase + heard - this.heardOffset,
+      currentTime + frames / sampleRate,
+      this.heardToken,
+    );
+    if (this.consumer.ended && heard >= this.consumer.takenFrames) this.consumer.markPlayedOut();
     return true;
   }
 

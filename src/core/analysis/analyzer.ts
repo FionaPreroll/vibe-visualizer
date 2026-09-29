@@ -35,6 +35,8 @@ const SILENCE_RMS = 1e-4;
 /** Frequency range of the spectral flux that drives the beat tracker. */
 const FLUX_MIN_HZ = 30;
 const FLUX_MAX_HZ = 16000;
+/** The spectral flux peaks about this long after an onset (seconds). */
+export const FLUX_DELAY = 0.02;
 
 export class Analyzer {
   readonly sampleRate: number;
@@ -82,6 +84,14 @@ export class Analyzer {
   private hopAccent = 0;
   /** Frames since the last reported beat. */
   private sinceBeat = 1e9;
+  /**
+   * What the beat tracking got for the last frame: the onset strength (spectral flux), the accent
+   * (kick and drum-body energy) and whether there was sound. The track analysis collects them
+   * to compute a beat grid for the whole file.
+   */
+  flux = 0;
+  accent = 0;
+  active = false;
 
   constructor(sampleRate: number, options: AnalyzerOptions = {}) {
     this.sampleRate = sampleRate;
@@ -131,8 +141,11 @@ export class Analyzer {
     this.fluxFirstBin = Math.ceil(FLUX_MIN_HZ / binHz);
     this.fluxLastBin = Math.min(bins - 1, Math.floor(FLUX_MAX_HZ / binHz));
     this.drums = new DrumDetector(sampleRate, options.drums);
-    // Beats are reported ~21 ms early: the spectral flux peaks about that much after an onset.
-    this.beats = new BeatTracker(sampleRate / this.hop, Math.round((0.02 * sampleRate) / this.hop));
+    // Beats are reported early by the delay of the spectral flux.
+    this.beats = new BeatTracker(
+      sampleRate / this.hop,
+      Math.round((FLUX_DELAY * sampleRate) / this.hop),
+    );
   }
 
   /** The music now plays `factor` times as fast (the tempo fader): the beat tracking follows. */
@@ -272,7 +285,10 @@ export class Analyzer {
       if (rise > 0) flux += rise;
     }
     flux *= 10 / Math.LN10 / (this.fluxLastBin - this.fluxFirstBin + 1);
-    const beat = this.beats.process(flux, this.hopAccent, frame[F.rms]! > SILENCE_RMS);
+    this.flux = flux;
+    this.accent = this.hopAccent;
+    this.active = frame[F.rms]! > SILENCE_RMS;
+    const beat = this.beats.process(flux, this.hopAccent, this.active);
     this.hopAccent = 0;
     this.sinceBeat = beat ? 0 : this.sinceBeat + 1;
     frame[F.beatHit] = beat ? 1 : 0;

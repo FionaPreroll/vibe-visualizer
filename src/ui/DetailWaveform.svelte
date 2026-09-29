@@ -1,0 +1,262 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { beatBefore } from '../core/analysis/beat-grid';
+  import { CUE_COUNT } from '../core/state/app-state';
+  import { formatDuration } from '../core/util/format';
+  import { usePlayer } from './player-context';
+  import { CUE_COLOURS, drawWaveform } from './waveform-draw';
+
+  /**
+   * The detail view around the playhead (TR-08): the waveform of the seconds before and after,
+   * zoomable, with the beat grid, the cues and the export markers; drag it to move, click to
+   * jump. On the left the eight hot cues (TR-04): click to jump to one, or to set an empty one
+   * at the playhead; Shift+click or the right button deletes it. The keys 1–8 do the same.
+   */
+  const player = usePlayer();
+  const app = player.store;
+
+  /** Seconds shown across the view. */
+  const ZOOMS = [2, 4, 8, 16, 32, 64];
+  let zoom = $state(2);
+  let canvas: HTMLCanvasElement | undefined = $state();
+  /** While dragging: where the drag started and the position then. */
+  let drag: { x: number; at: number; moved: boolean; pointer: number } | null = null;
+  let dragOffset = 0;
+
+  const current = $derived($app.tracks.find((track) => track.id === $app.currentId) ?? null);
+  const cues = $derived(current?.cues ?? []);
+
+  onMount(() => {
+    let frame = 0;
+    const tick = () => {
+      render();
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  });
+
+  /** Seconds at the middle of the view (the playhead, moved by a drag). */
+  function centre(): number {
+    return player.position + dragOffset;
+  }
+
+  function span(): number {
+    return ZOOMS[zoom]!;
+  }
+
+  function render(): void {
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    const width = Math.round(canvas.clientWidth * ratio);
+    const height = Math.round(canvas.clientHeight * ratio);
+    if (width === 0 || height === 0) return;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const track = player.currentTrack;
+    const analysis = player.analysisOf(track);
+    const at = centre();
+    const from = at - span() / 2;
+    const to = at + span() / 2;
+    const x = (time: number) => ((time - from) / (to - from)) * width;
+    drawWaveform(
+      context,
+      analysis?.waveform ?? null,
+      { from, to, played: at, available: analysis?.seconds ?? 0 },
+      width,
+      height,
+    );
+    // Beat grid: a line on every beat, stronger where the beat is clear.
+    const grid = analysis?.grid;
+    if (grid) {
+      let index = Math.max(0, beatBefore(grid, from));
+      for (; index < grid.beats.length && grid.beats[index]! <= to; index++) {
+        const confidence = grid.confidence[index]!;
+        context.fillStyle = `rgba(255,255,255,${0.08 + 0.22 * confidence})`;
+        context.fillRect(Math.round(x(grid.beats[index]!)), 0, Math.max(1, ratio), height);
+      }
+    }
+    // The export range and its markers.
+    const marks = track?.marks;
+    if (marks && (marks.in !== null || marks.out !== null)) {
+      const start = x(marks.in ?? 0);
+      const end = x(marks.out ?? track?.duration ?? to);
+      context.fillStyle = 'rgba(79,209,197,0.12)';
+      context.fillRect(start, 0, end - start, height);
+      context.fillStyle = '#4fd1c5';
+      if (marks.in !== null) context.fillRect(Math.round(start), 0, 2 * ratio, height);
+      if (marks.out !== null) context.fillRect(Math.round(end) - 2 * ratio, 0, 2 * ratio, height);
+    }
+    // Cues: a line and a numbered flag.
+    const cueList = track?.cues ?? [];
+    context.font = `600 ${Math.round(10 * ratio)}px ui-monospace, monospace`;
+    context.textBaseline = 'middle';
+    for (let index = 0; index < cueList.length; index++) {
+      const cue = cueList[index];
+      if (cue === null || cue === undefined || cue < from || cue > to) continue;
+      const position = Math.round(x(cue));
+      context.fillStyle = CUE_COLOURS[index]!;
+      context.fillRect(position, 0, Math.max(1, ratio), height);
+      context.fillRect(position, 0, 13 * ratio, 13 * ratio);
+      context.fillStyle = '#000';
+      context.fillText(String(index + 1), position + 3 * ratio, 7 * ratio);
+    }
+    // The playhead.
+    context.fillStyle = '#fff';
+    context.fillRect(Math.round(width / 2) - ratio, 0, 2 * ratio, height);
+  }
+
+  function secondsPerPixel(): number {
+    return canvas ? span() / canvas.clientWidth : 0;
+  }
+
+  function onPointerDown(event: PointerEvent) {
+    if (!canvas || !player.currentTrack || event.button !== 0) return;
+    canvas.setPointerCapture(event.pointerId);
+    drag = { x: event.clientX, at: player.position, moved: false, pointer: event.pointerId };
+  }
+
+  function onPointerMove(event: PointerEvent) {
+    if (!drag) return;
+    const dx = event.clientX - drag.x;
+    if (Math.abs(dx) > 3) drag.moved = true;
+    // Dragging moves the waveform under the playhead.
+    if (drag.moved) dragOffset = drag.at - player.position - dx * secondsPerPixel();
+  }
+
+  function onPointerUp(event: PointerEvent) {
+    if (!drag || !canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const target = drag.moved
+      ? player.position + dragOffset
+      : player.position + (event.clientX - rect.left - rect.width / 2) * secondsPerPixel();
+    drag = null;
+    dragOffset = 0;
+    void player.seek(target);
+  }
+
+  function onWheel(event: WheelEvent) {
+    event.preventDefault();
+    zoom = Math.max(0, Math.min(ZOOMS.length - 1, zoom + (event.deltaY > 0 ? 1 : -1)));
+  }
+
+  function onCue(index: number, event: MouseEvent) {
+    if (event.shiftKey) player.setCue(index, null);
+    else void player.cue(index);
+  }
+</script>
+
+<section class="detail" aria-label="Detail waveform" data-testid="detail-waveform">
+  <div class="cues" role="group" aria-label="Hot cues">
+    {#each Array.from({ length: CUE_COUNT }, (_, index) => index) as index (index)}
+      {@const cue = cues[index] ?? null}
+      <button
+        class:set={cue !== null}
+        style:--cue={CUE_COLOURS[index]}
+        onclick={(event) => onCue(index, event)}
+        oncontextmenu={(event) => {
+          event.preventDefault();
+          player.setCue(index, null);
+        }}
+        disabled={!current}
+        title={cue !== null
+          ? `Cue ${index + 1} at ${formatDuration(cue)}: click to jump, Shift+click to delete (key ${index + 1})`
+          : `Set cue ${index + 1} at the playhead (key ${index + 1})`}
+        aria-label={cue !== null
+          ? `Cue ${index + 1} at ${formatDuration(cue)}`
+          : `Set cue ${index + 1}`}
+        data-testid="cue-pad"
+        data-set={cue !== null}
+      >
+        {index + 1}
+      </button>
+    {/each}
+  </div>
+  <canvas
+    bind:this={canvas}
+    onpointerdown={onPointerDown}
+    onpointermove={onPointerMove}
+    onpointerup={onPointerUp}
+    onpointercancel={() => {
+      drag = null;
+      dragOffset = 0;
+    }}
+    onwheel={onWheel}
+  ></canvas>
+  <div class="zoom" role="group" aria-label="Zoom">
+    <button
+      onclick={() => (zoom = Math.max(0, zoom - 1))}
+      disabled={zoom === 0}
+      aria-label="Zoom in"
+      title="Zoom in (or the mouse wheel)">+</button
+    >
+    <span data-testid="detail-span">{ZOOMS[zoom]} s</span>
+    <button
+      onclick={() => (zoom = Math.min(ZOOMS.length - 1, zoom + 1))}
+      disabled={zoom === ZOOMS.length - 1}
+      aria-label="Zoom out"
+      title="Zoom out">−</button
+    >
+  </div>
+</section>
+
+<style>
+  .detail {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    height: 72px;
+    padding: 6px 12px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+  }
+  .cues {
+    display: grid;
+    grid-template-columns: repeat(4, 26px);
+    gap: 4px;
+    align-content: center;
+  }
+  .cues button {
+    height: 26px;
+    padding: 0;
+    border-radius: 5px;
+    font: 600 11px var(--mono);
+    color: var(--muted);
+    border-color: color-mix(in srgb, var(--cue) 40%, var(--border));
+  }
+  .cues button.set {
+    background: var(--cue);
+    border-color: var(--cue);
+    color: #000;
+  }
+  canvas {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border-radius: 6px;
+    background: #0b0b14;
+    cursor: grab;
+    touch-action: none;
+  }
+  canvas:active {
+    cursor: grabbing;
+  }
+  .zoom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font: 11px var(--mono);
+    color: var(--muted);
+  }
+  .zoom button {
+    width: 26px;
+    height: 22px;
+    padding: 0;
+  }
+</style>

@@ -1,6 +1,6 @@
 # Vibe Visualizer — Tech Stack
 
-> **Status:** v0.5 (2026-09-29), accepted (Q16). It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export. The P0 spikes passed on the main target machine (see [§5](#5-spikes-p0)).
+> **Status:** v0.6 (2026-09-29), accepted (Q16). It builds on the decisions in [FEATURES.md](FEATURES.md#8-decision-log): video production first, files up to 3 h, desktop first, MP4 export. The P0 spikes passed on the main target machine (see [§5](#5-spikes-p0)).
 
 ## 1. The stack at a glance
 
@@ -17,7 +17,7 @@
 | Tags & cover art | Mediabunny (`getMetadataTags`) | Title, artist, album, BPM and cover art for MP3, MP4, FLAC, Ogg and WAV; a separate tag library is not needed |
 | Video/audio encoding | WebCodecs, hardware-accelerated where available; `@mediabunny/aac-encoder` (WebAssembly) as AAC fallback | Fast and native; no 30 MB ffmpeg.wasm download |
 | Thread communication | SharedArrayBuffer ring buffers for realtime data; a small RPC helper for control calls | No memory allocation on the audio thread, so no crackles. The spikes use a 100-line helper; whether Comlink is worth it is decided in P1 |
-| Storage | IndexedDB (via `idb`) for settings, presets, cues and file handles; Origin Private File System for caches and render segments | Persistent, large, usable from workers |
+| Storage | localStorage for settings, presets, and each file's cues and markers; IndexedDB (a thin wrapper, no library needed) for the queue and its file handles; Origin Private File System for the analysis cache, images and render segments | Persistent, large, usable from workers; file handles can only be kept in IndexedDB |
 | Validation | Zod 4 | Checks imported preset and project files; TypeScript types come from the schemas |
 | FFT | fft.js (MIT) | Fast radix-4 FFT in plain JS; easy to replace |
 | Tests | Vitest 5 (unit and DSP golden tests; browser mode for WebGL and WebCodecs), Playwright (end-to-end) | Shares Vite's config; GPU and codec tests run in real Chromium |
@@ -52,11 +52,12 @@ file ─► decode ─► tempo ─► filter ─┬─► delay ─► reverb �
 
 **Live** (built in P1 M1 and M2; the sound chain in P3 M1)
 
-1. **Media worker:** reads the file in pieces, decodes it (Mediabunny + WebCodecs) and converts it to the engine rate of 48 kHz with a windowed-sinc resampler. It stays a few seconds ahead of playback. Every seek starts a new ring "generation"; the AudioWorklet drops older audio within one render quantum.
+1. **Media worker:** reads the file in pieces, decodes it (Mediabunny + WebCodecs) and converts it to the engine rate of 48 kHz with a windowed-sinc resampler. It stays a few seconds ahead of playback. Every seek starts a new ring "generation"; the AudioWorklet drops older audio within one render quantum. Gapless playback (P3 M2, PL-05): files are known by tokens, and the player answers, for the heard file, which one follows it. At the end of a file the stream waits for that answer and takes it when the ring is down to 1.5 s, so the queue can still change until then; the next file follows in the same generation, and the ring records where it starts (a ring of four boundaries, for short files). The worklet passes the boundaries as they are heard and publishes the position within the heard file and its token; the player follows that token. An answer that comes too late (the stream is already in the next file) makes the player restart the stream at the current position with the new plan.
 2. **AudioWorklet:** plays the stream through the sound chain (below) and analyses the music at its new tempo, after the filter and before the delay: 64-band spectrum, six band energies, kick/snare/hi-hat hits, the beat (tempo, phase, confidence), loudness and an oscilloscope snapshot, about 94 times per second ([ANALYSIS.md](ANALYSIS.md)). Paused, the music stops but the effects' tails ring out, seeks still take effect and the analysis goes on. With live input (P5) it analyses its input instead: an audio input (getUserMedia with voice processing off) or tab/screen audio (getDisplayMedia) goes through an input gain into the worklet, and a monitor branch (off by default) plays it, without effects. The master volume is a gain node after the worklet.
-3. **Feature timeline:** a shared-memory history of analysis frames with timestamps. The renderer looks up the frame for the moment you actually hear (via the AudioContext's output timestamp; calibration offset: AN-06) and interpolates between frames.
+3. **Feature timeline:** a shared-memory history of analysis frames with timestamps. The renderer looks up the frame for the moment you actually hear and interpolates between frames. That moment comes from the AudioContext's output timestamp, which includes the output latency the browser reports, minus the A/V sync offset (AN-06), which the user sets or calibrates for what the browser does not report (Bluetooth; Chrome on macOS reports 0 ms).
 4. **Renderer:** WebGL2 in a render worker on an OffscreenCanvas (M2, M3), paced by the worker's own requestAnimationFrame. The worker keeps both visual modes as scenes and switches between them without losing their state. The Kaleidoscope's feedback runs in fixed steps of 1/60 s, interpolated for display, so it looks the same at any frame rate and in the export. The main thread sends the audio clock (output timestamp) four times a second; the worker extrapolates it, reads the feature timeline directly from shared memory and renders at the canvas's native resolution. With live input the music is heard directly, so the worker shows the newest analysis frame instead (never looking past it, so no hit is lost). Scenes draw into half-float buffers, then bloom and dithering. The analysis view (Canvas 2D, main thread) remains as a debug mode.
-5. **Main thread:** Svelte UI and the app state; every command is a timestamped action (NF-08).
+5. **Main thread:** Svelte UI and the app state; every command is a timestamped action (NF-08). The queue (entries, what is known about them, the file handles Chromium gives) is kept in IndexedDB (SRC-05).
+6. **Track analysis** (P3 M2): a worker decodes each file of the queue at its own sample rate, one at a time and the playing one first. It builds the waveform of the timeline (200 columns per second: the peak and the lows, mids and highs, one byte each) and runs the analyzer to collect the onset features for the beat grid (AN-07, [ANALYSIS.md](ANALYSIS.md#4-beat-grid-for-files)). Both are stored in the Origin Private File System under the file's fingerprint (SHA-256 of its size and three 256 KB samples), so a known file is ready at once. The grid goes to the AudioWorklet by token and replaces the live beat tracking while that file plays; the export takes it along.
 
 **Sound chain** (P3 M1, `core/audio/dsp/`): plain TypeScript, allocation-free after construction, run in 128-frame blocks in the AudioWorklet and in the export worker alike (EX-02).
 
@@ -102,9 +103,11 @@ src/
       dsp/       sound chain: tempo stage, DJ filter, delay, reverb, limiter, sound settings and
                  presets
       engine/    media worker, engine AudioWorklet, AudioEngine facade
-    analysis/    analyzer (FFT, bands), drum detection, beat tracker, feature layout, feature
-                 timeline; eval/ has the synthetic test mix and the scoring (docs/ANALYSIS.md)
-    library/     probe worker (tags, duration, cover art)
+    analysis/    analyzer (FFT, bands), drum detection, beat tracker, beat grid for files,
+                 waveform, feature layout, feature timeline; eval/ has the synthetic test mix and
+                 the scoring (docs/ANALYSIS.md)
+    library/     probe worker (tags, duration, cover art), fingerprints, track analysis worker
+                 and its cache, folder reading, the stored queue
     render/      renderer facade and render worker (OffscreenCanvas, WebGL2), scenes (Logo
                  Spectrum; Kaleidoscope with Vortex and Crystal Mandala), spectrum shaping,
                  fixed-step feedback, post-processing (bloom, dithering), settings, parameter specs
@@ -112,11 +115,12 @@ src/
     export/      export worker (audio pass, video pass, join), formats and presets, job plan,
                  stored analysis replay, job storage in the Origin Private File System, Exporter
                  facade
-    player/      Player: connects the state with the engine
+    player/      Player: connects the state with the engine; the play order (shuffle, repeat)
     state/       store with timestamped actions, app state, persistence
     env/, util/, video/
   ui/            Svelte app: shell, top bar, stage, analysis view, queue, sound, visuals and live
-                 panels, transport, export dialog
+                 panels, transport with waveform and cues, detail waveform, export, A/V sync and
+                 shortcut dialogs
   spikes/        Spike Lab and the P0 prototypes (throwaway)
 vite-plugins/    extraction of the Signalsmith Stretch WASM core
 tests/e2e/       Playwright tests

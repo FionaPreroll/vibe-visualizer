@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { isClean } from '../core/audio/dsp/sound-settings';
+  import { REPEAT_MODES } from '../core/state/app-state';
   import { Exporter } from '../core/export/exporter';
   import { Player } from '../core/player/player';
   import { VisualAssets } from '../core/render/visual-assets';
   import AnalysisView from './AnalysisView.svelte';
+  import DetailWaveform from './DetailWaveform.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import ExportDialog from './ExportDialog.svelte';
   import LivePanel from './LivePanel.svelte';
@@ -13,6 +15,8 @@
   import PhotosensitivityNotice from './PhotosensitivityNotice.svelte';
   import { providePlayer } from './player-context';
   import QueuePanel from './QueuePanel.svelte';
+  import ShortcutHelp from './ShortcutHelp.svelte';
+  import { nextVisualMode, stepPreset } from './shortcuts';
   import SoundPanel from './SoundPanel.svelte';
   import TopBar from './TopBar.svelte';
   import TransportBar from './TransportBar.svelte';
@@ -27,6 +31,7 @@
   provideExporter(exporter);
   const app = player.store;
   let exportOpen = $state(false);
+  let helpOpen = $state(false);
   let stage: HTMLElement;
   /** In fullscreen, the mouse cursor hides after a moment without movement (DS-01). */
   let idle = $state(false);
@@ -71,10 +76,22 @@
     const onFullscreen = () => onPointerMove();
     document.addEventListener('fullscreenchange', onFullscreen);
     const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || ownsKey(event.target, event.key))
-        return;
+      // Brackets need AltGr or Option on some layouts (German, for one).
+      const bracket = event.key === '[' || event.key === ']';
+      if (event.metaKey || ((event.ctrlKey || event.altKey) && !bracket)) return;
+      if (ownsKey(event.target, event.key)) return;
       // A modal dialog (the export) has the keyboard to itself.
       if (document.querySelector('dialog[open]')) return;
+      // Hot cues (TR-04): 1–8 jump to a cue or set an empty one; with Shift they are deleted.
+      // By key position, so Shift works on every keyboard layout.
+      const digit = /^Digit([1-8])$/.exec(event.code);
+      if (digit) {
+        const index = Number(digit[1]) - 1;
+        if (event.shiftKey) player.setCue(index, null);
+        else void player.cue(index);
+        event.preventDefault();
+        return;
+      }
       const step = event.shiftKey ? 30 : 5;
       switch (event.key) {
         case ' ':
@@ -94,6 +111,29 @@
           break;
         case 'f':
           toggleFullscreen();
+          break;
+        case 'w':
+          player.updateSettings({ detailWaveform: !player.state.settings.detailWaveform });
+          break;
+        case 's':
+          player.updateSettings({ shuffle: !player.state.settings.shuffle });
+          break;
+        case 'r': {
+          const index = REPEAT_MODES.indexOf(player.state.settings.repeat);
+          player.updateSettings({ repeat: REPEAT_MODES[(index + 1) % REPEAT_MODES.length]! });
+          break;
+        }
+        case 'v':
+          nextVisualMode(player);
+          break;
+        case '[':
+          stepPreset(player, -1);
+          break;
+        case ']':
+          stepPreset(player, 1);
+          break;
+        case '?':
+          helpOpen = true;
           break;
         // In/out markers of the export range (TR-09); with Shift they are cleared.
         case 'i':
@@ -140,7 +180,11 @@
 </script>
 
 <div class="shell" class:panel-open={$app.settings.panelOpen}>
-  <TopBar onFullscreen={toggleFullscreen} onExport={() => (exportOpen = true)} />
+  <TopBar
+    onFullscreen={toggleFullscreen}
+    onExport={() => (exportOpen = true)}
+    onHelp={() => (helpOpen = true)}
+  />
 
   <main
     class="stage"
@@ -237,8 +281,12 @@
     </aside>
   {/if}
 
+  {#if $app.settings.detailWaveform && $app.currentId !== null && $app.live.status === 'off'}
+    <div class="detail-row"><DetailWaveform /></div>
+  {/if}
   <TransportBar />
   <ExportDialog open={exportOpen} onclose={() => (exportOpen = false)} />
+  <ShortcutHelp open={helpOpen} onclose={() => (helpOpen = false)} />
   <DropOverlay />
   <PhotosensitivityNotice />
 </div>
@@ -248,15 +296,20 @@
     position: fixed;
     inset: 0;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
     grid-template-columns: minmax(0, 1fr);
   }
   .shell.panel-open {
     grid-template-columns: minmax(0, 1fr) 360px;
   }
   .shell > :global(.topbar),
-  .shell > :global(.transport) {
+  .shell > :global(.transport),
+  .detail-row {
     grid-column: 1 / -1;
+  }
+  /* Without the detail waveform its row stays empty; the transport keeps the last row. */
+  .shell > :global(.transport) {
+    grid-row: 4;
   }
   .stage {
     position: relative;

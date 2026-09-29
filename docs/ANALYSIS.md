@@ -1,6 +1,6 @@
 # Vibe Visualizer — Audio Analysis
 
-> **Status:** analysis v2 (2026-09-25): new drum detection and a live beat tracker, measured on a synthetic EDM mix and on real recordings. Features: AN-01–05 and the live part of AN-07 in [FEATURES.md](FEATURES.md).
+> **Status:** analysis v2 (2026-09-25): new drum detection and a live beat tracker, measured on a synthetic EDM mix and on real recordings. Beat grid for files (2026-09-29, P3 M2): each file's beats are computed from the whole track in the background. Features: AN-01–05 and AN-07 in [FEATURES.md](FEATURES.md).
 
 The analyzer turns the audio that is playing into one **analysis frame** every 512 samples (about 94 frames per second at 48 kHz). The renderer reads the frame for the moment you hear. The same code runs live in the AudioWorklet and in the export, so both look the same (see [TECH-STACK.md](TECH-STACK.md), "one core, two clocks").
 
@@ -44,7 +44,17 @@ Code: `src/core/analysis/beat-tracker.ts`, after the BTrack algorithm (Stark, Da
 - **Offbeat check:** with steady eighth notes (hi-hats), the score cannot tell beats from offbeats and may lock onto the "and". Every four beats, the kick and drum-body energy on the beats is compared with the energy halfway between. If the halfway points are clearly stronger (× 1.3), the tracker moves by half a beat.
 - **Confidence:** onset strength on the beats compared with the average. In silence it falls within about half a second, so paused playback stops pulsing.
 
-## 4. Evaluation
+## 4. Beat grid for files
+
+Code: `src/core/analysis/beat-grid.ts`. The live tracker only knows the past, so it needs a few seconds to lock on and can drift to a related tempo. For a file, the whole track is known: a worker (`src/core/library/track-analysis.worker.ts`) decodes it in the background, runs the same analyzer over it and keeps three values per frame: the onset strength (the spectral flux, as above), the accent (kick and drum-body energy) and whether there is sound. From these:
+
+1. **Tempo path.** Every half second, the autocorrelation of the last 10 s of onsets (a running sum) is scored with a comb over four multiples of each period (75–180 BPM), times a preference for tempos around 120 BPM. A Viterbi pass over the whole track finds the most likely path of tempos: small changes are cheap, and a jump to any tempo (the next track of a mix) is possible but rare.
+2. **Beats.** Dynamic programming (after Ellis, "Beat Tracking by Dynamic Programming", 2007) chooses the sequence of beats that best matches strong onsets while each interval stays close to the local period. The accent counts extra, so the beats land on the kicks rather than on offbeat hi-hats. Each beat is refined to a fraction of a frame and moved back by the delay of the flux.
+3. **Confidence per beat.** The median score on the 8 beats on either side compared with the median score between them: noise gives a ratio of about 2, a sustained pad 1.5, real recordings 5–9. It maps to 0 below 2.5 and to 1 above 4.5; silence has none. Beats with a confidence under 0.1 are not reported.
+
+While a file with a grid plays, the worklet takes the beat fields (`beat`, `beatHit`, `beatPhase`, `bpm`, `beatConfidence`) from the grid instead of the live tracker, at the file position that is being analysed and scaled by the playback speed. The export uses the same grid. For a normal track the grid is ready a few seconds after the track was added (the grid itself takes about 20 ms; decoding and analysing the track take the rest), and it is cached in the Origin Private File System by a fingerprint of the file (SHA-256 of its size and three samples of 256 KB), together with the waveform of the timeline, so it is there at once the next time. The queue shows each track's tempo from its grid (the median beat interval).
+
+## 5. Evaluation
 
 Two test sets, scored like MIREX: a detection is correct within ±50 ms of an unmatched annotation (±70 ms for beats, after a 5 s warm-up). F1 is the harmonic mean of precision (how many detections are right) and recall (how many hits are found).
 
@@ -66,12 +76,15 @@ F1 scores:
 |---|---|---|---|---|---|
 | Real recordings, v1 | 57 % | 41 % | 65 % | — | — |
 | Real recordings, v2 | **71 %** | 42 % | **73 %** | **79 %** | 21 of 23 tracks |
+| Real recordings, beat grid (P3 M2) | | | | **87 %** | 21 of 23 tracks |
 | Synthetic EDM mix, v1 | 85 % | 74 % | 77 % | — | — |
 | Synthetic EDM mix, v2 | **88 %** | **98 %** | **82 %** | **100 %** | 124.2 BPM (truth 124) |
 
 Mean timing error of the correct detections on real recordings: v1 reported hits 8–12 ms late (up to 21 ms on the synthetic mix). v2 is within −13…+2 ms, and beats within −2 ms.
 
 Two tempo misses on real recordings are half-tempo readings of fast jazz (111 instead of 222 BPM), which is fine for visuals. Beat tracking is weakest in free jazz, latin and one track whose snare falls on the annotated offbeat.
+
+The beat grid is right more often (precision 92 %, recall 83 %) and needs no time to lock on: it scores from the first beat, where the live tracker is scored after a 5 s warm-up. It fixes the tracks where the live tracker locked onto the offbeat or a related tempo for a while (Latin jazz 27 → 97 %, Beatles 37 → 99 %, Punk 72 → 100 %). Free jazz stays hard (45 %). Computing the grids of all 23 tracks (22 minutes of music) takes about 0.4 s.
 
 **Scored for the visuals.** Ghost notes and brush strokes hardly matter for visuals, and hi-hat hits on a ride or crash cymbal are fine. Scored that way on the real recordings:
 
@@ -80,14 +93,15 @@ Two tempo misses on real recordings are half-tempo readings of fast jazz (111 in
 | Snare (recall without ghost notes and brushes) | 48 % (precision 50 %, recall 46 %) | 46 % (precision 40 %, recall 54 %) |
 | Hi-hat (cymbals count as correct) | 76 % | 78 % |
 
-## 5. Limits and next steps
+## 6. Limits and next steps
 
 - **Bass notes as loud as the kick** in 40–100 Hz still count as kicks. So do toms. A sub bass on the offbeat is usually quieter than the kick and is rejected.
 - **Snares in dense acoustic mixes** (guitars, piano): precision stays around 40 %. v2 favours electronic snares and claps.
-- **Half and double tempo** are not resolved; the tracker prefers tempos near 120 BPM.
+- **Half and double tempo** are not resolved; the tracker and the grid prefer tempos near 120 BPM.
+- **Live input** has no grid: it is heard as it comes, so the live tracker stays in charge there.
 
 Planned:
 
-- **Whole-track analysis for files and exports (AN-07).** For files, the whole track can be analysed ahead of time in a worker: with look-ahead, thresholds per track and a beat grid over the whole track. This is the next step for accuracy and fits the export (P2).
+- **Drums from the whole track.** The beat grid uses the whole file; drum detection does not yet. With look-ahead and thresholds per track, it could get more precise too, for files and exports.
 - **Stem separation (AN-10).** Detecting drums on a separated drum stem is the big jump in accuracy. It needs an on-device model, which is heavy but fine for offline rendering.
 - **Controls.** Sensitivity per drum and a beat nudge in the visuals panel.
