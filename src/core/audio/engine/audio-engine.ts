@@ -46,6 +46,7 @@ export class AudioEngine {
   private monitoring = false;
   private soundSettings: SoundSettings = DEFAULT_SOUND;
   private nudgeFactor = 1;
+  private offset = 0;
 
   constructor() {
     this.timeline = new FeatureTimelineReader(this.timelineBuffer);
@@ -193,6 +194,49 @@ export class AudioEngine {
     });
   }
 
+  /**
+   * How much later the sound is heard than the browser reports, in seconds (AN-06): the visuals
+   * follow {@link outputClock}, which counts it in. Live input is unaffected (it is heard
+   * directly).
+   */
+  get syncOffset(): number {
+    return this.offset;
+  }
+
+  set syncOffset(seconds: number) {
+    this.offset = seconds;
+  }
+
+  /** The output latency the browser reports in seconds (null before {@link start}). */
+  get reportedLatency(): number | null {
+    const context = this.context;
+    return context ? context.baseLatency + (context.outputLatency || 0) : null;
+  }
+
+  /** The audio clock (seconds); 0 before {@link start}. */
+  get contextTime(): number {
+    return this.context?.currentTime ?? 0;
+  }
+
+  /**
+   * A short tick at context time `at`, next to the music (for the sync calibration); it goes
+   * through the volume.
+   */
+  beep(at: number): void {
+    const context = this.context;
+    if (!context || !this.gain) return;
+    const tone = context.createOscillator();
+    tone.frequency.value = 1500;
+    const envelope = context.createGain();
+    envelope.gain.setValueAtTime(0, at);
+    envelope.gain.linearRampToValueAtTime(0.5, at + 0.002);
+    envelope.gain.exponentialRampToValueAtTime(0.001, at + 0.06);
+    tone.connect(envelope).connect(this.gain);
+    tone.start(at);
+    tone.stop(at + 0.07);
+    tone.onended = () => envelope.disconnect();
+  }
+
   private post(message: EngineMessage): void {
     this.node?.port.postMessage(message);
   }
@@ -289,7 +333,8 @@ export class AudioEngine {
   /**
    * A pair of matching times: `contextTime` (seconds on the audio clock) is being heard at
    * `performanceTime` (milliseconds since the epoch, `performance.timeOrigin + now()`, so that
-   * workers with their own time origin can use it). Null before {@link start}.
+   * workers with their own time origin can use it). It counts in the latency the browser
+   * reports and the {@link syncOffset}. Null before {@link start}.
    */
   outputClock(): { contextTime: number; performanceTime: number } | null {
     const context = this.context;
@@ -301,13 +346,13 @@ export class AudioEngine {
       stamp.performanceTime > 0
     ) {
       return {
-        contextTime: stamp.contextTime,
+        contextTime: stamp.contextTime - this.offset,
         performanceTime: performance.timeOrigin + stamp.performanceTime,
       };
     }
     const latency = context.baseLatency + (context.outputLatency || 0);
     return {
-      contextTime: context.currentTime - latency,
+      contextTime: context.currentTime - latency - this.offset,
       performanceTime: performance.timeOrigin + performance.now(),
     };
   }

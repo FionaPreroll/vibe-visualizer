@@ -108,6 +108,7 @@ export class Player {
     );
     this.engine.volume = this.state.settings.volume;
     this.engine.inputGainDecibels = this.state.settings.inputGain;
+    this.engine.syncOffset = this.state.settings.syncOffset / 1000;
     this.engine.sound = this.state.sound;
     let lastSettings = this.state.settings;
     let lastVisuals = this.state.visuals;
@@ -146,6 +147,7 @@ export class Player {
       saveSettings(state.settings);
       this.engine.volume = state.settings.volume;
       this.engine.inputGainDecibels = state.settings.inputGain;
+      this.engine.syncOffset = state.settings.syncOffset / 1000;
     });
     this.endCheck = setInterval(() => {
       this.followStream();
@@ -268,12 +270,14 @@ export class Player {
     this.planNext();
   }
 
-  /** Remembers `id` as played in this shuffle round; a new round starts once all have. */
+  /**
+   * Remembers `id` as played in this shuffle round. Once all have played, the next one starts a
+   * new round (with repeat off, the plan then ends the queue instead).
+   */
   private notePlayed(id: string): void {
     const playable = this.state.tracks.filter(isPlayable);
-    const played = [...this.played.filter((entry) => entry !== id), id];
-    const round = playable.every((track) => played.includes(track.id));
-    this.played = round ? [id] : played;
+    const complete = playable.every((track) => this.played.includes(track.id));
+    this.played = complete ? [id] : [...this.played.filter((entry) => entry !== id), id];
   }
 
   get state(): AppState {

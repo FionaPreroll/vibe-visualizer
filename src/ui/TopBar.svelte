@@ -8,8 +8,9 @@
   interface Props {
     onFullscreen: () => void;
     onExport: () => void;
+    onHelp: () => void;
   }
-  let { onFullscreen, onExport }: Props = $props();
+  let { onFullscreen, onExport, onHelp }: Props = $props();
 
   const player = usePlayer();
   const app = player.store;
@@ -98,6 +99,15 @@
         Export
       {/if}
     </button>
+    <button
+      class="toggle help"
+      onclick={onHelp}
+      aria-label="Keyboard shortcuts"
+      title="Keyboard shortcuts (?)"
+      data-testid="shortcuts-button"
+    >
+      ?
+    </button>
     <a class="lab" href="#/lab">Spike Lab</a>
   </nav>
 </header>
@@ -146,6 +156,11 @@
   }
   .toggle.on {
     background: var(--surface-2);
+  }
+  .help {
+    width: 32px;
+    justify-content: center;
+    font-weight: 700;
   }
   .aspect {
     margin-right: 2px;

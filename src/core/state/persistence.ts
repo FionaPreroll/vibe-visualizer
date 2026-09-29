@@ -16,6 +16,7 @@ import {
   INPUT_GAIN_RANGE,
   PANEL_TABS,
   REPEAT_MODES,
+  SYNC_OFFSET_RANGE,
   VISUAL_MODES,
   type Cues,
   type Marks,
@@ -114,6 +115,9 @@ export function loadSettings(): Settings {
     settings.inputGain = Number.isFinite(settings.inputGain)
       ? Math.max(INPUT_GAIN_RANGE.min, Math.min(INPUT_GAIN_RANGE.max, settings.inputGain))
       : DEFAULT_SETTINGS.inputGain;
+    settings.syncOffset = Number.isFinite(settings.syncOffset)
+      ? Math.max(SYNC_OFFSET_RANGE.min, Math.min(SYNC_OFFSET_RANGE.max, settings.syncOffset))
+      : DEFAULT_SETTINGS.syncOffset;
   } catch {
     // Unreadable storage: defaults.
   }

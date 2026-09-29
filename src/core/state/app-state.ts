@@ -77,6 +77,12 @@ export const PANEL_TABS: readonly PanelTab[] = ['queue', 'sound', 'visuals', 'li
 /** Input gain range in dB (IN-03). */
 export const INPUT_GAIN_RANGE = { min: -24, max: 24 } as const;
 
+/**
+ * Range of the A/V sync offset in ms (AN-06): positive when the sound is heard later than the
+ * browser reports (Bluetooth), negative when it reports too much.
+ */
+export const SYNC_OFFSET_RANGE = { min: -200, max: 500 } as const;
+
 export interface Settings {
   volume: number;
   visualMode: VisualMode;
@@ -97,6 +103,8 @@ export interface Settings {
   shuffle: boolean;
   /** At the end: stop, start the queue again, or repeat the track (PL-04). */
   repeat: RepeatMode;
+  /** The visuals come this much later (ms), on top of the latency the browser reports (AN-06). */
+  syncOffset: number;
 }
 
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -210,6 +218,7 @@ export const DEFAULT_SETTINGS: Settings = {
   detailWaveform: true,
   shuffle: false,
   repeat: 'off',
+  syncOffset: 0,
 };
 
 export function initialState(
