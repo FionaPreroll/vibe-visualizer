@@ -78,7 +78,10 @@ test('exports the range between the markers as a video file', async ({ page }) =
   await play.click();
   await expect(play).toHaveAttribute('aria-label', 'Play');
 
-  // Markers at 5 s and at the end, set with the keys while the timeline has focus (TR-09).
+  // Markers at 5 s and at the end, set with the keys while the timeline has focus (TR-09);
+  // not snapped to the beat here (Q), so they land where they were set.
+  await page.getByTestId('quantize').click();
+  await expect(page.getByTestId('quantize')).toHaveAttribute('aria-pressed', 'false');
   await page.getByTestId('timeline').focus();
   await page.keyboard.press('Home');
   await expect.poll(() => elapsed(page)).toBe(0);

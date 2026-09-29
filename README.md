@@ -1,5 +1,7 @@
 # Vibe Visualizer
 
+The app calls itself **FibeStation**; double-click the name in the top bar to give it another one.
+
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
 > **Status:** P1, P2, P3 and P5 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, the video export (whole tracks or clips, in segments that survive a crash), live input from audio devices and other apps, tempo (vinyl and key lock) and effects (DJ filter, delay, reverb, one-click "Slowed + Reverb", "Sped up" and "Nightcore"), waveforms and hot cues, a beat grid for files, gapless playback with shuffle and repeat, folders, a queue that survives reloads, A/V sync calibration and a shortcut overview. Next: P4 (more scenes and video polish).
@@ -20,9 +22,12 @@ Then open http://localhost:5173 in Chrome or Firefox. The dev server sends the c
 
 Drop audio files or whole folders onto the window (or click **Add files**, or the folder button next to it); several files make a queue. Folders are read with their subfolders and sorted by track number (or else by file name, so "2 …" comes before "10 …"); covers and playlists in them are skipped. Double-click a track to play it.
 
-- **Shortcuts:** press **?** (or the ? in the top bar) for all of them. The main ones: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, 1–8 hot cues, I/O in and out markers, −/+ tempo in steps of 0.1 %, V the next visual mode, [ and ] the previous or next preset, F fullscreen.
+- **Shortcuts:** press **?** (or the ? in the top bar) for all of them. The main ones: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, 1–8 hot cues, I/O in and out markers, Q snap to the beat, −/+ tempo in steps of 0.1 %, V the next visual mode, [ and ] the previous or next preset, F fullscreen, Ctrl+Z (Cmd+Z) undo.
+- **In and out markers:** press I and O (or the bracket buttons next to Stop) to mark the part of a track that plays and exports. Played from the queue, a track starts at its in marker, and at its out marker the next track follows, crossing over in 10 ms so the cut does not click. With *repeat the track*, the part loops. Past the out marker (after a jump there) the track plays to its end. Drag a marker on the timeline or in the detail waveform to move it; with a marker focused, ← and → move it by a beat. The chip next to the buttons shows the part and its length; click it to clear the markers.
+- **Snap to the beat:** the magnet button (Q), on by default, puts markers and cues on the nearest beat of the track's beat grid when you set or drag them.
+- **Undo:** removing a track, clearing the queue, deleting a cue or clearing markers shows an *Undo* button for a few seconds (or press Ctrl+Z).
 - **Queue:** tracks follow each other without a gap, also between files with different sample rates. The buttons next to Stop switch shuffle and repeat (off, the whole queue, or the track); S and R do the same. The queue and the current track are still there after a reload. In Chrome and Edge the files come back too (after restarting the browser, click **Allow** once in the queue); other browsers keep the entries, and adding the files or their folder again brings them back, with their cues.
-- **Waveforms and cues:** the timeline shows the track's waveform (colours: bass red, mids green, highs blue), computed in the background, also for mixes of several hours. Above it, the detail waveform (W switches it on and off) shows a few seconds around the playhead with the beats; drag it to seek, scroll to zoom. Eight hot cues per track: press 1–8 (or click a pad) to set a cue where it is empty or to jump to it, Shift+1–8 deletes it. Cues and markers are kept per file and come back whenever you add the file again.
+- **Waveforms and cues:** the timeline shows the track's waveform (colours: bass red, mids green, highs blue), computed in the background, also for mixes of several hours. Above it, the detail waveform (W switches it on and off) shows a few seconds around the playhead with the beats; drag it to seek, scroll to zoom. Eight hot cues per track: press 1–8 (or click a pad) to set a cue where it is empty or to jump to it, Shift+1–8 deletes it. Jumps fade over a few milliseconds, like pausing and resuming, so they do not click. Cues and markers are kept per file and come back whenever you add the file again.
 - **Beat grid:** each file is analysed as a whole in the background. The visuals then follow its beats and its tempo (also through tempo changes within a mix) instead of guessing them live; the queue shows each track's BPM.
 
 The top bar switches the stage between three views:
@@ -63,7 +68,7 @@ While live input runs, the visuals follow it without delay and the queue pauses;
 
 ## Exporting videos
 
-Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K30*, *TikTok / Shorts 1080×1920*, or your own aspect ratio, size and frame rate), the quality, and the range: the whole track or the part between the markers. For a 30-second clip, play the track and press I at the start and O at the end (or use the bracket buttons next to Stop). The dialog shows the codecs, the sound and the video's length (a slowed-down track makes a longer video) and the estimated file size. The export uses the same scenes, analysis, settings, tempo and effects as the preview, so the video looks and sounds like what you see and hear. With a sound preset, its name goes into the file name, e.g. "Artist - Title (Slowed + Reverb).mp4".
+Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K30*, *TikTok / Shorts 1080×1920*, or your own aspect ratio, size and frame rate), the quality, and the range: the whole track or the part between the markers. For a 30-second clip, play the track and press I at the start and O at the end (or use the bracket buttons next to Stop); they snap to the beat unless snapping (Q) is off. The dialog shows the codecs, the sound and the video's length (a slowed-down track makes a longer video) and the estimated file size. The export uses the same scenes, analysis, settings, tempo and effects as the preview, so the video looks and sounds like what you see and hear. With a sound preset, its name goes into the file name, e.g. "Artist - Title (Slowed + Reverb).mp4".
 
 - The video is rendered frame by frame, independent of the speed of your graphics card: a slower machine just takes longer, and the result is always smooth.
 - In Chrome and Edge you pick the file first; the video is written straight into it. Other browsers keep it in browser storage and download it at the end.
@@ -73,7 +78,7 @@ Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K
 
 ## Spike Lab (P0)
 
-The Spike Lab (http://localhost:5173/#/lab, or the link in the top bar) has five small prototypes that test the risky parts on your machine.
+The Spike Lab (http://localhost:5173/#/lab; the development server also links it in the top bar) has five small prototypes that test the risky parts on your machine.
 
 | Spike | Tests | You need |
 |---|---|---|
