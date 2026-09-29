@@ -14,6 +14,7 @@ import {
   CUE_COUNT,
   DEFAULT_SETTINGS,
   INPUT_GAIN_RANGE,
+  APP_NAME_LENGTH,
   PANEL_TABS,
   REPEAT_MODES,
   SYNC_OFFSET_RANGE,
@@ -115,6 +116,8 @@ export function loadSettings(): Settings {
     settings.inputGain = Number.isFinite(settings.inputGain)
       ? Math.max(INPUT_GAIN_RANGE.min, Math.min(INPUT_GAIN_RANGE.max, settings.inputGain))
       : DEFAULT_SETTINGS.inputGain;
+    settings.appName =
+      settings.appName.trim().slice(0, APP_NAME_LENGTH) || DEFAULT_SETTINGS.appName;
     settings.syncOffset = Number.isFinite(settings.syncOffset)
       ? Math.max(SYNC_OFFSET_RANGE.min, Math.min(SYNC_OFFSET_RANGE.max, settings.syncOffset))
       : DEFAULT_SETTINGS.syncOffset;

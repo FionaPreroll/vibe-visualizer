@@ -59,9 +59,10 @@ class EngineProcessor extends AudioWorkletProcessor {
   private heardToken = 0;
   private heardOffset = 0;
   private heardBase = 0;
-  /** The next file boundary of the stream (-1: none) and the next file's token. */
+  /** The next file boundary of the stream (-1: none), the next file's token and its frame there. */
   private nextStart = -1;
   private nextToken = 0;
+  private nextBase = 0;
   /** Beat grids of the files (AN-07), by token: they replace the live beat tracking. */
   private readonly grids = new Map<number, GridBeats>();
   private readonly onAnalysisFrame: (offset: number) => void;
@@ -89,7 +90,7 @@ class EngineProcessor extends AudioWorkletProcessor {
       let frame = this.heardBase + stream - this.heardOffset;
       if (this.nextStart >= 0 && stream >= this.nextStart) {
         token = this.nextToken;
-        frame = stream - this.nextStart;
+        frame = this.nextBase + stream - this.nextStart;
       }
       const seconds = frame / sampleRate;
       if (this.blockRate > 0) {
@@ -126,7 +127,11 @@ class EngineProcessor extends AudioWorkletProcessor {
       this.music = [new Float32Array(frames), new Float32Array(frames)];
     }
     const music = this.music;
-    // A seek (or a new file) starts a new stream; the effects' tails carry on.
+    // A seek (or a new file) starts a new stream. While playing, the old one fades out under
+    // it (a soft jump); the effects' tails carry on.
+    if (this.consumer.switchPending && this.generation >= 0 && !this.control.live) {
+      this.dsp.fadeOutStream(this.consumer);
+    }
     const generation = this.consumer.syncGeneration();
     if (generation !== this.generation) {
       this.generation = generation;
@@ -139,13 +144,14 @@ class EngineProcessor extends AudioWorkletProcessor {
     }
     this.nextStart = this.consumer.nextStart;
     this.nextToken = this.consumer.nextToken;
+    this.nextBase = this.consumer.nextBase;
     this.blockSource = this.dsp.musicPosition;
     if (this.control.live) {
       this.dsp.renderMusic(null, music, frames);
       this.analyseInput(inputs[0], frames);
     } else {
       const playing = !this.control.paused;
-      this.dsp.renderMusic(playing ? this.consumer : null, music, frames);
+      this.dsp.renderMusic(this.consumer, music, frames, playing);
       if (playing && this.dsp.underrun) this.consumer.countUnderrun();
       const rate = this.dsp.playbackRate;
       if (playing && Math.abs(rate / this.analysedRate - 1) > 1e-4) {
@@ -165,7 +171,7 @@ class EngineProcessor extends AudioWorkletProcessor {
     if (this.nextStart >= 0 && heard >= this.nextStart) {
       this.heardToken = this.nextToken;
       this.heardOffset = this.nextStart;
-      this.heardBase = 0;
+      this.heardBase = this.nextBase;
       this.consumer.passBoundary();
     }
     this.consumer.publish(

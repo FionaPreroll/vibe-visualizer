@@ -169,10 +169,16 @@
   {#if missing > 0}
     <div class="notice" data-testid="queue-missing">
       <Icon name="alert" size={18} />
-      <span>
-        {missing === 1 ? 'One track needs its file' : `${missing} tracks need their files`} again: add
-        the files or their folder, and they come back with their cues.
-      </span>
+      <div class="notice-body">
+        <span>
+          {missing === 1 ? 'One track needs its file' : `${missing} tracks need their files`} again: add
+          the files or their folder, and they come back with their cues.
+        </span>
+        <div class="notice-actions">
+          <button onclick={addFiles} data-testid="missing-add-files">Add files</button>
+          <button onclick={addFolder} data-testid="missing-add-folder">Add folder</button>
+        </div>
+      </div>
     </div>
   {/if}
 
@@ -345,8 +351,14 @@
     font-size: 13px;
     color: var(--muted);
   }
-  .notice span {
+  .notice span,
+  .notice-body {
     flex: 1;
+  }
+  .notice-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
   }
   .notice button {
     padding: 4px 10px;

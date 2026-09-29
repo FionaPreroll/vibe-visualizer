@@ -25,6 +25,7 @@ export const SHORTCUTS: readonly { title: string; keys: readonly [string[], stri
       [['1–8'], 'Jump to a hot cue, or set it where it is empty'],
       [['Shift + 1–8'], 'Delete a hot cue'],
       [['I', 'O'], 'Set the in or out marker (with Shift: clear it)'],
+      [['Q'], 'Snap markers and cues to the beat, or not'],
       [['W'], 'Detail waveform on or off'],
     ],
   },

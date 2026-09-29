@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ASPECT_RATIOS, isAspectRatio } from '../core/export/video-format';
-  import type { VisualMode } from '../core/state/app-state';
+  import { APP_NAME_LENGTH, DEFAULT_APP_NAME, type VisualMode } from '../core/state/app-state';
   import { useExporter } from './exporter-context';
   import Icon, { type IconName } from './Icon.svelte';
   import { usePlayer } from './player-context';
@@ -15,6 +15,28 @@
   const player = usePlayer();
   const app = player.store;
   const exporter = useExporter();
+
+  /** Renaming the app (a double-click on its name): the name being typed. */
+  let renaming = $state(false);
+  let draft = $state('');
+  let nameInput: HTMLInputElement | undefined = $state();
+
+  $effect(() => {
+    if (renaming) nameInput?.select();
+  });
+
+  function startRenaming() {
+    draft = $app.settings.appName;
+    renaming = true;
+  }
+
+  function finishRenaming(save: boolean) {
+    if (!renaming) return;
+    renaming = false;
+    if (!save) return;
+    const name = draft.trim().slice(0, APP_NAME_LENGTH);
+    player.updateSettings({ appName: name || DEFAULT_APP_NAME });
+  }
 
   const MODES: { id: VisualMode; label: string; title: string; icon: IconName }[] = [
     { id: 'logoSpectrum', label: 'Logo Spectrum', title: 'Logo Spectrum visuals', icon: 'ring' },
@@ -37,7 +59,30 @@
         fill="url(#brand-gradient)"
       />
     </svg>
-    <span>Vibe Visualizer</span>
+    {#if renaming}
+      <input
+        class="name"
+        bind:this={nameInput}
+        bind:value={draft}
+        maxlength={APP_NAME_LENGTH}
+        aria-label="Name of the app"
+        onkeydown={(event) => {
+          if (event.key === 'Enter') finishRenaming(true);
+          else if (event.key === 'Escape') finishRenaming(false);
+        }}
+        onblur={() => finishRenaming(true)}
+        data-testid="app-name-input"
+      />
+    {:else}
+      <button
+        class="name"
+        ondblclick={startRenaming}
+        title="Double-click to rename the app"
+        data-testid="app-name"
+      >
+        {$app.settings.appName}
+      </button>
+    {/if}
   </div>
   <nav>
     <div class="modes" role="group" aria-label="Visual mode">
@@ -108,7 +153,8 @@
     >
       ?
     </button>
-    <a class="lab" href="#/lab">Spike Lab</a>
+    <!-- The Spike Lab (P0 prototypes) is for development; built apps reach it at #/lab. -->
+    {#if import.meta.env.DEV}<a class="lab" href="#/lab">Spike Lab</a>{/if}
   </nav>
 </header>
 
@@ -126,6 +172,24 @@
     align-items: center;
     gap: 10px;
     font-weight: 600;
+  }
+  .name {
+    padding: 2px 4px;
+    margin-left: -4px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 16px;
+  }
+  button.name:hover {
+    border-color: var(--border);
+  }
+  input.name {
+    width: 14em;
+    border-color: var(--accent);
+    background: var(--surface-2);
   }
   nav {
     display: flex;

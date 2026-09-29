@@ -1,4 +1,4 @@
-import type { BeatGrid } from '../analysis/beat-grid';
+import { nearestBeat, type BeatGrid } from '../analysis/beat-grid';
 import { rateLimits, TEMPO_STEP, type SoundSettings } from '../audio/dsp/sound-settings';
 import { AudioEngine, type NextFile } from '../audio/engine/audio-engine';
 import {
@@ -32,6 +32,7 @@ import {
   restoredTrack,
   type AppAction,
   type AppState,
+  type Marks,
   type Settings,
   type Track,
 } from '../state/app-state';
@@ -55,6 +56,23 @@ import { WorkerClient } from '../util/worker-rpc';
 
 /** Speed change while nudging (TMP-03). */
 export const NUDGE = 0.04;
+/** How long a removal or deletion can be undone (seconds). */
+const UNDO_SECONDS = 8;
+
+/** Where a track starts when it plays from the queue: its in marker (TR-09), or its start. */
+function startOf(track: Track | null | undefined): number {
+  return track?.marks.in ?? 0;
+}
+
+/**
+ * Where playback of `track` from `position` on stops: at its out marker while that lies ahead,
+ * otherwise at its end (null). So the markers make a play range, and the queue moves on at the
+ * out marker; past it (after a seek) the track plays to its end.
+ */
+function endFrom(track: Track | null | undefined, position: number): number | null {
+  const out = track?.marks.out ?? null;
+  return out !== null && position < out ? out : null;
+}
 
 /**
  * Connects the queue state with the audio engine: every user command goes through here, is
@@ -86,7 +104,16 @@ export class Player {
   private plan: {
     after: number;
     order: string;
-    next: { id: string; token: number } | null;
+    /** The next track, and the range it plays (its markers when planned). */
+    next: { id: string; token: number; start: number; end: number | null } | null;
+  } | null = null;
+  /** Position of the loaded track when last read (shown while the engine counts in another). */
+  private lastPosition = 0;
+  /** The last removal or deletion, while it can be undone; `release` lets it go for good. */
+  private undoEntry: {
+    restore: () => void;
+    release: () => void;
+    timer: ReturnType<typeof setTimeout>;
   } | null = null;
   /** Beat grids the engine has, by token. */
   private readonly sentGrids = new Map<number, BeatGrid | null>();
@@ -125,7 +152,11 @@ export class Player {
       lastCurrent = state.currentId;
       if (state.tracks !== lastTracks) {
         this.storeTrackData(lastTracks, state.tracks);
+        // The playing track's out marker may have moved: its stream stops somewhere else now.
+        const before = lastTracks.find((track) => track.id === this.loadedId);
+        const after = state.tracks.find((track) => track.id === this.loadedId);
         lastTracks = state.tracks;
+        if (before && after && before.marks !== after.marks) this.updateEnd();
       }
       // The queue or the order changed: the track that follows may be another one.
       if (queueChanged) this.planNext();
@@ -214,14 +245,20 @@ export class Player {
       this.state.tracks.some((track) => track.id === kept.id && isPlayable(track));
     const id = keep ? kept.id : nextTrack(this.state.tracks, currentId, this.played, order, true);
     const nextId = id !== null && this.files.has(id) ? id : null;
+    const track = this.state.tracks.find((entry) => entry.id === nextId);
+    const start = startOf(track);
+    const end = track?.marks.out ?? null;
     if (old && (old.next?.id ?? null) === nextId) {
       old.order = key;
-      return false;
+      // The same track, but its markers moved: the same file, with another range.
+      if (!old.next || (old.next.start === start && old.next.end === end)) return false;
+      old.next = { ...old.next, start, end };
+      return true;
     }
     this.plan = {
       after,
       order: key,
-      next: nextId === null ? null : { id: nextId, token: this.newToken(nextId) },
+      next: nextId === null ? null : { id: nextId, token: this.newToken(nextId), start, end },
     };
     return true;
   }
@@ -230,7 +267,24 @@ export class Player {
   private nextFile(): NextFile | null {
     const next = this.plan?.next;
     const file = next ? this.files.get(next.id) : undefined;
-    return next && file ? { file, token: next.token } : null;
+    return next && file ? { file, token: next.token, start: next.start, end: next.end } : null;
+  }
+
+  /**
+   * The playing track's out marker moved: the stream stops at the new one. If it has already
+   * taken the audio beyond, it starts again at the current position.
+   */
+  private updateEnd(): void {
+    if (this.loadedId === null || this.live || this.busy) return;
+    const token = this.loadedToken;
+    const track = this.state.tracks.find((entry) => entry.id === this.loadedId);
+    void this.engine.setEnd(token, endFrom(track, this.position)).then(
+      (taken) => {
+        const still = token === this.loadedToken && this.engine.heardToken === token;
+        if (!taken && still && !this.busy) void this.seek(this.position);
+      },
+      () => undefined,
+    );
   }
 
   /**
@@ -292,10 +346,10 @@ export class Player {
   get position(): number {
     if (this.loadedId === null) return 0;
     // Just after a gapless transition the engine counts in the next file already; until the
-    // player follows (within one check), the current track stays at its end.
-    const next = this.plan?.next;
-    if (next && this.engine.heardToken === next.token) return this.currentTrack?.duration ?? 0;
-    return this.engine.position;
+    // player follows (within one check), the current track stays where it was last.
+    if (this.engine.heardToken !== this.loadedToken) return this.lastPosition;
+    this.lastPosition = this.engine.position;
+    return this.lastPosition;
   }
 
   private dispatch(action: AppAction): void {
@@ -611,7 +665,11 @@ export class Player {
   }
 
   /** Plays the track with `id` from `startSeconds`. Call from a user gesture the first time. */
-  async playTrack(id: string, startSeconds = 0): Promise<void> {
+  /**
+   * Plays the track with `id` from `startSeconds` (by default its in marker) to its out marker.
+   * Call from a user gesture the first time.
+   */
+  async playTrack(id: string, startSeconds?: number): Promise<void> {
     // An entry of the last visit: the click that plays it can unlock it.
     const locked = this.state.tracks.find((track) => track.id === id)?.status === 'locked';
     if (locked && !this.files.has(id)) await this.unlock();
@@ -630,7 +688,9 @@ export class Player {
       // What follows is planned first: the engine opens it right away, for a gapless start.
       this.notePlayed(id);
       this.updatePlan(token, id);
-      await this.engine.load(file, startSeconds, token, this.nextFile());
+      const track = this.state.tracks.find((entry) => entry.id === id);
+      const start = startSeconds ?? startOf(track);
+      await this.engine.load(file, start, token, endFrom(track, start), this.nextFile());
       if (request !== this.request) return;
       this.loadedId = id;
       this.loadedToken = token;
@@ -667,7 +727,7 @@ export class Player {
     if (current !== null && current === this.loadedId) {
       await this.engine.start();
       if (this.engine.ended) {
-        await this.playTrack(current, 0);
+        await this.playTrack(current);
         return;
       }
       this.engine.paused = false;
@@ -691,9 +751,10 @@ export class Player {
     else await this.play();
   }
 
+  /** Pauses and goes back to where the track starts (its in marker). */
   async stop(): Promise<void> {
     this.pause();
-    await this.seek(0);
+    await this.seek(startOf(this.currentTrack));
   }
 
   async seek(seconds: number): Promise<void> {
@@ -707,7 +768,8 @@ export class Player {
     try {
       // A seek starts a new stream: what follows goes with it again.
       this.updatePlan(this.loadedToken, id);
-      await this.engine.seek(target, this.loadedToken, file, this.nextFile());
+      const end = endFrom(this.currentTrack, target);
+      await this.engine.seek(target, this.loadedToken, file, end, this.nextFile());
       if (request !== this.request) return;
       this.dispatch({ type: 'player/seeked', seconds: target });
     } catch (error) {
@@ -729,40 +791,117 @@ export class Player {
     if (id) await this.playTrack(id);
   }
 
-  /** Restarts the track, or goes to the previous one when near its start. */
+  /** Restarts the track (at its in marker), or goes to the previous one when near its start. */
   async previous(): Promise<void> {
     if (this.live) return;
     const id = previousTrack(this.state.tracks, this.state.currentId, this.played, this.order);
-    if (this.position > 3 || !id) await this.seek(0);
+    const start = startOf(this.currentTrack);
+    if (this.position - start > 3 || !id) await this.seek(start);
     else await this.playTrack(id);
   }
 
+  /** Removes a track from the queue (it can be undone for a moment). */
   async remove(id: string): Promise<void> {
+    const index = this.state.tracks.findIndex((track) => track.id === id);
+    const track = this.state.tracks[index];
+    if (!track) return;
+    const current = this.state.currentId === id;
+    const kept = this.keepFiles([track]);
     if (id === this.loadedId) await this.unload();
-    this.releaseCover(id);
     this.files.delete(id);
     this.handles.delete(id);
-    const fingerprint = this.state.tracks.find((track) => track.id === id)?.fingerprint;
     this.dispatch({ type: 'tracks/removed', id });
-    // The analysis stays while another entry has the same file.
-    if (fingerprint && !this.state.tracks.some((track) => track.fingerprint === fingerprint)) {
-      this.analysis.forget(fingerprint);
-    }
+    this.offerUndo(
+      `Removed “${track.title}”`,
+      () => this.putBack(index, [track], current ? id : null, kept),
+      () => this.forgetTracks([track]),
+    );
   }
 
   move(from: number, to: number): void {
     this.dispatch({ type: 'tracks/moved', from, to });
   }
 
+  /** Empties the queue (it can be undone for a moment). */
   async clear(): Promise<void> {
+    const tracks = this.state.tracks;
+    if (tracks.length === 0) return;
+    const current = this.state.currentId;
+    const kept = this.keepFiles(tracks);
     await this.unload();
-    for (const track of this.state.tracks) {
-      this.releaseCover(track.id);
-      if (track.fingerprint) this.analysis.forget(track.fingerprint);
-    }
     this.files.clear();
     this.handles.clear();
     this.dispatch({ type: 'tracks/cleared' });
+    this.offerUndo(
+      tracks.length === 1
+        ? 'Cleared the queue (1 track)'
+        : `Cleared the queue (${tracks.length} tracks)`,
+      () => this.putBack(0, tracks, current, kept),
+      () => this.forgetTracks(tracks),
+    );
+  }
+
+  /** The files and handles of `tracks`, to put them back on undo. */
+  private keepFiles(tracks: readonly Track[]) {
+    return tracks.map((track) => ({
+      id: track.id,
+      file: this.files.get(track.id),
+      handle: this.handles.get(track.id),
+    }));
+  }
+
+  /** Undoes a removal: the tracks and their files return at `index`. */
+  private putBack(
+    index: number,
+    tracks: Track[],
+    currentId: string | null,
+    kept: ReturnType<Player['keepFiles']>,
+  ): void {
+    for (const { id, file, handle } of kept) {
+      if (file) this.files.set(id, file);
+      if (handle) this.handles.set(id, handle);
+    }
+    this.dispatch({ type: 'tracks/inserted', index, tracks, currentId });
+    // A probe that was running when they went was dropped.
+    for (const track of tracks) if (track.status === 'probing') void this.queueProbe(track.id);
+  }
+
+  /** Removed tracks are gone for good: their covers, and analyses no entry needs any more. */
+  private forgetTracks(tracks: readonly Track[]): void {
+    for (const track of tracks) {
+      if (track.coverUrl) URL.revokeObjectURL(track.coverUrl);
+      const fingerprint = track.fingerprint;
+      if (fingerprint && !this.state.tracks.some((entry) => entry.fingerprint === fingerprint)) {
+        this.analysis.forget(fingerprint);
+      }
+    }
+  }
+
+  /** Offers to undo what was just done, for a few seconds or until the next such action. */
+  private offerUndo(label: string, restore: () => void, release: () => void = () => {}): void {
+    this.dropUndo();
+    const timer = setTimeout(() => this.dropUndo(), UNDO_SECONDS * 1000);
+    this.undoEntry = { restore, release, timer };
+    this.dispatch({ type: 'undo/offered', label });
+  }
+
+  private dropUndo(): void {
+    const entry = this.undoEntry;
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    this.undoEntry = null;
+    entry.release();
+    this.dispatch({ type: 'undo/offered', label: null });
+  }
+
+  /** Undoes the last removal or deletion, while that is offered (Ctrl+Z). */
+  undo(): void {
+    const entry = this.undoEntry;
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    this.undoEntry = null;
+    entry.restore();
+    this.dispatch({ type: 'undo/offered', label: null });
   }
 
   /** Changes parameters of the visuals (recorded as actions, like everything else). */
@@ -791,12 +930,44 @@ export class Player {
 
   /**
    * Sets the in or out marker of the current track (TR-09), at the playback position unless
-   * given; null clears it.
+   * given, on the nearest beat when quantizing (`snap`: a dragged marker is snapped already);
+   * null clears it.
    */
-  mark(mark: 'in' | 'out', seconds: number | null = this.position): void {
-    const id = this.state.currentId;
-    if (id === null) return;
-    this.dispatch({ type: 'tracks/marked', id, mark, seconds });
+  mark(mark: 'in' | 'out', seconds: number | null = this.position, snap = true): void {
+    const track = this.currentTrack;
+    if (!track) return;
+    const marks = track.marks;
+    const target = snap ? this.snap(seconds) : seconds;
+    this.dispatch({ type: 'tracks/marked', id: track.id, mark, seconds: target });
+    if (seconds === null && marks[mark] !== null) {
+      this.offerUndo(`Cleared the ${mark} marker`, () => this.restoreMarks(track.id, marks));
+    }
+  }
+
+  /** Clears both markers of the current track (it can be undone for a moment). */
+  clearMarks(): void {
+    const track = this.currentTrack;
+    if (!track || (track.marks.in === null && track.marks.out === null)) return;
+    const marks = track.marks;
+    this.dispatch({ type: 'tracks/marked', id: track.id, mark: 'in', seconds: null });
+    this.dispatch({ type: 'tracks/marked', id: track.id, mark: 'out', seconds: null });
+    this.offerUndo('Cleared the markers', () => this.restoreMarks(track.id, marks));
+  }
+
+  private restoreMarks(id: string, marks: Marks): void {
+    // The out marker first: an in marker behind a stale out marker would clear it.
+    this.dispatch({ type: 'tracks/marked', id, mark: 'out', seconds: marks.out });
+    this.dispatch({ type: 'tracks/marked', id, mark: 'in', seconds: marks.in });
+  }
+
+  /**
+   * `seconds` on the nearest beat of the current track, while quantizing is on and its beat
+   * grid has a clear beat there (TR-06); otherwise unchanged.
+   */
+  snap<T extends number | null>(seconds: T): T {
+    if (seconds === null || !this.state.settings.quantize) return seconds;
+    const grid = this.analysisOf(this.currentTrack)?.grid;
+    return ((grid && nearestBeat(grid, seconds)) ?? seconds) as T;
   }
 
   /**
@@ -811,11 +982,20 @@ export class Player {
     else await this.seek(seconds);
   }
 
-  /** Sets hot cue `index` of the current track (at the playback position); null deletes it. */
+  /**
+   * Sets hot cue `index` of the current track (at the playback position, on the nearest beat
+   * when quantizing); null deletes it.
+   */
   setCue(index: number, seconds: number | null = this.position): void {
-    const id = this.state.currentId;
-    if (id === null) return;
-    this.dispatch({ type: 'tracks/cue', id, index, seconds });
+    const track = this.currentTrack;
+    if (!track) return;
+    const old = track.cues[index] ?? null;
+    this.dispatch({ type: 'tracks/cue', id: track.id, index, seconds: this.snap(seconds) });
+    if (seconds === null && old !== null) {
+      const restore = () =>
+        this.dispatch({ type: 'tracks/cue', id: track.id, index, seconds: old });
+      this.offerUndo(`Deleted cue ${index + 1}`, restore);
+    }
   }
 
   /** The file behind a queue entry (for the export). */
@@ -857,6 +1037,7 @@ export class Player {
 
   dispose(): void {
     clearInterval(this.endCheck);
+    this.dropUndo();
     window.removeEventListener('pagehide', this.flushSave);
     this.flushSave();
     if (this.liveInput) closeInput(this.liveInput.stream);
@@ -877,11 +1058,6 @@ export class Player {
         old.marks === track.marks;
       if (!unchanged) saveTrackData(track.fingerprint, { cues: track.cues, marks: track.marks });
     }
-  }
-
-  private releaseCover(id: string): void {
-    const url = this.state.tracks.find((track) => track.id === id)?.coverUrl;
-    if (url) URL.revokeObjectURL(url);
   }
 
   /** Stops playing the loaded track and empties the engine (a newer load or seek is dropped). */

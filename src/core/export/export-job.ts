@@ -222,5 +222,5 @@ export function exportFileName(
     .join('')
     .trim()
     .slice(0, 150);
-  return `${clean || 'Vibe Visualizer'}.${extension}`;
+  return `${clean || 'Video'}.${extension}`;
 }

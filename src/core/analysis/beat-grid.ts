@@ -325,3 +325,23 @@ export function beatBefore(grid: BeatGrid, time: number): number {
   }
   return low;
 }
+
+/** Beats less sure than this are not snapped to (no clear rhythm there). */
+const SNAP_CONFIDENCE = 0.1;
+
+/**
+ * The beat nearest to `time` (TR-06: markers and cues snap to it), or null where the grid has
+ * no clear beat, or no beat within half a beat (before the first beat or after the last).
+ */
+export function nearestBeat(grid: BeatGrid, time: number): number | null {
+  const beats = grid.beats;
+  if (beats.length < 2) return null;
+  const before = beatBefore(grid, time);
+  const after = Math.min(beats.length - 1, before + 1);
+  const index =
+    before < 0 || Math.abs(beats[after]! - time) < Math.abs(time - beats[before]!) ? after : before;
+  const neighbour = index > 0 ? index - 1 : index + 1;
+  const interval = Math.abs(beats[index]! - beats[neighbour]!);
+  if (Math.abs(beats[index]! - time) > interval / 2) return null;
+  return grid.confidence[index]! >= SNAP_CONFIDENCE ? beats[index]! : null;
+}
