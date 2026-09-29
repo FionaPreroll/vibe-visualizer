@@ -19,8 +19,11 @@ import {
   type StreamTargetChunk,
 } from 'mediabunny';
 import { Analyzer } from '../analysis/analyzer';
+import type { BeatGrid } from '../analysis/beat-grid';
 import { FeatureSampler } from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
+import { GridBeats } from '../analysis/grid-beats';
+import { decodeGrid, encodeGrid } from '../library/analysis-cache';
 import { decodeAtRate } from '../audio/decode-stream';
 import { DspCore } from '../audio/dsp/dsp-core';
 import type { SoundSettings } from '../audio/dsp/sound-settings';
@@ -46,7 +49,7 @@ import {
 } from './export-job';
 import { DecodedSource } from './decoded-source';
 import { FeatureFeed } from './feature-feed';
-import { clearJob, JobWriter, readManifest, RecordWriter } from './job-store';
+import { clearJob, JobWriter, readJobFile, readManifest, RecordWriter } from './job-store';
 import { avcCodecString, type VideoFormat } from './video-format';
 
 /**
@@ -75,6 +78,8 @@ export interface StartArgs {
   format: VideoFormat;
   visuals: ExportVisuals;
   sound: SoundSettings;
+  /** The file's beat grid (AN-07), if it has been analysed: the beats come from it. */
+  grid: BeatGrid | null;
   images: { background: ImageInput | null; logo: ImageInput | null };
   /** The file to write; null writes into browser storage for a download. */
   destination: FileSystemFileHandle | null;
@@ -117,6 +122,8 @@ const BLOCK = 128;
 const BLOCKS_PER_STEP = 16;
 /** Audio samples per encoded chunk. */
 const ENCODE_CHUNK = 8192;
+/** The beat grid stored with the job. */
+const GRID_FILE = 'beat-grid.bin';
 const PREVIEW_WIDTH = 480;
 const REPORT_INTERVAL_MS = 250;
 const PREVIEW_INTERVAL_MS = 1000;
@@ -245,6 +252,8 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
         if (image) await store.writeFile(`image-${kind}`, image.blob);
       }
     }
+    // Kept for a resume during the audio pass.
+    if (args.grid) await store.writeFile(GRID_FILE, new Uint8Array(encodeGrid(args.grid)));
     await store.writeManifest(manifest);
     const bitmaps = {
       background: args.images.background?.bitmap ?? null,
@@ -293,7 +302,10 @@ async function run(
   const started = performance.now();
   if (manifest.codecs.aacEncoder === 'wasm') await ensureWasmAac();
   if (!manifest.progress.audioDone) {
-    await audioPass(store, manifest, file!, analyzer, progress);
+    const grid = await readJobFile(GRID_FILE)
+      .then(async (stored) => decodeGrid(await stored.arrayBuffer()))
+      .catch(() => null);
+    await audioPass(store, manifest, file!, analyzer, grid, progress);
     manifest.progress.audioDone = true;
     await store.writeManifest(manifest);
   }
@@ -302,7 +314,7 @@ async function run(
   }
   const bytes = await join(store, manifest, destination, progress);
   // Only the finished file (for a download) and the manifest stay.
-  for (const name of ['audio.mp4', 'features.bin', 'image-background', 'image-logo']) {
+  for (const name of ['audio.mp4', 'features.bin', 'image-background', 'image-logo', GRID_FILE]) {
     await store.remove(name);
   }
   if (destination) {
@@ -330,9 +342,13 @@ async function audioPass(
   manifest: ExportManifest,
   file: File,
   analyzer: Analyzer,
+  grid: BeatGrid | null,
   progress: (update: ExportProgress) => void,
 ): Promise<void> {
   const { timing, codecs, format, sound } = manifest;
+  // With the file's beat grid, the beats come from it, as during playback.
+  const gridBeats = new GridBeats();
+  gridBeats.set(grid);
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
   const records = new RecordWriter(await store.open('features.bin'), FEATURE_FIELDS);
   let output: Output | null = null;
@@ -399,11 +415,16 @@ async function audioPass(
 
     const block = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
     let stored = 0;
-    const onFrame = () => {
-      if (stored++ < timing.analysisFrames) records.add(analyzer.frame);
-    };
     let rendered = 0;
     let reported = 0;
+    const onFrame = (offset: number) => {
+      if (gridBeats.active) {
+        // Output frame o of the music plays file frame sourceStart + o × rate.
+        const source = timing.sourceStart + (rendered + offset) * sound.rate;
+        gridBeats.apply(analyzer.frame, source / EXPORT_RATE, sound.rate);
+      }
+      if (stored++ < timing.analysisFrames) records.add(analyzer.frame);
+    };
     while (stored < timing.analysisFrames || rendered < encodeEnd) {
       await gate();
       await decoded.ensure(lookAhead);

@@ -28,6 +28,9 @@
     markOut: 'M15 5v14M15 5H9M15 19H9',
     live: 'M12 9a3 3 0 110 6 3 3 0 010-6zM7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a10 10 0 000 14M19 5a10 10 0 010 14',
     knob: 'M12 4a8 8 0 110 16 8 8 0 010-16zM12 12l4-4',
+    shuffle: 'M3 7h4l10 10h4M3 17h4l3-3M14 10l3-3h4M18 4l3 3-3 3M18 14l3 3-3 3',
+    repeat: 'M4 12V9a3 3 0 013-3h12M16 3l3 3-3 3M20 12v3a3 3 0 01-3 3H5M8 21l-3-3 3-3',
+    folder: 'M3 6h6l2 2h10v11H3z',
   } as const;
   /** Icons drawn as lines instead of filled shapes. */
   const STROKED: readonly string[] = [
@@ -38,6 +41,9 @@
     'markOut',
     'live',
     'knob',
+    'shuffle',
+    'repeat',
+    'folder',
   ];
   export type IconName = keyof typeof ICONS;
 </script>

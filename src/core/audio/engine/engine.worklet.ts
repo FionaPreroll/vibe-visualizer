@@ -1,6 +1,7 @@
 import { Analyzer } from '../../analysis/analyzer';
 import { FeatureTimelineWriter } from '../../analysis/feature-timeline';
 import { F } from '../../analysis/features';
+import { GridBeats } from '../../analysis/grid-beats';
 import { DspCore } from '../dsp/dsp-core';
 import type { SoundSettings } from '../dsp/sound-settings';
 import { AudioRingConsumer } from '../ring-buffer';
@@ -15,7 +16,18 @@ export interface EngineProcessorOptions {
 
 /** Messages from the main thread to the engine. */
 export type EngineMessage =
-  { type: 'sound'; settings: SoundSettings } | { type: 'nudge'; factor: number };
+  | { type: 'sound'; settings: SoundSettings }
+  | { type: 'nudge'; factor: number }
+  /**
+   * The beat grid of the file loaded as ring generation `generation` (null: none yet). It
+   * applies from that generation on (seeks start new ones), until the next grid message.
+   */
+  | {
+      type: 'grid';
+      generation: number;
+      beats: Float64Array | null;
+      confidence: Float32Array | null;
+    };
 
 /**
  * Plays the stream from the media worker through the sound chain (tempo, filter, delay, reverb,
@@ -40,6 +52,10 @@ class EngineProcessor extends AudioWorkletProcessor {
   private blockRate = 0;
   /** Speed the analysis last heard: a change is passed on to the beat tracking. */
   private analysedRate = 1;
+  /** The file's beat grid (AN-07) replaces the live beat tracking, from `gridGeneration` on. */
+  private readonly gridBeats = new GridBeats();
+  private gridGeneration = -1;
+  private useGrid = false;
   private readonly onAnalysisFrame: (offset: number) => void;
 
   constructor(options: AudioWorkletNodeOptions) {
@@ -60,13 +76,27 @@ class EngineProcessor extends AudioWorkletProcessor {
     // Bound once: no allocation per analysis frame.
     this.onAnalysisFrame = (offset: number) => {
       const source = this.consumer.startFrame + this.blockSource + offset * this.blockRate;
+      if (this.useGrid && this.blockRate > 0) {
+        this.gridBeats.apply(this.analyzer.frame, source / sampleRate, this.blockRate);
+      }
       this.timeline.write(this.blockStart + offset, source / sampleRate, this.analyzer.frame);
     };
   }
 
   private receive(message: EngineMessage): void {
-    if (message.type === 'sound') this.dsp.setSettings(message.settings);
-    else this.dsp.nudge = message.factor;
+    if (message.type === 'sound') {
+      this.dsp.setSettings(message.settings);
+    } else if (message.type === 'nudge') {
+      this.dsp.nudge = message.factor;
+    } else if (message.generation >= this.gridGeneration) {
+      // A late grid of an earlier file is dropped.
+      this.gridGeneration = message.generation;
+      this.gridBeats.set(
+        message.beats && message.confidence
+          ? { beats: message.beats, confidence: message.confidence }
+          : null,
+      );
+    }
   }
 
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
@@ -82,7 +112,9 @@ class EngineProcessor extends AudioWorkletProcessor {
     if (generation !== this.generation) {
       this.generation = generation;
       this.dsp.reset();
+      this.gridBeats.set(this.gridBeats.grid); // no hits across the jump
     }
+    this.useGrid = this.gridBeats.active && generation >= this.gridGeneration;
     this.blockSource = this.dsp.musicPosition;
     if (this.control.live) {
       this.dsp.renderMusic(null, music, frames);
@@ -104,7 +136,10 @@ class EngineProcessor extends AudioWorkletProcessor {
     }
     this.dsp.renderEffects(music, frames);
     for (let c = 0; c < output.length; c++) output[c]!.set(music[Math.min(c, 1)]!);
-    this.consumer.publish(this.dsp.sourcePosition, currentTime + frames / sampleRate);
+    this.consumer.publish(
+      this.consumer.startFrame + this.dsp.sourcePosition,
+      currentTime + frames / sampleRate,
+    );
     if (this.consumer.ended && this.dsp.sourcePosition >= this.consumer.takenFrames) {
       this.consumer.markPlayedOut();
     }

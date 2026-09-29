@@ -3,13 +3,17 @@
   import { formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
+  import { CUE_COLOURS, drawWaveform } from './waveform-draw';
 
   const player = usePlayer();
   const app = player.store;
+  const analyses = player.analysis;
 
   let position = $state(0);
   let dragFraction = $state<number | null>(null);
   let timeline: HTMLDivElement | undefined = $state();
+  let waveCanvas: HTMLCanvasElement | undefined = $state();
+  let timelineWidth = $state(0);
 
   const current = $derived($app.tracks.find((track) => track.id === $app.currentId) ?? null);
   const live = $derived($app.live.status === 'on');
@@ -20,6 +24,10 @@
   const marked = $derived(marks.in !== null || marks.out !== null);
   const inFraction = $derived(duration > 0 ? (marks.in ?? 0) / duration : 0);
   const outFraction = $derived(duration > 0 ? (marks.out ?? duration) / duration : 1);
+  /** The waveform of the whole track as the seek bar (TR-03), once it is being analysed. */
+  const analysis = $derived(current?.fingerprint ? $analyses.get(current.fingerprint) : undefined);
+  const waveform = $derived(analysis?.waveform ?? null);
+  const cues = $derived(current?.cues ?? []);
 
   onMount(() => {
     let request = 0;
@@ -29,6 +37,30 @@
     };
     request = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(request);
+  });
+
+  $effect(() => {
+    if (!timeline) return;
+    const observer = new ResizeObserver(([entry]) => {
+      timelineWidth = entry?.contentRect.width ?? 0;
+    });
+    observer.observe(timeline);
+    return () => observer.disconnect();
+  });
+
+  // Redrawn when the analysis grows or the bar changes size; the played part is an overlay.
+  $effect(() => {
+    const canvas = waveCanvas;
+    if (!canvas || !waveform || timelineWidth <= 0 || duration <= 0) return;
+    const ratio = window.devicePixelRatio || 1;
+    const width = Math.round(timelineWidth * ratio);
+    const height = Math.round(canvas.clientHeight * ratio);
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const view = { from: 0, to: duration, played: Infinity, available: analysis?.seconds ?? 0 };
+    drawWaveform(context, waveform, view, width, height);
   });
 
   function fractionAt(event: PointerEvent): number {
@@ -138,6 +170,17 @@
         >
           <Icon name="markOut" />
         </button>
+        <button
+          class="icon"
+          class:on={$app.settings.detailWaveform}
+          onclick={() => player.updateSettings({ detailWaveform: !$app.settings.detailWaveform })}
+          aria-label="Detail waveform and hot cues"
+          aria-pressed={$app.settings.detailWaveform}
+          title="Detail waveform and hot cues (W)"
+          data-testid="detail-toggle"
+        >
+          <Icon name="wave" />
+        </button>
         {#if marked}
           <button
             class="marks"
@@ -172,8 +215,27 @@
           onpointerup={onPointerUp}
           onkeydown={onTimelineKey}
           data-testid="timeline"
+          class:wave={waveform !== null}
         >
-          <div class="track"><div class="fill" style:width="{fraction * 100}%"></div></div>
+          {#if waveform}
+            <canvas class="waveform" bind:this={waveCanvas} data-testid="waveform-overview"
+            ></canvas>
+            <div class="unplayed" style:left="{fraction * 100}%"></div>
+          {:else}
+            <div class="track"><div class="fill" style:width="{fraction * 100}%"></div></div>
+          {/if}
+          {#each cues as cue, index (index)}
+            {#if cue !== null && duration > 0}
+              <div
+                class="cue"
+                style:left="{(cue / duration) * 100}%"
+                style:--cue={CUE_COLOURS[index]}
+                data-testid="cue-marker"
+              >
+                {index + 1}
+              </div>
+            {/if}
+          {/each}
           {#if marked}
             <div
               class="range"
@@ -306,6 +368,9 @@
   .icon:hover:not(:disabled) {
     background: var(--surface-2);
   }
+  .icon.on {
+    color: var(--accent-2);
+  }
   .icon.play {
     width: 44px;
     height: 44px;
@@ -334,6 +399,55 @@
     height: 20px;
     cursor: pointer;
     touch-action: none;
+  }
+  .timeline.wave {
+    height: 32px;
+  }
+  .waveform {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 3px;
+  }
+  /* The rest of the track is dimmed; the played part shows in full colour. */
+  .unplayed {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--surface) 58%, transparent);
+    pointer-events: none;
+  }
+  .cue {
+    position: absolute;
+    top: -2px;
+    min-width: 11px;
+    height: 11px;
+    margin-left: -1px;
+    padding: 0 2px;
+    border-radius: 0 3px 3px 0;
+    border-left: 2px solid var(--cue);
+    background: color-mix(in srgb, var(--cue) 70%, black);
+    color: #fff;
+    font: 600 9px/11px var(--mono);
+    pointer-events: none;
+  }
+  .timeline.wave .range {
+    top: 0;
+    height: 30px;
+  }
+  .timeline.wave .mark {
+    top: 0;
+    height: 32px;
+  }
+  .timeline.wave .knob {
+    top: 0;
+    width: 2px;
+    height: 32px;
+    margin-left: -1px;
+    border-radius: 1px;
+    opacity: 1;
   }
   .track {
     position: absolute;

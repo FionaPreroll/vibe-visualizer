@@ -1,3 +1,4 @@
+import type { BeatGrid } from '../analysis/beat-grid';
 import type { SoundSettings } from '../audio/dsp/sound-settings';
 import type { ImageKind } from '../render/logo-spectrum';
 import { decodeImage, type StoredImages } from '../render/visual-assets';
@@ -36,6 +37,8 @@ export interface ExportRequest {
   visuals: ExportVisuals;
   /** Tempo and effects (EX-02). */
   sound: SoundSettings;
+  /** The file's beat grid, if it has been analysed (AN-07). */
+  grid: BeatGrid | null;
   images: StoredImages;
   /** The file to write (Chromium); null downloads the video at the end. */
   destination: FileSystemFileHandle | null;
@@ -130,6 +133,7 @@ export class Exporter {
       format: request.format,
       visuals: request.visuals,
       sound: request.sound,
+      grid: request.grid,
       images,
       destination: request.destination,
       fileName: request.fileName,

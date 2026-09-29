@@ -98,7 +98,7 @@ describe('audio ring buffer', () => {
     // No padding: only what is there.
     expect(consumer.pull(planes, 0, 4)).toBe(2);
     expect(consumer.takenFrames).toBe(6);
-    consumer.publish(3.5, 2.0);
+    consumer.publish(consumer.startFrame + 3.5, 2.0);
     expect(monitor.position).toBe(1003.5);
     expect(monitor.renderTime).toBe(2.0);
 
@@ -109,6 +109,26 @@ describe('audio ring buffer', () => {
     expect(monitor.isEnded()).toBe(false);
     consumer.markPlayedOut();
     expect(monitor.isEnded()).toBe(true);
+  });
+
+  it('records where the next file starts, and which file is heard', () => {
+    const { producer, consumer, monitor } = setup(64);
+    const generation = producer.beginGeneration(4800, 7);
+    consumer.syncGeneration();
+    expect(consumer.startToken).toBe(7);
+    expect(monitor.heardToken).toBe(7);
+    expect(consumer.nextStart).toBe(-1);
+    producer.markNext(generation, 40, 8);
+    expect(consumer.nextStart).toBe(40);
+    expect(consumer.nextToken).toBe(8);
+    consumer.publish(12, 1.5, 8);
+    expect(monitor.heardToken).toBe(8);
+    expect(monitor.position).toBe(12);
+    // A new generation (a seek) has no next file until the producer says so again.
+    producer.beginGeneration(0, 8);
+    consumer.syncGeneration();
+    expect(consumer.nextStart).toBe(-1);
+    expect(monitor.heardToken).toBe(8);
   });
 
   it('counts underruns only while a generation is playing and not ended', () => {

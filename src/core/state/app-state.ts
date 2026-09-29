@@ -39,14 +39,23 @@ export interface Track {
   codec: string | null;
   format: string | null;
   coverUrl: string | null;
+  /** Recognises the file (its cues, its analysis); null until probed. */
+  fingerprint: string | null;
   /** In/out markers in seconds (TR-09): the export range, e.g. a 30-second clip. */
   marks: Marks;
+  /** Hot cues in seconds (TR-04), {@link CUE_COUNT} slots, null where none is set. */
+  cues: Cues;
 }
 
 export interface Marks {
   in: number | null;
   out: number | null;
 }
+
+/** Hot cues per track (TR-04). */
+export const CUE_COUNT = 8;
+export type Cues = readonly (number | null)[];
+export const NO_CUES: Cues = Array.from({ length: CUE_COUNT }, () => null);
 
 /** What the stage shows: one of the two visual modes (VE-04) or the analysis. */
 export type VisualMode = 'logoSpectrum' | 'kaleidoscope' | 'analysis';
@@ -72,7 +81,16 @@ export interface Settings {
   inputDeviceLabel: string;
   /** Gain of the live input in dB. */
   inputGain: number;
+  /** Shows the detail waveform with the hot cues above the transport (TR-08). */
+  detailWaveform: boolean;
+  /** Plays the queue in random order (PL-04). */
+  shuffle: boolean;
+  /** At the end: stop, start the queue again, or repeat the track (PL-04). */
+  repeat: RepeatMode;
 }
+
+export type RepeatMode = 'off' | 'all' | 'one';
+export const REPEAT_MODES: readonly RepeatMode[] = ['off', 'all', 'one'];
 
 /**
  * Live input (IN-01…04): music from an audio input or another app instead of the queue. The
@@ -122,7 +140,12 @@ export type ProbedInfo = Pick<
   | 'codec'
   | 'format'
   | 'coverUrl'
-> & { title: string | null };
+  | 'fingerprint'
+> & {
+  title: string | null;
+  /** Cues and markers stored for this file earlier (TR-05). */
+  stored?: { cues: Cues; marks: Marks };
+};
 
 export type AppAction =
   | { type: 'tracks/added'; tracks: Track[] }
@@ -132,6 +155,8 @@ export type AppAction =
   | { type: 'tracks/cleared' }
   /** Sets (or clears, with null) the in or out marker of a track. */
   | { type: 'tracks/marked'; id: string; mark: 'in' | 'out'; seconds: number | null }
+  /** Sets (or clears, with null) hot cue `index` of a track. */
+  | { type: 'tracks/cue'; id: string; index: number; seconds: number | null }
   | { type: 'player/current'; id: string | null }
   | { type: 'player/playing'; playing: boolean }
   | { type: 'player/seeked'; seconds: number }
@@ -166,6 +191,9 @@ export const DEFAULT_SETTINGS: Settings = {
   inputDevice: '',
   inputDeviceLabel: '',
   inputGain: 0,
+  detailWaveform: true,
+  shuffle: false,
+  repeat: 'off',
 };
 
 export function initialState(
@@ -203,8 +231,19 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
     codec: null,
     format: null,
     coverUrl: null,
+    fingerprint: null,
     marks: { in: null, out: null },
+    cues: NO_CUES,
   };
+}
+
+/** The cues after setting cue `index` to `seconds` (clamped to the track), or clearing it. */
+export function setCue(track: Track, index: number, seconds: number | null): Cues {
+  if (index < 0 || index >= CUE_COUNT) return track.cues;
+  const cues = [...track.cues];
+  cues[index] =
+    seconds === null ? null : Math.max(0, Math.min(track.duration ?? Infinity, seconds));
+  return cues;
 }
 
 /**
@@ -239,11 +278,16 @@ export function reducer(state: AppState, action: AppAction): AppState {
     case 'tracks/probed':
       return {
         ...state,
-        tracks: state.tracks.map((track) =>
-          track.id === action.id
-            ? { ...track, ...action.info, title: action.info.title ?? track.title }
-            : track,
-        ),
+        tracks: state.tracks.map((track) => {
+          if (track.id !== action.id) return track;
+          const { stored, ...info } = action.info;
+          return {
+            ...track,
+            ...info,
+            title: info.title ?? track.title,
+            ...(stored ? { cues: stored.cues, marks: stored.marks } : {}),
+          };
+        }),
       };
     case 'tracks/removed':
       return {
@@ -268,6 +312,15 @@ export function reducer(state: AppState, action: AppAction): AppState {
         tracks: state.tracks.map((track) =>
           track.id === action.id
             ? { ...track, marks: setMark(track, action.mark, action.seconds) }
+            : track,
+        ),
+      };
+    case 'tracks/cue':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.id === action.id
+            ? { ...track, cues: setCue(track, action.index, action.seconds) }
             : track,
         ),
       };

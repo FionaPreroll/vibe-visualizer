@@ -1,10 +1,19 @@
 <script lang="ts">
+  import { gridTempo } from '../core/analysis/grid-beats';
   import { formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
 
   const player = usePlayer();
   const app = player.store;
+  const analyses = player.analysis;
+
+  /** The track's tempo from its beat grid, once analysed. */
+  function tempoOf(fingerprint: string | null): number | null {
+    const grid = fingerprint ? $analyses.get(fingerprint)?.grid : null;
+    const tempo = grid ? gridTempo(grid) : 0;
+    return tempo > 0 ? tempo : null;
+  }
 
   let fileInput: HTMLInputElement;
   let dragIndex = $state<number | null>(null);
@@ -130,12 +139,19 @@
               {/if}
             </span>
           </span>
-          <span class="duration" data-testid="queue-duration">
-            {track.status === 'probing'
-              ? '…'
-              : track.duration !== null
-                ? formatDuration(track.duration)
-                : ''}
+          <span class="numbers">
+            <span class="duration" data-testid="queue-duration">
+              {track.status === 'probing'
+                ? '…'
+                : track.duration !== null
+                  ? formatDuration(track.duration)
+                  : ''}
+            </span>
+            {#if tempoOf(track.fingerprint) !== null}
+              <span class="bpm" data-testid="queue-bpm">
+                {tempoOf(track.fingerprint)!.toFixed(0)} BPM
+              </span>
+            {/if}
           </span>
           <button
             class="remove ghost"
@@ -271,10 +287,19 @@
     font-size: 12px;
     color: var(--muted);
   }
-  .duration {
+  .numbers {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .duration,
+  .bpm {
     font-family: var(--mono);
     font-size: 12px;
     color: var(--muted);
+  }
+  .bpm {
+    font-size: 10px;
   }
   .remove {
     display: grid;

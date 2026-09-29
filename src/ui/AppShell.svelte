@@ -5,6 +5,7 @@
   import { Player } from '../core/player/player';
   import { VisualAssets } from '../core/render/visual-assets';
   import AnalysisView from './AnalysisView.svelte';
+  import DetailWaveform from './DetailWaveform.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import ExportDialog from './ExportDialog.svelte';
   import LivePanel from './LivePanel.svelte';
@@ -75,6 +76,16 @@
         return;
       // A modal dialog (the export) has the keyboard to itself.
       if (document.querySelector('dialog[open]')) return;
+      // Hot cues (TR-04): 1–8 jump to a cue or set an empty one; with Shift they are deleted.
+      // By key position, so Shift works on every keyboard layout.
+      const digit = /^Digit([1-8])$/.exec(event.code);
+      if (digit) {
+        const index = Number(digit[1]) - 1;
+        if (event.shiftKey) player.setCue(index, null);
+        else void player.cue(index);
+        event.preventDefault();
+        return;
+      }
       const step = event.shiftKey ? 30 : 5;
       switch (event.key) {
         case ' ':
@@ -94,6 +105,9 @@
           break;
         case 'f':
           toggleFullscreen();
+          break;
+        case 'w':
+          player.updateSettings({ detailWaveform: !player.state.settings.detailWaveform });
           break;
         // In/out markers of the export range (TR-09); with Shift they are cleared.
         case 'i':
@@ -237,6 +251,9 @@
     </aside>
   {/if}
 
+  {#if $app.settings.detailWaveform && $app.currentId !== null && $app.live.status === 'off'}
+    <div class="detail-row"><DetailWaveform /></div>
+  {/if}
   <TransportBar />
   <ExportDialog open={exportOpen} onclose={() => (exportOpen = false)} />
   <DropOverlay />
@@ -248,15 +265,20 @@
     position: fixed;
     inset: 0;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
     grid-template-columns: minmax(0, 1fr);
   }
   .shell.panel-open {
     grid-template-columns: minmax(0, 1fr) 360px;
   }
   .shell > :global(.topbar),
-  .shell > :global(.transport) {
+  .shell > :global(.transport),
+  .detail-row {
     grid-column: 1 / -1;
+  }
+  /* Without the detail waveform its row stays empty; the transport keeps the last row. */
+  .shell > :global(.transport) {
+    grid-row: 4;
   }
   .stage {
     position: relative;

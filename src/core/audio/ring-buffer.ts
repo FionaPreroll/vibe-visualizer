@@ -5,6 +5,10 @@
  * block or allocate). A seek or cue jump starts a new *generation*: the producer bumps the
  * generation and waits until the consumer has dropped all older frames before writing new ones.
  *
+ * Gapless playback (PL-05): within a generation the producer may continue with the next file.
+ * Every file has a token; the producer records where in the generation the next file starts,
+ * and the consumer reports which file is heard and where in it.
+ *
  * Frame counters are uint32 and wrap after 2^32 frames (≈ 24.8 h at 48 kHz); the capacity is a
  * power of two so slot positions stay continuous across the wrap.
  */
@@ -18,14 +22,19 @@ const UNDERRUNS = 4; // consumer: quanta that ran dry while a generation was pla
 const ENDED_GENERATION = 5; // producer: generation whose source reached its end
 const FIRST_FRAME_GENERATION = 6; // consumer: generation whose first frame has been output
 const PLAYED_OUT_GENERATION = 7; // consumer: generation that has been played to its end
-const CONTROL_INTS = 8;
+const GENERATION_TOKEN = 8; // producer: token of the file the current generation starts with
+const NEXT_GENERATION = 9; // producer: generation in which the next file follows
+const NEXT_TOKEN = 10; // producer: token of that next file
+const HEARD_TOKEN = 11; // consumer: token of the file heard at RENDER_TIME
+const CONTROL_INTS = 12;
 
 // Float64 fields
 const START_FRAME = 0; // producer: source frame at which the current generation starts
-const POSITION = 1; // consumer: source frame that is heard at RENDER_TIME
+const POSITION = 1; // consumer: frame of the heard file that is heard at RENDER_TIME
 const RENDER_TIME = 2; // consumer: context time at the end of the last render quantum
 const FIRST_FRAME_TIME = 3; // consumer: context time at which the generation's first frame played
-const FLOAT_FIELDS = 4;
+const NEXT_START = 4; // producer: frame of the generation at which the next file starts
+const FLOAT_FIELDS = 5;
 
 const HEADER_BYTES = CONTROL_INTS * 4 + FLOAT_FIELDS * 8;
 
@@ -37,7 +46,9 @@ export function nextPowerOfTwo(value: number): number {
 export function createAudioRing(channels: number, minCapacity: number): SharedArrayBuffer {
   const capacity = nextPowerOfTwo(minCapacity);
   const sab = new SharedArrayBuffer(HEADER_BYTES + channels * capacity * 4);
-  new Int32Array(sab, 0, CONTROL_INTS)[FIRST_FRAME_GENERATION] = -1;
+  const control = new Int32Array(sab, 0, CONTROL_INTS);
+  control[FIRST_FRAME_GENERATION] = -1;
+  control[NEXT_GENERATION] = -1;
   return sab;
 }
 
@@ -98,12 +109,24 @@ export class AudioRingProducer extends AudioRingView {
   }
 
   /**
-   * Starts a new generation whose first frame is `startFrame` of the source. Older frames are
-   * dropped by the consumer; write new frames only once {@link isAcknowledged} returns true.
+   * Starts a new generation whose first frame is `startFrame` of the file with `token`. Older
+   * frames are dropped by the consumer; write new frames only once {@link isAcknowledged}
+   * returns true.
    */
-  beginGeneration(startFrame: number): number {
+  beginGeneration(startFrame: number, token = 0): number {
     this.floats[START_FRAME] = startFrame;
+    Atomics.store(this.control, GENERATION_TOKEN, token);
     return Atomics.add(this.control, GENERATION, 1) + 1;
+  }
+
+  /**
+   * The file with `token` follows in `generation`, from frame `streamFrame` of the generation
+   * on (the frames written so far). Call it before writing that file's first frame.
+   */
+  markNext(generation: number, streamFrame: number, token: number): void {
+    this.floats[NEXT_START] = streamFrame;
+    Atomics.store(this.control, NEXT_TOKEN, token);
+    Atomics.store(this.control, NEXT_GENERATION, generation);
   }
 
   isAcknowledged(generation: number): boolean {
@@ -119,6 +142,7 @@ export class AudioRingProducer extends AudioRingView {
 export class AudioRingConsumer extends AudioRingView {
   private generation = 0;
   private generationStart = 0;
+  private generationToken = 0;
   private generationPlayed = 0;
   private awaitingFirstFrame = true;
 
@@ -161,13 +185,31 @@ export class AudioRingConsumer extends AudioRingView {
     return this.generationStart;
   }
 
+  /** Token of the file the current generation starts with. */
+  get startToken(): number {
+    return this.generationToken;
+  }
+
+  /** Frame of the current generation at which the next file starts, or -1 (none yet). */
+  get nextStart(): number {
+    return Atomics.load(this.control, NEXT_GENERATION) === this.generation
+      ? this.floats[NEXT_START]!
+      : -1;
+  }
+
+  /** Token of the next file (valid while {@link nextStart} is not -1). */
+  get nextToken(): number {
+    return Atomics.load(this.control, NEXT_TOKEN);
+  }
+
   /**
-   * Publishes the playback position for the main thread: `streamFrame` (counted from the
-   * start of the generation) is heard at context time `renderTime`.
+   * Publishes the playback position for the main thread: frame `fileFrame` of the file with
+   * `token` is heard at context time `renderTime`.
    */
-  publish(streamFrame: number, renderTime: number): void {
-    this.floats[POSITION] = this.generationStart + streamFrame;
+  publish(fileFrame: number, renderTime: number, token = this.generationToken): void {
+    this.floats[POSITION] = fileFrame;
     this.floats[RENDER_TIME] = renderTime;
+    Atomics.store(this.control, HEARD_TOKEN, token);
   }
 
   /** Counts a render quantum that ran short of audio. */
@@ -219,7 +261,7 @@ export class AudioRingConsumer extends AudioRingView {
     }
 
     this.generationPlayed += count;
-    this.publish(this.generationPlayed, contextTime + frames / sampleRateHz);
+    this.publish(this.generationStart + this.generationPlayed, contextTime + frames / sampleRateHz);
     if (this.ended) this.markPlayedOut();
     return count;
   }
@@ -235,9 +277,11 @@ export class AudioRingConsumer extends AudioRingView {
       Atomics.store(this.control, READ, Atomics.load(this.control, WRITE));
       this.generation = generation;
       this.generationStart = this.floats[START_FRAME]!;
+      this.generationToken = Atomics.load(this.control, GENERATION_TOKEN);
       this.generationPlayed = 0;
       this.awaitingFirstFrame = true;
       this.floats[POSITION] = this.generationStart;
+      Atomics.store(this.control, HEARD_TOKEN, this.generationToken);
       Atomics.store(this.control, ACK_GENERATION, generation);
     }
     return generation;
@@ -251,9 +295,13 @@ export class AudioRingConsumer extends AudioRingView {
 
 /** Read-only view for the main thread (statistics and playback position). */
 export class AudioRingMonitor extends AudioRingView {
-  /** Source frame that plays at {@link renderTime}. */
+  /** Frame of the heard file ({@link heardToken}) that plays at {@link renderTime}. */
   get position(): number {
     return this.floats[POSITION]!;
+  }
+  /** Token of the file that is heard (it changes at a gapless transition). */
+  get heardToken(): number {
+    return Atomics.load(this.control, HEARD_TOKEN);
   }
   /** Context time at which {@link position} plays. */
   get renderTime(): number {

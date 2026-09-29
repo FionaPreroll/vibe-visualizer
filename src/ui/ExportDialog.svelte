@@ -155,6 +155,7 @@
           ? { mode, settings: $app.kaleido }
           : { mode: 'logoSpectrum', settings: $app.visuals },
       sound,
+      grid: player.analysisOf(track)?.grid ?? null,
       images: assets.current,
       destination,
       fileName,

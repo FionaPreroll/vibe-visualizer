@@ -11,10 +11,14 @@ import {
 } from '../render/visual-settings';
 import { isAspectRatio, sanitizeExportOptions, type ExportOptions } from '../export/video-format';
 import {
+  CUE_COUNT,
   DEFAULT_SETTINGS,
   INPUT_GAIN_RANGE,
   PANEL_TABS,
+  REPEAT_MODES,
   VISUAL_MODES,
+  type Cues,
+  type Marks,
   type Settings,
 } from './app-state';
 
@@ -25,6 +29,51 @@ const KALEIDO_KEY = 'vibe-visualizer:kaleido:v1';
 const KALEIDO_PRESETS_KEY = 'vibe-visualizer:kaleido-presets:v1';
 const EXPORT_KEY = 'vibe-visualizer:export:v1';
 const SOUND_KEY = 'vibe-visualizer:sound:v1';
+/** Per file (by fingerprint): its cues and markers. */
+const TRACK_PREFIX = 'vibe-visualizer:track:v1:';
+
+export interface StoredTrack {
+  cues: Cues;
+  marks: Marks;
+}
+
+/** A time within the track, or null. */
+function time(value: unknown, duration: number): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= duration
+    ? value
+    : null;
+}
+
+/** The cues and markers stored for a file (TR-05), validated against its duration. */
+export function loadTrackData(fingerprint: string, duration: number): StoredTrack | null {
+  const stored = read(TRACK_PREFIX + fingerprint) as {
+    cues?: unknown;
+    marks?: { in?: unknown; out?: unknown };
+  } | null;
+  if (!stored || typeof stored !== 'object') return null;
+  const cues = Array.isArray(stored.cues) ? stored.cues : [];
+  const marks = { in: time(stored.marks?.in, duration), out: time(stored.marks?.out, duration) };
+  if (marks.in !== null && marks.out !== null && marks.out <= marks.in) marks.out = null;
+  return {
+    cues: Array.from({ length: CUE_COUNT }, (_, index) => time(cues[index], duration)),
+    marks,
+  };
+}
+
+/** Stores the cues and markers of a file; nothing to store removes the entry. */
+export function saveTrackData(fingerprint: string, data: StoredTrack): void {
+  const empty =
+    data.cues.every((cue) => cue === null) && data.marks.in === null && data.marks.out === null;
+  if (empty) {
+    try {
+      localStorage.removeItem(TRACK_PREFIX + fingerprint);
+    } catch {
+      // Storage blocked.
+    }
+    return;
+  }
+  write(TRACK_PREFIX + fingerprint, { cues: data.cues, marks: data.marks });
+}
 
 function read(key: string): unknown {
   try {
@@ -61,6 +110,7 @@ export function loadSettings(): Settings {
       settings.visualMode = DEFAULT_SETTINGS.visualMode;
     settings.volume = Math.max(0, Math.min(1, settings.volume));
     if (!isAspectRatio(settings.aspect)) settings.aspect = DEFAULT_SETTINGS.aspect;
+    if (!REPEAT_MODES.includes(settings.repeat)) settings.repeat = DEFAULT_SETTINGS.repeat;
     settings.inputGain = Number.isFinite(settings.inputGain)
       ? Math.max(INPUT_GAIN_RANGE.min, Math.min(INPUT_GAIN_RANGE.max, settings.inputGain))
       : DEFAULT_SETTINGS.inputGain;

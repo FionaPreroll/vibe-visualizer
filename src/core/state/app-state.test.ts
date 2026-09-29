@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { sceneDefaults } from '../render/kaleido-settings';
 import { DEFAULT_LOGO_SPECTRUM, RANGES } from '../render/visual-settings';
 import {
+  CUE_COUNT,
   initialState,
   LIVE_OFF,
   newTrack,
@@ -37,9 +38,41 @@ describe('app state', () => {
         codec: 'mp3',
         format: 'MP3',
         coverUrl: null,
+        fingerprint: 'abc',
       },
     });
     expect(probed.tracks[0]).toMatchObject({ title: 'Song', artist: 'Artist', status: 'ready' });
+    expect(probed.tracks[0]!.cues).toEqual(Array(CUE_COUNT).fill(null));
+  });
+
+  it('brings back stored cues and markers, and sets and clears cues within the track', () => {
+    const cues = [12, null, 30, null, null, null, null, 170];
+    let state = reducer(withTracks('Song.mp3'), {
+      type: 'tracks/probed',
+      id: 't0',
+      info: {
+        status: 'ready',
+        reason: null,
+        title: null,
+        artist: null,
+        album: null,
+        duration: 180,
+        sampleRate: 44100,
+        codec: 'mp3',
+        format: 'MP3',
+        coverUrl: null,
+        fingerprint: 'abc',
+        stored: { cues, marks: { in: 10, out: 40 } },
+      },
+    });
+    expect(state.tracks[0]).toMatchObject({ cues, marks: { in: 10, out: 40 } });
+    state = reducer(state, { type: 'tracks/cue', id: 't0', index: 1, seconds: 500 });
+    expect(state.tracks[0]!.cues[1]).toBe(180);
+    state = reducer(state, { type: 'tracks/cue', id: 't0', index: 0, seconds: null });
+    expect(state.tracks[0]!.cues.slice(0, 3)).toEqual([null, 180, 30]);
+    // Slots beyond the eight are ignored.
+    const same = reducer(state, { type: 'tracks/cue', id: 't0', index: 8, seconds: 5 });
+    expect(same.tracks[0]!.cues).toEqual(state.tracks[0]!.cues);
   });
 
   it('moves tracks', () => {

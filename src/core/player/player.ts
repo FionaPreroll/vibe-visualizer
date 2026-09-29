@@ -1,3 +1,4 @@
+import type { BeatGrid } from '../analysis/beat-grid';
 import { rateLimits, TEMPO_STEP, type SoundSettings } from '../audio/dsp/sound-settings';
 import { AudioEngine } from '../audio/engine/audio-engine';
 import {
@@ -10,7 +11,9 @@ import {
 } from '../audio/live-input';
 import type { ProbeResult } from '../library/probe.worker';
 import ProbeWorker from '../library/probe.worker.ts?worker';
+import { TrackAnalyzer, type TrackAnalysisState } from '../library/track-analyzer';
 import {
+  CUE_COUNT,
   initialState,
   newTrack,
   reducer,
@@ -25,10 +28,12 @@ import {
   loadKaleido,
   loadSettings,
   loadSound,
+  loadTrackData,
   loadVisuals,
   saveKaleido,
   saveSettings,
   saveSound,
+  saveTrackData,
   saveVisuals,
 } from '../state/persistence';
 import { createStore, type Store } from '../state/store';
@@ -45,10 +50,15 @@ export const NUDGE = 0.04;
 export class Player {
   readonly store: Store<AppState, AppAction>;
   readonly engine = new AudioEngine();
+  /** Waveforms and beat grids of the queue's tracks (a Svelte store). */
+  readonly analysis = new TrackAnalyzer();
   private readonly files = new Map<string, File>();
   private readonly probeClient = new WorkerClient(new ProbeWorker());
   private probing: Promise<void> = Promise.resolve();
   private loadedId: string | null = null;
+  /** Ring generation the loaded file started with, and the beat grid the engine has for it. */
+  private loadedGeneration = 0;
+  private sentGrid: BeatGrid | null = null;
   private busy = false;
   private readonly endCheck: ReturnType<typeof setInterval>;
   /** The live input's stream while it is the source. */
@@ -68,7 +78,12 @@ export class Player {
     let lastVisuals = this.state.visuals;
     let lastKaleido = this.state.kaleido;
     let lastSound = this.state.sound;
+    let lastTracks = this.state.tracks;
     this.store.subscribe((state) => {
+      if (state.tracks !== lastTracks) {
+        this.storeTrackData(lastTracks, state.tracks);
+        lastTracks = state.tracks;
+      }
       if (state.sound !== lastSound) {
         lastSound = state.sound;
         saveSound(state.sound);
@@ -89,6 +104,18 @@ export class Player {
       this.engine.inputGainDecibels = state.settings.inputGain;
     });
     this.endCheck = setInterval(() => this.advanceAtEnd(), 100);
+    // The beat grid of the playing file goes to the engine once it is known.
+    this.analysis.subscribe(() => this.sendBeatGrid(false));
+  }
+
+  /** Gives the engine the beat grid of the loaded file (`reload`: after loading it). */
+  private sendBeatGrid(reload: boolean): void {
+    if (this.loadedId === null) return;
+    const track = this.state.tracks.find((entry) => entry.id === this.loadedId) ?? null;
+    const grid = this.analysisOf(track)?.grid ?? null;
+    if (!reload && grid === this.sentGrid) return;
+    this.sentGrid = grid;
+    this.engine.setBeatGrid(grid, this.loadedGeneration);
   }
 
   get state(): AppState {
@@ -147,6 +174,7 @@ export class Player {
           codec: null,
           format: null,
           coverUrl: null,
+          fingerprint: null,
         },
       });
       return;
@@ -154,6 +182,7 @@ export class Player {
     const coverUrl = result.cover
       ? URL.createObjectURL(new Blob([result.cover.data], { type: result.cover.mimeType }))
       : null;
+    const stored = loadTrackData(result.fingerprint, result.duration);
     this.dispatch({
       type: 'tracks/probed',
       id,
@@ -168,8 +197,17 @@ export class Player {
         codec: result.codec,
         format: result.format,
         coverUrl,
+        fingerprint: result.fingerprint,
+        ...(stored ? { stored } : {}),
       },
     });
+    // Waveform and beat grid in the background; the track that plays first.
+    this.analysis.request(result.fingerprint, file, id === this.state.currentId);
+  }
+
+  /** Waveform and beat grid of a track, once analysed (TR-03, AN-07). */
+  analysisOf(track: Track | null): TrackAnalysisState | undefined {
+    return this.analysis.get(track?.fingerprint ?? null);
   }
 
   /** True while live input is the source (the transport is idle then). */
@@ -271,9 +309,13 @@ export class Player {
     try {
       await this.engine.start();
       this.engine.paused = true;
-      await this.engine.load(file, startSeconds);
+      const loaded = await this.engine.load(file, startSeconds);
       this.loadedId = id;
+      this.loadedGeneration = loaded.generation;
       this.dispatch({ type: 'player/current', id });
+      const fingerprint = this.currentTrack?.fingerprint;
+      if (fingerprint) this.analysis.request(fingerprint, file, true);
+      this.sendBeatGrid(true);
       this.engine.paused = false;
       this.dispatch({ type: 'player/playing', playing: true });
       this.dispatch({ type: 'player/error', message: null });
@@ -358,7 +400,12 @@ export class Player {
     }
     this.releaseCover(id);
     this.files.delete(id);
+    const fingerprint = this.state.tracks.find((track) => track.id === id)?.fingerprint;
     this.dispatch({ type: 'tracks/removed', id });
+    // The analysis stays while another entry has the same file.
+    if (fingerprint && !this.state.tracks.some((track) => track.fingerprint === fingerprint)) {
+      this.analysis.forget(fingerprint);
+    }
   }
 
   move(from: number, to: number): void {
@@ -369,7 +416,10 @@ export class Player {
     this.pause();
     this.loadedId = null;
     await this.engine.unload();
-    for (const track of this.state.tracks) this.releaseCover(track.id);
+    for (const track of this.state.tracks) {
+      this.releaseCover(track.id);
+      if (track.fingerprint) this.analysis.forget(track.fingerprint);
+    }
     this.files.clear();
     this.dispatch({ type: 'tracks/cleared' });
   }
@@ -406,6 +456,25 @@ export class Player {
     const id = this.state.currentId;
     if (id === null) return;
     this.dispatch({ type: 'tracks/marked', id, mark, seconds });
+  }
+
+  /**
+   * Hot cue `index` of the current track (TR-04): jumps to it, or sets it at the playback
+   * position when it is empty.
+   */
+  async cue(index: number): Promise<void> {
+    const track = this.currentTrack;
+    if (!track || this.live || index < 0 || index >= CUE_COUNT) return;
+    const seconds = track.cues[index] ?? null;
+    if (seconds === null) this.setCue(index);
+    else await this.seek(seconds);
+  }
+
+  /** Sets hot cue `index` of the current track (at the playback position); null deletes it. */
+  setCue(index: number, seconds: number | null = this.position): void {
+    const id = this.state.currentId;
+    if (id === null) return;
+    this.dispatch({ type: 'tracks/cue', id, index, seconds });
   }
 
   /** The file behind a queue entry (for the export). */
@@ -449,7 +518,22 @@ export class Player {
     clearInterval(this.endCheck);
     if (this.liveInput) closeInput(this.liveInput.stream);
     this.probeClient.terminate();
+    this.analysis.dispose();
     void this.engine.dispose();
+  }
+
+  /** Keeps the cues and markers of each file (TR-05), so they come back with it. */
+  private storeTrackData(previous: readonly Track[], next: readonly Track[]): void {
+    const before = new Map(previous.map((track) => [track.id, track]));
+    for (const track of next) {
+      if (!track.fingerprint) continue;
+      const old = before.get(track.id);
+      const unchanged =
+        old?.fingerprint === track.fingerprint &&
+        old.cues === track.cues &&
+        old.marks === track.marks;
+      if (!unchanged) saveTrackData(track.fingerprint, { cues: track.cues, marks: track.marks });
+    }
   }
 
   private releaseCover(id: string): void {

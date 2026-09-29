@@ -1,0 +1,85 @@
+import { describe, expect, it } from 'vitest';
+import { createPrng } from '../util/prng';
+import { beatBefore, computeBeatGrid, type OnsetFeatures } from './beat-grid';
+
+const FRAME_RATE = 48000 / 512;
+
+/** Onset features with a pulse on every beat of `beatTimes` (seconds), plus a little noise. */
+function pulses(beatTimes: number[], seconds: number, seed = 3): OnsetFeatures {
+  const frames = Math.round(seconds * FRAME_RATE);
+  const random = createPrng(seed);
+  const onset = Float32Array.from({ length: frames }, () => random() * 0.1);
+  const accent = Float32Array.from({ length: frames }, () => random() * 0.1);
+  for (const time of beatTimes) {
+    // Frame i reports at (i + 1) / FRAME_RATE.
+    const frame = Math.round(time * FRAME_RATE) - 1;
+    if (frame < 0 || frame >= frames) continue;
+    onset[frame] = 1;
+    accent[frame] = 1;
+  }
+  return {
+    frameRate: FRAME_RATE,
+    onset,
+    accent,
+    active: new Uint8Array(frames).fill(1),
+    delay: 0,
+  };
+}
+
+/** Beat times of a tempo curve: `bpmAt(t)` beats per minute at time t. */
+function beatsOf(seconds: number, bpmAt: (time: number) => number, first = 0.3): number[] {
+  const beats: number[] = [];
+  for (let time = first; time < seconds; time += 60 / bpmAt(time)) beats.push(time);
+  return beats;
+}
+
+/** Fraction of the true beats after `from` seconds with a detected beat within 25 ms. */
+function matched(detected: Float64Array, truth: number[], from: number): number {
+  const late = truth.filter((time) => time >= from);
+  const found = late.filter((time) => detected.some((beat) => Math.abs(beat - time) < 0.025));
+  return found.length / late.length;
+}
+
+describe('beat grid', () => {
+  it('finds the beats of a steady pulse from the start', () => {
+    const truth = beatsOf(40, () => 128);
+    const grid = computeBeatGrid(pulses(truth, 40));
+    expect(matched(grid.beats, truth, 0)).toBeGreaterThan(0.97);
+    expect(grid.beats.length).toBeLessThan(truth.length + 3);
+    expect(Math.min(...grid.confidence.subarray(2, -2))).toBeGreaterThan(0.8);
+  });
+
+  it('follows a jump to a new tempo, as between two tracks of a mix', () => {
+    const truth = beatsOf(80, (time) => (time < 40 ? 120 : 140));
+    const grid = computeBeatGrid(pulses(truth, 80));
+    expect(matched(grid.beats, truth, 0)).toBeGreaterThan(0.95);
+    expect(matched(grid.beats, truth, 42)).toBeGreaterThan(0.97);
+  });
+
+  it('follows a gradual tempo change', () => {
+    const truth = beatsOf(90, (time) => 118 + (8 * time) / 90);
+    const grid = computeBeatGrid(pulses(truth, 90));
+    expect(matched(grid.beats, truth, 0)).toBeGreaterThan(0.97);
+  });
+
+  it('has no confidence where there is no beat', () => {
+    const random = createPrng(9);
+    const frames = Math.round(30 * FRAME_RATE);
+    const grid = computeBeatGrid({
+      frameRate: FRAME_RATE,
+      onset: Float32Array.from({ length: frames }, () => random()),
+      accent: Float32Array.from({ length: frames }, () => random()),
+      active: new Uint8Array(frames).fill(1),
+      delay: 0,
+    });
+    expect(Math.max(...grid.confidence)).toBeLessThan(0.2);
+  });
+
+  it('finds the beat at or before a time', () => {
+    const grid = { beats: Float64Array.of(0.5, 1, 1.5), confidence: new Float32Array(3) };
+    expect(beatBefore(grid, 0.2)).toBe(-1);
+    expect(beatBefore(grid, 0.5)).toBe(0);
+    expect(beatBefore(grid, 1.2)).toBe(1);
+    expect(beatBefore(grid, 9)).toBe(2);
+  });
+});

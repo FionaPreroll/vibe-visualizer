@@ -1,3 +1,4 @@
+import type { BeatGrid } from '../../analysis/beat-grid';
 import { createFeatureTimeline, FeatureTimelineReader } from '../../analysis/feature-timeline';
 import { WorkerClient } from '../../util/worker-rpc';
 import { DEFAULT_SOUND, type SoundSettings } from '../dsp/sound-settings';
@@ -177,6 +178,19 @@ export class AudioEngine {
   set nudge(factor: number) {
     this.nudgeFactor = factor;
     this.post({ type: 'nudge', factor });
+  }
+
+  /**
+   * The beat grid of the file that was loaded as ring generation `generation` (AN-07): the
+   * analysis then takes its beats from it. Null while the file has none yet.
+   */
+  setBeatGrid(grid: BeatGrid | null, generation: number): void {
+    this.post({
+      type: 'grid',
+      generation,
+      beats: grid?.beats ?? null,
+      confidence: grid?.confidence ?? null,
+    });
   }
 
   private post(message: EngineMessage): void {
