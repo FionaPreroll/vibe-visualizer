@@ -1,13 +1,15 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'vitest';
+import { computeBeatGrid } from '../../src/core/analysis/beat-grid';
 import { detectHits, formatScore } from '../../src/core/analysis/eval/evaluate';
+import { gridTempo } from '../../src/core/analysis/grid-beats';
 import { scoreOnsets, within, type OnsetScore } from '../../src/core/analysis/eval/score';
 import { Resampler } from '../../src/core/audio/resampler';
 import { readWav } from './wav-reader';
 
 /**
- * Drum detection on real music: the MDB Drums dataset (23 MedleyDB tracks with drum annotations,
+ * Drum detection, live beat tracking and the beat grid of a file on real music: the MDB Drums dataset (23 MedleyDB tracks with drum annotations,
  * CC BY-NC-SA 4.0, https://github.com/CarlSouthall/MDBDrums). Not part of the repository; set
  * MDB_DRUMS_DIR to the dataset's "MDB Drums" folder to run it: `pnpm eval:drums`. With
  * EVAL_CACHE_DIR set, the audio converted to the engine rate is cached there between runs.
@@ -159,10 +161,13 @@ describe.skipIf(!root || !existsSync(root))('drum detection on MDB Drums', () =>
       snare: [] as OnsetScore[],
       hat: [] as OnsetScore[],
       beat: [] as OnsetScore[],
+      grid: [] as OnsetScore[],
       mainSnare: [] as VisualTally[],
       hatOrCymbal: [] as VisualTally[],
     };
     let tempoCorrect = 0;
+    let gridTempoCorrect = 0;
+    let gridMilliseconds = 0;
     const lines: string[] = [];
     for (const track of tracks) {
       const [left, right] = loadTrack(join(mixDir, `${track}_MIX.wav`), track);
@@ -190,13 +195,25 @@ describe.skipIf(!root || !existsSync(root))('drum detection on MDB Drums', () =>
       const truthBpm = periods.length > 0 ? 60 / periods[Math.floor(periods.length / 2)]! : 0;
       const tempoOk = Math.abs(hits.bpm / truthBpm - 1) < 0.04;
       if (tempoOk) tempoCorrect++;
+      // The beat grid of the whole file (AN-07), scored the same way.
+      const started = performance.now();
+      const grid = computeBeatGrid(hits.onsets);
+      gridMilliseconds += performance.now() - started;
+      const gridBeats = Array.from(grid.beats);
+      const gridScore = scoreOnsets(within(gridBeats, 5, 1e9), within(beatTruth, 5, 1e9), 0.07);
+      totals.grid.push(gridScore);
+      const gridBpm = gridTempo(grid);
+      const gridOk = Math.abs(gridBpm / truthBpm - 1) < 0.04;
+      if (gridOk) gridTempoCorrect++;
       const f1 = (score: OnsetScore, count: number) =>
         count === 0 ? '   -  ' : `${(score.f1 * 100).toFixed(0).padStart(4)}% `;
       lines.push(
         `${track.replace('MusicDelta_', '').padEnd(14)} kick ${f1(kick, truth.kicks.length)}` +
           `snare ${f1(snare, truth.snares.length)}hat ${f1(hat, truth.hats.length)}` +
-          `beat ${f1(beat, beatTruth.length)} bpm ${hits.bpm.toFixed(0).padStart(3)} ` +
-          `(${truthBpm.toFixed(0).padStart(3)})${tempoOk ? '' : ' ✗'}`,
+          `beat ${f1(beat, beatTruth.length)}grid ${f1(gridScore, beatTruth.length)}` +
+          `bpm ${hits.bpm.toFixed(0).padStart(3)}${tempoOk ? ' ' : '✗'} ` +
+          `grid ${gridBpm.toFixed(0).padStart(3)}${gridOk ? ' ' : '✗'} ` +
+          `(${truthBpm.toFixed(0).padStart(3)})`,
       );
     }
     console.log(
@@ -207,10 +224,12 @@ describe.skipIf(!root || !existsSync(root))('drum detection on MDB Drums', () =>
         formatScore('snare', sum(totals.snare)),
         formatScore('hat', sum(totals.hat)),
         formatScore('beat', sum(totals.beat)),
+        formatScore('grid', sum(totals.grid)),
         'Visual relevance: snare recall without ghost notes and brushes; hi-hat precision with cymbals',
         formatVisual('snare', totals.mainSnare),
         formatVisual('hat', totals.hatOrCymbal),
-        `tempo within 4 %: ${tempoCorrect} of ${tracks.length} tracks`,
+        `tempo within 4 %: live ${tempoCorrect}, grid ${gridTempoCorrect} of ${tracks.length} tracks`,
+        `beat grids computed in ${gridMilliseconds.toFixed(0)} ms`,
       ].join('\n'),
     );
   });
