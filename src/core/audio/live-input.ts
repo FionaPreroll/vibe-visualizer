@@ -135,8 +135,8 @@ export async function openDisplay(): Promise<OpenedInput> {
   if (audio.length === 0) {
     throw new Error(
       surface === 'browser'
-        ? 'The tab was shared without its sound. Share it again and keep "Also share tab audio" switched on.'
-        : 'No sound was shared. Choose a tab and keep "Also share tab audio" on, or, where the dialog offers it, "Also share system audio". Otherwise use a virtual audio device (see the help below).',
+        ? 'The tab was shared without its sound. Share it again and switch on "Also share tab audio" at the bottom of the dialog.'
+        : 'No sound was shared. Share again and switch on the audio toggle at the bottom of the dialog ("Also share system audio"). If the dialog has none, use a virtual audio device (see the help below).',
     );
   }
   const labels: Record<string, string> = {

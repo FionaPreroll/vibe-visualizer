@@ -87,6 +87,30 @@ describe('audio ring buffer', () => {
     expect(monitor.renderTime).toBeCloseTo(2.0 + 4 / RATE);
   });
 
+  it('lets a further stage pull frames and publish the position it plays', () => {
+    const { producer, consumer, monitor } = setup(8);
+    const generation = producer.beginGeneration(1000);
+    consumer.syncGeneration();
+    producer.write([ramp(0, 6)], 0, 6);
+    const planes = [new Float32Array(8), new Float32Array(8)];
+    expect(consumer.pull(planes, 2, 4)).toBe(4);
+    expect(Array.from(planes[1]!.subarray(2, 6))).toEqual([0, 1, 2, 3]);
+    // No padding: only what is there.
+    expect(consumer.pull(planes, 0, 4)).toBe(2);
+    expect(consumer.takenFrames).toBe(6);
+    consumer.publish(3.5, 2.0);
+    expect(monitor.position).toBe(1003.5);
+    expect(monitor.renderTime).toBe(2.0);
+
+    // The source has ended, but the stage still has frames to play.
+    expect(consumer.ended).toBe(false);
+    producer.markEnded(generation);
+    expect(consumer.ended).toBe(true);
+    expect(monitor.isEnded()).toBe(false);
+    consumer.markPlayedOut();
+    expect(monitor.isEnded()).toBe(true);
+  });
+
   it('counts underruns only while a generation is playing and not ended', () => {
     const { producer, consumer, monitor, out } = setup();
     const generation = producer.beginGeneration(0);

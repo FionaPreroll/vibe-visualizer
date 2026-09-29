@@ -1,8 +1,10 @@
+import type { SoundSettings } from '../audio/dsp/sound-settings';
 import type { ImageKind } from '../render/logo-spectrum';
 import { decodeImage, type StoredImages } from '../render/visual-assets';
 import { WorkerClient } from '../util/worker-rpc';
 import {
   CANCELLED,
+  exportSeconds,
   OUTPUT_FILE,
   type ExportCodecs,
   type ExportManifest,
@@ -32,6 +34,8 @@ export interface ExportRequest {
   range: { start: number; end: number };
   format: VideoFormat;
   visuals: ExportVisuals;
+  /** Tempo and effects (EX-02). */
+  sound: SoundSettings;
   images: StoredImages;
   /** The file to write (Chromium); null downloads the video at the end. */
   destination: FileSystemFileHandle | null;
@@ -125,12 +129,14 @@ export class Exporter {
       range: request.range,
       format: request.format,
       visuals: request.visuals,
+      sound: request.sound,
       images,
       destination: request.destination,
       fileName: request.fileName,
       segmentSeconds: request.segmentSeconds,
     };
-    await this.run('start', args, transfer, request.fileName, request.format, request.range);
+    const duration = exportSeconds(request.range, request.sound);
+    await this.run('start', args, transfer, request.fileName, request.format, duration);
   }
 
   /** Continues an interrupted export; `file` is only needed if its audio was not finished. */
@@ -149,7 +155,8 @@ export class Exporter {
       if (bitmap) transfer.push(bitmap);
     }
     const args: ResumeArgs = { file, images, destination };
-    await this.run('resume', args, transfer, manifest.fileName, manifest.format, manifest.range);
+    const duration = manifest.timing.frames / manifest.format.fps;
+    await this.run('resume', args, transfer, manifest.fileName, manifest.format, duration);
   }
 
   pause(): void {
@@ -207,7 +214,7 @@ export class Exporter {
     transfer: Transferable[],
     fileName: string,
     format: VideoFormat,
-    range: { start: number; end: number },
+    duration: number,
   ): Promise<void> {
     const client = this.worker();
     this.set({
@@ -215,7 +222,7 @@ export class Exporter {
       job: {
         fileName,
         format,
-        duration: range.end - range.start,
+        duration,
         phase: 'starting',
         progress: 0,
         speed: null,

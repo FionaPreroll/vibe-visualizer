@@ -27,9 +27,18 @@
     markIn: 'M9 5v14M9 5h6M9 19h6',
     markOut: 'M15 5v14M15 5H9M15 19H9',
     live: 'M12 9a3 3 0 110 6 3 3 0 010-6zM7.8 7.8a6 6 0 000 8.4M16.2 7.8a6 6 0 010 8.4M5 5a10 10 0 000 14M19 5a10 10 0 010 14',
+    knob: 'M12 4a8 8 0 110 16 8 8 0 010-16zM12 12l4-4',
   } as const;
   /** Icons drawn as lines instead of filled shapes. */
-  const STROKED: readonly string[] = ['wave', 'export', 'safe', 'markIn', 'markOut', 'live'];
+  const STROKED: readonly string[] = [
+    'wave',
+    'export',
+    'safe',
+    'markIn',
+    'markOut',
+    'live',
+    'knob',
+  ];
   export type IconName = keyof typeof ICONS;
 </script>
 

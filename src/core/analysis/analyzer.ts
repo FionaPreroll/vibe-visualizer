@@ -135,6 +135,11 @@ export class Analyzer {
     this.beats = new BeatTracker(sampleRate / this.hop, Math.round((0.02 * sampleRate) / this.hop));
   }
 
+  /** The music now plays `factor` times as fast (the tempo fader): the beat tracking follows. */
+  scaleTempo(factor: number): void {
+    this.beats.scaleTempo(factor);
+  }
+
   reset(): void {
     this.history.fill(0);
     this.writeIndex = 0;

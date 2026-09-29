@@ -82,6 +82,7 @@ test('audio shared from a tab or the screen becomes the source', async ({ page }
   const errors = collectErrors(page);
   await page.goto('/');
   await page.getByRole('tab', { name: /Live/ }).click();
+  await expect(page.getByTestId('share-audio-hint')).toContainText('Share the sound too');
   await page.getByTestId('live-display').click();
   const status = page.getByTestId('live-status');
   await expect(status).toHaveAttribute('data-kind', 'display');

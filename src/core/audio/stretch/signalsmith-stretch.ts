@@ -143,6 +143,16 @@ export class SignalsmithStretch {
     return this.fn.outputLatency();
   }
 
+  /** Length of the analysis window in frames. */
+  get blockSamples(): number {
+    return this.fn.blockSamples();
+  }
+
+  /** Hop between analysis windows in frames. */
+  get intervalSamples(): number {
+    return this.fn.intervalSamples();
+  }
+
   /** (Re)allocates the transfer buffers. Allocates — do not call from the audio thread. */
   setMaxBlockFrames(frames: number): void {
     const pointer = this.fn.setBuffers(this.channels, frames);

@@ -118,9 +118,14 @@
   </Section>
 
   <Section title="Another tab or app" open>
-    <p class="hint">
-      Opens the browser's share dialog. Choose a tab and keep “Also share tab audio” on; some
-      systems also offer “Also share system audio” for the whole screen.
+    <p class="hint">Opens the browser's share dialog: choose a tab, a window or the screen.</p>
+    <p class="callout" data-testid="share-audio-hint">
+      <Icon name="alert" size={16} />
+      <span>
+        <strong>Share the sound too:</strong> switch on the audio toggle at the bottom of the dialog (“Also
+        share tab audio”, or “Also share system audio” for a window or the screen). Without it, the visuals
+        get no sound.
+      </span>
     </p>
     <button
       onclick={() => player.startLive('display')}
@@ -256,6 +261,21 @@
     margin: 0 0 8px;
     font-size: 12px;
     color: var(--muted);
+  }
+  .callout {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--info) 60%, transparent);
+    background: color-mix(in srgb, var(--info) 12%, var(--surface));
+    font-size: 12px;
+    color: var(--text);
+  }
+  .callout :global(svg) {
+    margin-top: 1px;
+    color: var(--info);
   }
   .check {
     display: flex;

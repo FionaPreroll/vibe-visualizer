@@ -1,3 +1,9 @@
+import {
+  DEFAULT_SOUND,
+  rateLimits,
+  sanitizeSound,
+  type SoundSettings,
+} from '../audio/dsp/sound-settings';
 import type { LiveSourceKind } from '../audio/live-input';
 import type { AspectRatio } from '../export/video-format';
 import {
@@ -46,8 +52,8 @@ export interface Marks {
 export type VisualMode = 'logoSpectrum' | 'kaleidoscope' | 'analysis';
 export const VISUAL_MODES: readonly VisualMode[] = ['logoSpectrum', 'kaleidoscope', 'analysis'];
 
-export type PanelTab = 'queue' | 'visuals' | 'live';
-export const PANEL_TABS: readonly PanelTab[] = ['queue', 'visuals', 'live'];
+export type PanelTab = 'queue' | 'sound' | 'visuals' | 'live';
+export const PANEL_TABS: readonly PanelTab[] = ['queue', 'sound', 'visuals', 'live'];
 
 /** Input gain range in dB (IN-03). */
 export const INPUT_GAIN_RANGE = { min: -24, max: 24 } as const;
@@ -99,6 +105,8 @@ export interface AppState {
   visuals: LogoSpectrumSettings;
   /** Parameters of the Kaleidoscope mode. */
   kaleido: KaleidoSettings;
+  /** Tempo and effects (TMP, FX): what the player and the export do to the sound. */
+  sound: SoundSettings;
   live: LiveState;
   error: string | null;
 }
@@ -137,6 +145,9 @@ export type AppAction =
   /** One parameter: a common one or one of a scene. */
   | { type: 'kaleido/param'; scope: 'common' | KaleidoSceneId; key: string; value: ParamValue }
   | { type: 'kaleido/replaced'; kaleido: KaleidoSettings }
+  | { type: 'sound/changed'; changes: Partial<SoundSettings> }
+  /** A sound preset was applied (FX-10): all sound settings at once. */
+  | { type: 'sound/replaced'; sound: SoundSettings }
   | { type: 'live/starting'; kind: LiveSourceKind }
   | { type: 'live/started'; kind: LiveSourceKind; label: string }
   /** Opening failed; `running` when the previous input keeps going. */
@@ -161,6 +172,7 @@ export function initialState(
   settings: Settings = DEFAULT_SETTINGS,
   visuals: LogoSpectrumSettings = DEFAULT_LOGO_SPECTRUM,
   kaleido: KaleidoSettings = DEFAULT_KALEIDO,
+  sound: SoundSettings = DEFAULT_SOUND,
 ): AppState {
   return {
     tracks: [],
@@ -169,6 +181,7 @@ export function initialState(
     settings,
     visuals,
     kaleido,
+    sound,
     live: LIVE_OFF,
     error: null,
   };
@@ -272,6 +285,17 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, visuals: sanitizeSettings({ ...state.visuals, ...action.changes }) };
     case 'visuals/replaced':
       return { ...state, visuals: sanitizeSettings(action.visuals) };
+    case 'sound/changed': {
+      const changes = { ...action.changes };
+      // A narrower tempo range keeps the speed if it fits, else the nearest one it can reach.
+      if (changes.tempoRange !== undefined && changes.rate === undefined) {
+        const [low, high] = rateLimits(changes.tempoRange);
+        changes.rate = Math.min(high, Math.max(low, state.sound.rate));
+      }
+      return { ...state, sound: sanitizeSound({ ...state.sound, ...changes }) };
+    }
+    case 'sound/replaced':
+      return { ...state, sound: sanitizeSound(action.sound) };
     case 'kaleido/scene': {
       if (action.scene === state.kaleido.scene) return state;
       const look = sceneDefaults(action.scene).common;
