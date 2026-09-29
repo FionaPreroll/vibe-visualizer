@@ -17,11 +17,12 @@ const ACK_GENERATION = 3; // consumer: generation it has switched to
 const UNDERRUNS = 4; // consumer: quanta that ran dry while a generation was playing
 const ENDED_GENERATION = 5; // producer: generation whose source reached its end
 const FIRST_FRAME_GENERATION = 6; // consumer: generation whose first frame has been output
+const PLAYED_OUT_GENERATION = 7; // consumer: generation that has been played to its end
 const CONTROL_INTS = 8;
 
 // Float64 fields
 const START_FRAME = 0; // producer: source frame at which the current generation starts
-const POSITION = 1; // consumer: source frame that plays at RENDER_TIME
+const POSITION = 1; // consumer: source frame that is heard at RENDER_TIME
 const RENDER_TIME = 2; // consumer: context time at the end of the last render quantum
 const FIRST_FRAME_TIME = 3; // consumer: context time at which the generation's first frame played
 const FLOAT_FIELDS = 4;
@@ -122,6 +123,64 @@ export class AudioRingConsumer extends AudioRingView {
   private awaitingFirstFrame = true;
 
   /**
+   * Copies up to `frames` frames to `planes[c][offset…]` without padding and returns how many:
+   * the pull side for a consumer that processes the stream further (the tempo stage). Call
+   * {@link syncGeneration} before, and {@link publish} after each render quantum.
+   */
+  pull(planes: readonly Float32Array[], offset: number, frames: number): number {
+    const write = Atomics.load(this.control, WRITE) >>> 0;
+    const read = Atomics.load(this.control, READ) >>> 0;
+    const count = Math.min(frames, (write - read) >>> 0);
+    const start = read & this.mask;
+    const first = Math.min(count, this.capacity - start);
+    for (let c = 0; c < planes.length; c++) {
+      const out = planes[c]!;
+      const plane = this.planes[Math.min(c, this.channels - 1)]!;
+      for (let i = 0; i < first; i++) out[offset + i] = plane[start + i]!;
+      for (let i = first; i < count; i++) out[offset + i] = plane[i - first]!;
+    }
+    Atomics.store(this.control, READ, (read + count) | 0);
+    this.generationPlayed += count;
+    return count;
+  }
+
+  /** True when the current generation's source has ended and every frame has been taken. */
+  get ended(): boolean {
+    return (
+      Atomics.load(this.control, ENDED_GENERATION) === this.generation && this.bufferedFrames === 0
+    );
+  }
+
+  /** Frames of the current generation taken so far. */
+  get takenFrames(): number {
+    return this.generationPlayed;
+  }
+
+  /** Source frame at which the current generation starts. */
+  get startFrame(): number {
+    return this.generationStart;
+  }
+
+  /**
+   * Publishes the playback position for the main thread: `streamFrame` (counted from the
+   * start of the generation) is heard at context time `renderTime`.
+   */
+  publish(streamFrame: number, renderTime: number): void {
+    this.floats[POSITION] = this.generationStart + streamFrame;
+    this.floats[RENDER_TIME] = renderTime;
+  }
+
+  /** Counts a render quantum that ran short of audio. */
+  countUnderrun(): void {
+    Atomics.add(this.control, UNDERRUNS, 1);
+  }
+
+  /** Marks the current generation as played to its end (what {@link AudioRingMonitor.isEnded} reports). */
+  markPlayedOut(): void {
+    Atomics.store(this.control, PLAYED_OUT_GENERATION, this.generation);
+  }
+
+  /**
    * Fills `output[c][0..frames)` from the ring (zero-padding when it runs dry) and returns the
    * number of frames taken. Allocation-free, safe for the audio thread.
    */
@@ -160,8 +219,8 @@ export class AudioRingConsumer extends AudioRingView {
     }
 
     this.generationPlayed += count;
-    this.floats[POSITION] = this.generationStart + this.generationPlayed;
-    this.floats[RENDER_TIME] = contextTime + frames / sampleRateHz;
+    this.publish(this.generationPlayed, contextTime + frames / sampleRateHz);
+    if (this.ended) this.markPlayedOut();
     return count;
   }
 
@@ -212,9 +271,8 @@ export class AudioRingMonitor extends AudioRingView {
       ? this.floats[FIRST_FRAME_TIME]!
       : null;
   }
+  /** True when the current generation has been played to its end. */
   isEnded(): boolean {
-    return (
-      Atomics.load(this.control, ENDED_GENERATION) === this.generation && this.bufferedFrames === 0
-    );
+    return Atomics.load(this.control, PLAYED_OUT_GENERATION) === this.generation;
   }
 }

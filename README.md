@@ -2,7 +2,7 @@
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
-> **Status:** P1, P2 and P5 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, the video export (whole tracks or clips, in segments that survive a crash), and live input from audio devices and other apps. Next: P3 (cues, tempo and effects) and P4 (more scenes and video polish).
+> **Status:** P1, P2 and P5 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, the video export (whole tracks or clips, in segments that survive a crash), and live input from audio devices and other apps. P3 is half done: tempo (vinyl and key lock) and effects (DJ filter, delay, reverb, one-click "Slowed + Reverb", "Sped up" and "Nightcore"), live and in the export. Next: the rest of P3 (cues, waveforms, playlists, beat grid) and P4 (more scenes and video polish).
 > Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md) · [audio analysis](docs/ANALYSIS.md)
 
 ## Run it locally
@@ -18,7 +18,7 @@ Then open http://localhost:5173 in Chrome or Firefox. The dev server sends the c
 
 ## Using the app
 
-Drop audio files onto the window (or click **Add files**); several files make a queue. Double-click a track to play it. Shortcuts: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, F fullscreen, I/O set the in and out marker (with Shift they are cleared); in the queue Alt+↑/↓ moves a track and Delete removes it.
+Drop audio files onto the window (or click **Add files**); several files make a queue. Double-click a track to play it. Shortcuts: Space play/pause, ←/→ seek 5 s (with Shift 30 s), N next, P previous, F fullscreen, I/O set the in and out marker (with Shift they are cleared), −/+ tempo in steps of 0.1 %, hold , or . to nudge slower or faster; in the queue Alt+↑/↓ moves a track and Delete removes it.
 
 The top bar switches the stage between three views:
 
@@ -27,6 +27,19 @@ The top bar switches the stage between three views:
 - **Analysis:** what the visuals react to: spectrum, band energies, kick/snare/hi-hat lamps, the beat (its ring shows the position within the beat) and the tempo.
 
 In fullscreen (F), only the visuals show; the mouse cursor hides when you do not move it.
+
+## Tempo and effects
+
+The **Sound** tab in the side panel changes how the music sounds, while you listen and in exported videos. A dot on the tab shows that the sound is changed.
+
+- **Presets:** *Slowed + Reverb* (85 %, deeper, with a big reverb), *Sped up* (120 %), *Nightcore* (130 %) and *Clean*. Everything stays adjustable afterwards.
+- **Tempo:** a fader with a range of ±8 %, ±16 % or ±50 %, fine steps of 0.1 %, reset (or double-click the fader), and *Nudge*: 4 % slower or faster while you hold the button. *Vinyl* changes the pitch with the speed, like a record; *Key lock* keeps the pitch. The tempo display shows the detected BPM, and the original BPM when the speed is changed.
+- **Filter:** one knob from low-pass (left) to high-pass (right), with resonance; the middle is off.
+- **Delay:** in time with the beat (1/16 to 1/1, straight, dotted or triplet) or in milliseconds, with feedback, a tone filter for the echoes, ping-pong and mix.
+- **Reverb:** size, decay, pre-delay, damping and mix.
+- Changes glide without clicks, and a switched-off delay or reverb rings out. A limiter keeps the output from clipping.
+
+The visuals react to the music after the tempo and the filter, before the echoes and the reverb: those would blur the beats.
 
 The stage shows the visuals in the aspect ratio of your video: 16:9 (YouTube), 9:16 (TikTok, Shorts, Reels), 1:1, 4:5 or 21:9, chosen in the top bar. The frame button next to it shows the safe areas: the title-safe frame, and on 9:16 the parts that the apps cover with their buttons and captions.
 
@@ -43,7 +56,7 @@ While live input runs, the visuals follow it without delay and the queue pauses;
 
 ## Exporting videos
 
-Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K30*, *TikTok / Shorts 1080×1920*, or your own aspect ratio, size and frame rate), the quality, and the range: the whole track or the part between the markers. For a 30-second clip, play the track and press I at the start and O at the end (or use the bracket buttons next to Stop). The dialog shows the codecs and the estimated file size. The export uses the same scenes, analysis and settings as the preview, so the video looks like what you see (the audio is the file's own; tempo and effects come with P3).
+Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K30*, *TikTok / Shorts 1080×1920*, or your own aspect ratio, size and frame rate), the quality, and the range: the whole track or the part between the markers. For a 30-second clip, play the track and press I at the start and O at the end (or use the bracket buttons next to Stop). The dialog shows the codecs, the sound and the video's length (a slowed-down track makes a longer video) and the estimated file size. The export uses the same scenes, analysis, settings, tempo and effects as the preview, so the video looks and sounds like what you see and hear. With a sound preset, its name goes into the file name, e.g. "Artist - Title (Slowed + Reverb).mp4".
 
 - The video is rendered frame by frame, independent of the speed of your graphics card: a slower machine just takes longer, and the result is always smooth.
 - In Chrome and Edge you pick the file first; the video is written straight into it. Other browsers keep it in browser storage and download it at the end.
@@ -85,11 +98,12 @@ The app is a static site. On Cloudflare Pages use the build command `pnpm build`
 
 ```
 src/core/       framework-free core: audio engine (media worker, AudioWorklet, resampler, ring
-                buffer, live input), analysis, WebGL2 renderer (render worker, Logo Spectrum
-                and Kaleidoscope scenes), export (export worker, formats, job storage), player
-                and state, Signalsmith Stretch binding, utilities
-src/ui/         Svelte app: top bar, stage, queue, visuals and live panels, transport, export
-                dialog
+                buffer, live input), sound chain (tempo, filter, delay, reverb, limiter),
+                analysis, WebGL2 renderer (render worker, Logo Spectrum and Kaleidoscope
+                scenes), export (export worker, formats, job storage), player and state,
+                Signalsmith Stretch binding, utilities
+src/ui/         Svelte app: top bar, stage, queue, sound, visuals and live panels, transport,
+                export dialog
 src/spikes/     Spike Lab and the P0 prototypes
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core
 tests/e2e/      Playwright tests

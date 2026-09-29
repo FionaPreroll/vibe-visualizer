@@ -1,3 +1,4 @@
+import { rateLimits, TEMPO_STEP, type SoundSettings } from '../audio/dsp/sound-settings';
 import { AudioEngine } from '../audio/engine/audio-engine';
 import {
   closeInput,
@@ -23,14 +24,19 @@ import type { LogoSpectrumSettings } from '../render/visual-settings';
 import {
   loadKaleido,
   loadSettings,
+  loadSound,
   loadVisuals,
   saveKaleido,
   saveSettings,
+  saveSound,
   saveVisuals,
 } from '../state/persistence';
 import { createStore, type Store } from '../state/store';
 import { errorMessage } from '../util/format';
 import { WorkerClient } from '../util/worker-rpc';
+
+/** Speed change while nudging (TMP-03). */
+export const NUDGE = 0.04;
 
 /**
  * Connects the queue state with the audio engine: every user command goes through here, is
@@ -52,15 +58,22 @@ export class Player {
 
   constructor() {
     this.store = createStore<AppState, AppAction>(
-      initialState(loadSettings(), loadVisuals(), loadKaleido()),
+      initialState(loadSettings(), loadVisuals(), loadKaleido(), loadSound()),
       reducer,
     );
     this.engine.volume = this.state.settings.volume;
     this.engine.inputGainDecibels = this.state.settings.inputGain;
+    this.engine.sound = this.state.sound;
     let lastSettings = this.state.settings;
     let lastVisuals = this.state.visuals;
     let lastKaleido = this.state.kaleido;
+    let lastSound = this.state.sound;
     this.store.subscribe((state) => {
+      if (state.sound !== lastSound) {
+        lastSound = state.sound;
+        saveSound(state.sound);
+        this.engine.sound = state.sound;
+      }
       if (state.visuals !== lastVisuals) {
         lastVisuals = state.visuals;
         saveVisuals(state.visuals);
@@ -398,6 +411,30 @@ export class Player {
   /** The file behind a queue entry (for the export). */
   fileFor(id: string): File | null {
     return this.files.get(id) ?? null;
+  }
+
+  /** Changes tempo or effect settings (TMP, FX). */
+  updateSound(changes: Partial<SoundSettings>): void {
+    this.dispatch({ type: 'sound/changed', changes });
+  }
+
+  /** Applies a sound preset (FX-10): all settings at once. */
+  replaceSound(sound: SoundSettings): void {
+    this.dispatch({ type: 'sound/replaced', sound });
+  }
+
+  /** Changes the tempo by a fine step (TMP-03), within the fader's range. */
+  stepTempo(direction: -1 | 1): void {
+    const sound = this.state.sound;
+    const [low, high] = rateLimits(sound.tempoRange);
+    // Rounded to the step, so repeated steps do not collect rounding errors.
+    const rate = Math.round((sound.rate + direction * TEMPO_STEP) * 1000) / 1000;
+    this.updateSound({ rate: Math.min(high, Math.max(low, rate)) });
+  }
+
+  /** Speeds up (1) or slows down (−1) for as long as it is held, 0 releases (TMP-03). */
+  nudge(direction: -1 | 0 | 1): void {
+    this.engine.nudge = 1 + direction * NUDGE;
   }
 
   updateSettings(changes: Partial<Settings>): void {

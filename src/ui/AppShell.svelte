@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { isClean } from '../core/audio/dsp/sound-settings';
   import { Exporter } from '../core/export/exporter';
   import { Player } from '../core/player/player';
   import { VisualAssets } from '../core/render/visual-assets';
@@ -12,6 +13,7 @@
   import PhotosensitivityNotice from './PhotosensitivityNotice.svelte';
   import { providePlayer } from './player-context';
   import QueuePanel from './QueuePanel.svelte';
+  import SoundPanel from './SoundPanel.svelte';
   import TopBar from './TopBar.svelte';
   import TransportBar from './TransportBar.svelte';
   import VisualsPanel from './VisualsPanel.svelte';
@@ -102,14 +104,36 @@
         case 'O':
           player.mark('out', event.shiftKey ? null : player.position);
           break;
+        // Tempo in fine steps, and nudging while the key is held (TMP-03).
+        case '-':
+          player.stepTempo(-1);
+          break;
+        case '+':
+        case '=':
+          player.stepTempo(1);
+          break;
+        case ',':
+          if (!event.repeat) player.nudge(-1);
+          break;
+        case '.':
+          if (!event.repeat) player.nudge(1);
+          break;
         default:
           return;
       }
       event.preventDefault();
     };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === ',' || event.key === '.') player.nudge(0);
+    };
+    const release = () => player.nudge(0);
     window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', release);
     return () => {
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', release);
       document.removeEventListener('fullscreenchange', onFullscreen);
     };
   });
@@ -177,6 +201,14 @@
         </button>
         <button
           role="tab"
+          aria-selected={$app.settings.panel === 'sound'}
+          onclick={() => player.updateSettings({ panel: 'sound' })}
+        >
+          <Icon name="knob" size={16} /> Sound
+          {#if !isClean($app.sound)}<span class="sound-dot" aria-label="(changed)"></span>{/if}
+        </button>
+        <button
+          role="tab"
           aria-selected={$app.settings.panel === 'visuals'}
           onclick={() => player.updateSettings({ panel: 'visuals' })}
         >
@@ -194,6 +226,8 @@
       <div class="panel-body" role="tabpanel">
         {#if $app.settings.panel === 'queue'}
           <QueuePanel />
+        {:else if $app.settings.panel === 'sound'}
+          <SoundPanel />
         {:else if $app.settings.panel === 'visuals'}
           <VisualsPanel />
         {:else}
@@ -241,15 +275,16 @@
   }
   .tabs {
     display: flex;
-    gap: 4px;
-    padding: 8px 12px 0;
+    gap: 2px;
+    padding: 8px 8px 0;
     border-bottom: 1px solid var(--border);
   }
   .tabs button {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
+    gap: 5px;
+    padding: 6px 8px;
+    font-size: 13px;
     border: 1px solid transparent;
     border-bottom: none;
     border-radius: 8px 8px 0 0;
@@ -261,11 +296,15 @@
     border-color: var(--border);
     color: var(--text);
   }
-  .live-dot {
+  .live-dot,
+  .sound-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background: var(--fail);
+  }
+  .sound-dot {
+    background: var(--accent);
   }
   .panel-body {
     flex: 1;

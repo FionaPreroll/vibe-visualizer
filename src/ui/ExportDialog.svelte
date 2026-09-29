@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { isClean, type SoundSettings } from '../core/audio/dsp/sound-settings';
   import {
     exportFileName,
+    exportSeconds,
     type ExportCodecs,
     type ExportManifest,
   } from '../core/export/export-job';
@@ -67,7 +69,9 @@
   );
   const marked = $derived(track !== null && (track.marks.in !== null || track.marks.out !== null));
   const range = $derived(track ? trackRange(track, marked && fitted.range === 'marks') : null);
-  const seconds = $derived(range ? range.end - range.start : 0);
+  const sound = $derived($app.sound);
+  /** Length of the video: the range at the tempo of the sound. */
+  const seconds = $derived(range ? exportSeconds(range, sound) : 0);
 
   // Which codecs this browser will use (EX-04), checked whenever the format changes.
   $effect(() => {
@@ -125,7 +129,7 @@
     if (!file) return;
     const whole = range.start <= 0 && range.end >= (track.duration ?? range.end);
     const source = { title: track.title, artist: track.artist };
-    const fileName = exportFileName(source, whole ? null : range, codecs.container);
+    const fileName = exportFileName(source, whole ? null : range, codecs.container, sound);
     let destination: FileSystemFileHandle | null;
     try {
       destination = await saveTarget(fileName, codecs.container);
@@ -150,6 +154,7 @@
         mode === 'kaleidoscope'
           ? { mode, settings: $app.kaleido }
           : { mode: 'logoSpectrum', settings: $app.visuals },
+      sound,
       images: assets.current,
       destination,
       fileName,
@@ -197,6 +202,20 @@
     const video = value.video === 'avc' ? 'H.264' : 'VP9';
     const audio = value.audio === 'aac' ? 'AAC' : 'Opus';
     return `${video} + ${audio}, ${value.container.toUpperCase()}`;
+  }
+
+  /** The sound in a few words, e.g. "85 %, key lock, reverb". */
+  function soundSummary(value: SoundSettings): string {
+    if (isClean(value)) return 'As the file sounds';
+    const parts: string[] = [];
+    if (value.rate !== 1) {
+      parts.push(`${(value.rate * 100).toFixed(1).replace(/\.0$/, '')} % speed`);
+      parts.push(value.tempoMode === 'keylock' ? 'key lock' : 'vinyl');
+    }
+    if (value.filter !== 0) parts.push(value.filter < 0 ? 'low-pass filter' : 'high-pass filter');
+    if (value.delayOn) parts.push('delay');
+    if (value.reverbOn) parts.push('reverb');
+    return parts.join(', ');
   }
 
   function remaining(seconds: number | null): string {
@@ -456,8 +475,12 @@
           {format.width}×{format.height} · {format.fps} fps ·
           {#if codecs}{codecLabel(codecs)}{:else}checking the encoders…{/if}
         </dd>
+        <dt>Sound</dt>
+        <dd data-testid="export-sound">{soundSummary(sound)} (set in the Sound tab)</dd>
         <dt>Length</dt>
-        <dd>{formatDuration(seconds)} · about {formatBytes(estimateBytes(format, seconds))}</dd>
+        <dd data-testid="export-length">
+          {formatDuration(seconds)} · about {formatBytes(estimateBytes(format, seconds))}
+        </dd>
         <dt>Saving</dt>
         <dd>
           {canPickFile()

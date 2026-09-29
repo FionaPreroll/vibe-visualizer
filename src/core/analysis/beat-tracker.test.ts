@@ -94,6 +94,21 @@ describe('BeatTracker', () => {
     expect(mean * FRAME_RATE).toBeCloseTo(-lead, 0);
   });
 
+  it('stays on the beat through a known tempo change', () => {
+    const tracker = new BeatTracker(FRAME_RATE);
+    track({ bpm: 120, seconds: 12, onset: impulses(120, 0) }, tracker);
+    // The player slows the music down to 85 %: 102 BPM, and the beats are further apart.
+    tracker.scaleTempo(0.85);
+    expect(tracker.bpm).toBeCloseTo(102, 0);
+    // 12 s at 120 BPM end on a beat, so the slower beats start right away.
+    const bpm = 102;
+    const beats = track({ bpm, seconds: 8, onset: impulses(bpm, 0) }, tracker);
+    // From the first beat on, not seconds later.
+    expect(onBeat(beats, bpm, 0, 0.3)).toBeGreaterThan(0.9);
+    expect(Math.abs(tracker.bpm / bpm - 1)).toBeLessThan(0.01);
+    expect(tracker.confidence).toBeGreaterThan(0.5);
+  });
+
   it('reports no beats in silence', () => {
     const tracker = new BeatTracker(FRAME_RATE);
     track({ bpm: 120, seconds: 10, onset: impulses(120, 0) }, tracker);

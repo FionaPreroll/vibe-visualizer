@@ -22,7 +22,10 @@ import { Analyzer } from '../analysis/analyzer';
 import { FeatureSampler } from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
 import { decodeAtRate } from '../audio/decode-stream';
+import { DspCore } from '../audio/dsp/dsp-core';
+import type { SoundSettings } from '../audio/dsp/sound-settings';
 import { Resampler } from '../audio/resampler';
+import { SignalsmithStretch } from '../audio/stretch/signalsmith-stretch';
 import { sanitizeKaleido } from '../render/kaleido-settings';
 import { KaleidoscopeScene } from '../render/kaleidoscope';
 import { LogoSpectrumScene } from '../render/logo-spectrum';
@@ -41,6 +44,7 @@ import {
   type ExportSource,
   type ExportVisuals,
 } from './export-job';
+import { DecodedSource } from './decoded-source';
 import { FeatureFeed } from './feature-feed';
 import { clearJob, JobWriter, readManifest, RecordWriter } from './job-store';
 import { avcCodecString, type VideoFormat } from './video-format';
@@ -48,8 +52,9 @@ import { avcCodecString, type VideoFormat } from './video-format';
 /**
  * Renders an export (EX-01…07, EX-15) in a worker, independent of the screen:
  *
- * 1. Audio pass: decode the range (plus an analysis pre-roll), convert to 48 kHz like the live
- *    engine, analyse it and store the analysis, and encode the audio.
+ * 1. Audio pass: decode the range (plus an analysis pre-roll), convert to 48 kHz and play it
+ *    through the sound chain like the live engine (tempo and effects), analyse it and store the
+ *    analysis, and encode the audio.
  * 2. Video pass: render frame n at time n / fps from the stored analysis, in segments. After
  *    each segment the scene's state is saved, so an interrupted export resumes exactly.
  * 3. Join: copy the segments and the audio into one MP4 (or WebM) without re-encoding, straight
@@ -69,6 +74,7 @@ export interface StartArgs {
   range: { start: number; end: number };
   format: VideoFormat;
   visuals: ExportVisuals;
+  sound: SoundSettings;
   images: { background: ImageInput | null; logo: ImageInput | null };
   /** The file to write; null writes into browser storage for a download. */
   destination: FileSystemFileHandle | null;
@@ -105,6 +111,12 @@ export type ExportProgress =
   | { phase: 'join'; done: number; total: number };
 
 const OPUS_BITRATE = 192_000;
+/** Frames per call of the sound chain: the live engine's render quantum. */
+const BLOCK = 128;
+/** Blocks per decode check and pause check. */
+const BLOCKS_PER_STEP = 16;
+/** Audio samples per encoded chunk. */
+const ENCODE_CHUNK = 8192;
 const PREVIEW_WIDTH = 480;
 const REPORT_INTERVAL_MS = 250;
 const PREVIEW_INTERVAL_MS = 1000;
@@ -201,7 +213,7 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
     const store = await JobWriter.open();
     const analyzer = new Analyzer(EXPORT_RATE);
     const manifest: ExportManifest = {
-      version: 1,
+      version: 2,
       sequence: 0,
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
@@ -210,11 +222,18 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
       format: args.format,
       codecs: await probe(args.format),
       visuals: args.visuals,
+      sound: args.sound,
       images: {
         background: args.images.background?.blob.type ?? null,
         logo: args.images.logo?.blob.type ?? null,
       },
-      timing: planTiming(args.range, args.format.fps, analyzer.hop, args.segmentSeconds),
+      timing: planTiming(
+        args.range,
+        args.format.fps,
+        analyzer.hop,
+        args.sound,
+        args.segmentSeconds,
+      ),
       destination: args.destination ? 'file' : 'download',
       fileName: args.fileName,
       progress: { audioDone: false, segmentsDone: 0, finished: false, bytes: null },
@@ -301,7 +320,11 @@ async function run(
   };
 }
 
-/** Pass 1: decode, analyse (stored for the video pass) and encode the audio. */
+/**
+ * Pass 1: decode, play through the sound chain, analyse (stored for the video pass) and encode
+ * the audio. The chain runs in the live engine's blocks, with the analysis between the filter
+ * and the delay, so the export sounds and reacts like playback.
+ */
 async function audioPass(
   store: JobWriter,
   manifest: ExportManifest,
@@ -309,10 +332,11 @@ async function audioPass(
   analyzer: Analyzer,
   progress: (update: ExportProgress) => void,
 ): Promise<void> {
-  const { timing, codecs, format } = manifest;
+  const { timing, codecs, format, sound } = manifest;
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
   const records = new RecordWriter(await store.open('features.bin'), FEATURE_FIELDS);
   let output: Output | null = null;
+  let decoded: DecodedSource | null = null;
   try {
     const track = await input.getPrimaryAudioTrack();
     if (!track) throw new Error('The file contains no audio track.');
@@ -335,59 +359,84 @@ async function audioPass(
     output.addAudioTrack(source);
     await output.start();
 
-    const analysisEnd = timing.analysisStart + timing.analysisFrames * timing.hop;
+    const stretch = sound.tempoMode === 'keylock' ? new SignalsmithStretch(2, EXPORT_RATE) : null;
+    const dsp = new DspCore(EXPORT_RATE, stretch);
+    dsp.setSettings(sound);
+    dsp.snap();
+    dsp.reset();
+    decoded = new DecodedSource(
+      decodeAtRate(track, resampler, timing.sourceStart)[Symbol.asyncIterator](),
+    );
+    // What one step of blocks can take from the source, with the key lock's look-ahead.
+    const lookAhead = Math.ceil(BLOCK * BLOCKS_PER_STEP * sound.rate * 1.1) + 16384;
+
     const encodeStart = timing.audioStart;
     const encodeEnd = timing.audioStart + timing.audioFrames;
-    let position = timing.analysisStart;
+    const total = Math.max(
+      encodeEnd,
+      timing.analysisStart + (timing.analysisFrames + 1) * timing.hop,
+    );
+    const pending = [new Float32Array(ENCODE_CHUNK), new Float32Array(ENCODE_CHUNK)];
+    let pendingStart = encodeStart;
+    let pendingFrames = 0;
+    const flush = async () => {
+      if (pendingFrames === 0) return;
+      const data = new Float32Array(pendingFrames * 2);
+      data.set(pending[0]!.subarray(0, pendingFrames), 0);
+      data.set(pending[1]!.subarray(0, pendingFrames), pendingFrames);
+      const sample = new AudioSample({
+        data,
+        format: 'f32-planar',
+        numberOfChannels: 2,
+        sampleRate: EXPORT_RATE,
+        timestamp: (pendingStart - encodeStart) / EXPORT_RATE,
+      });
+      await source.add(sample);
+      sample.close();
+      pendingStart += pendingFrames;
+      pendingFrames = 0;
+    };
+
+    const block = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
     let stored = 0;
     const onFrame = () => {
       if (stored++ < timing.analysisFrames) records.add(analyzer.frame);
     };
+    let rendered = 0;
     let reported = 0;
-    const consume = async (left: Float32Array, right: Float32Array) => {
-      const count = Math.min(left.length, analysisEnd - position);
-      if (count <= 0) return;
-      analyzer.process(left, right, count, onFrame);
-      const from = Math.max(position, encodeStart);
-      const to = Math.min(position + count, encodeEnd);
-      if (to > from) {
-        const frames = to - from;
-        const offset = from - position;
-        const data = new Float32Array(frames * 2);
-        data.set(left.subarray(offset, offset + frames), 0);
-        data.set(right.subarray(offset, offset + frames), frames);
-        const sample = new AudioSample({
-          data,
-          format: 'f32-planar',
-          numberOfChannels: 2,
-          sampleRate: EXPORT_RATE,
-          timestamp: (from - encodeStart) / EXPORT_RATE,
-        });
-        await source.add(sample);
-        sample.close();
+    while (stored < timing.analysisFrames || rendered < encodeEnd) {
+      await gate();
+      await decoded.ensure(lookAhead);
+      for (let step = 0; step < BLOCKS_PER_STEP; step++) {
+        dsp.renderMusic(decoded, block, BLOCK);
+        analyzer.process(block[0]!, block[1]!, BLOCK, onFrame);
+        dsp.setBeat(analyzer.frame[F.bpm]!, analyzer.frame[F.beatConfidence]!);
+        dsp.renderEffects(block, BLOCK);
+        // The part of this block inside the range goes to the encoder.
+        const from = Math.max(rendered, encodeStart);
+        const to = Math.min(rendered + BLOCK, encodeEnd);
+        for (let frame = from; frame < to;) {
+          const count = Math.min(to - frame, ENCODE_CHUNK - pendingFrames);
+          const offset = frame - rendered;
+          pending[0]!.set(block[0]!.subarray(offset, offset + count), pendingFrames);
+          pending[1]!.set(block[1]!.subarray(offset, offset + count), pendingFrames);
+          pendingFrames += count;
+          frame += count;
+          if (pendingFrames === ENCODE_CHUNK) await flush();
+        }
+        rendered += BLOCK;
       }
-      position += count;
       if (performance.now() - reported > REPORT_INTERVAL_MS) {
         reported = performance.now();
-        const total = analysisEnd - timing.analysisStart;
-        progress({ phase: 'audio', done: position - timing.analysisStart, total });
+        progress({ phase: 'audio', done: Math.min(rendered, total), total });
       }
-    };
-    for await (const planes of decodeAtRate(track, resampler, timing.analysisStart)) {
-      await gate();
-      await consume(planes[0]!, planes[1] ?? planes[0]!);
-      if (position >= analysisEnd) break;
     }
-    // A file that ends early (or a duration that was a little off): silence up to the end.
-    const silence = new Float32Array(4096);
-    while (position < analysisEnd) {
-      await gate();
-      await consume(silence, silence);
-    }
+    await flush();
     await output.finalize();
     output = null;
   } finally {
     records.close();
+    await decoded?.close().catch(() => undefined);
     await output?.cancel().catch(() => undefined);
     input.dispose();
   }

@@ -13,6 +13,8 @@
  *   Every four beats, the accent signal (kick and drum-body energy) on the last beats is compared
  *   with the accent halfway between them; if the offbeats are clearly stronger, the tracker
  *   moves by half a beat.
+ * - Known tempo changes (the player's tempo fader): {@link scaleTempo} re-times the history as
+ *   if it had been played at the new tempo, so the beat is kept instead of found again.
  *
  * Allocation-free after construction: safe to run in the AudioWorklet.
  */
@@ -69,6 +71,10 @@ export class BeatTracker {
   /** transition[i * count + j]: weight of moving from period j to period i. */
   private readonly transition: Float64Array;
   private readonly future: Float64Array;
+  /** Scratch space for {@link scaleTempo}. */
+  private readonly scratch: Float64Array;
+  private readonly minPeriod: number;
+  private readonly maxPeriod: number;
   private readonly beatFrames = new Float64Array(PHASE_CHECK_BEATS).fill(-1);
   private beatCount = 0;
   /** Frames processed so far. */
@@ -92,6 +98,8 @@ export class BeatTracker {
     this.period = (60 * frameRate) / PRIOR_BPM;
     const maxPeriod = (60 * frameRate) / MIN_BPM;
     const minPeriod = (60 * frameRate) / MAX_BPM;
+    this.maxPeriod = maxPeriod;
+    this.minPeriod = minPeriod;
     // Enough history for the tempo window and for the offbeat check.
     const history = Math.max(TEMPO_WINDOW_SECONDS * frameRate, (PHASE_CHECK_BEATS + 2) * maxPeriod);
     const length = 2 ** Math.ceil(Math.log2(history));
@@ -116,6 +124,7 @@ export class BeatTracker {
       }
     }
     this.future = new Float64Array(Math.ceil(maxPeriod) + 2);
+    this.scratch = new Float64Array(length);
   }
 
   /** The reported time, in frames: the last processed frame plus the lead. */
@@ -325,6 +334,63 @@ export class BeatTracker {
       curvature < 0 ? Math.max(-0.5, Math.min(0.5, (0.5 * (left - right)) / curvature)) : 0;
     this.period = periods[bestIndex]! + shift * PERIOD_STEP;
     this.bpm = (60 * this.frameRate) / this.period;
+  }
+
+  /**
+   * The music now plays `factor` times as fast (e.g. 0.85 after slowing down to 85 %). The
+   * recent onsets are re-timed as if they had been played at the new tempo, and the tempo
+   * estimate and the beat positions follow, so the tracker stays on the beat through the
+   * change. Allocation-free.
+   */
+  scaleTempo(factor: number): void {
+    if (!(factor > 0) || Math.abs(factor - 1) < 1e-6 || this.frame === 0) return;
+    const newest = this.frame - 1;
+    for (const history of [this.onsets, this.accents, this.cumulative]) {
+      this.retime(history, newest, factor);
+    }
+    // The tempo candidates: the probability of period p moves to p / factor.
+    const periods = this.periods;
+    const count = periods.length;
+    let total = 0;
+    for (let i = 0; i < count; i++) {
+      const old = (periods[i]! * factor - this.minPeriod) / PERIOD_STEP;
+      const index = Math.floor(old);
+      const t = old - index;
+      const a = index >= 0 && index < count ? this.state[index]! : 0;
+      const b = index + 1 >= 0 && index + 1 < count ? this.state[index + 1]! : 0;
+      this.nextState[i] = a + (b - a) * t;
+      total += this.nextState[i]!;
+    }
+    for (let i = 0; i < count; i++) {
+      this.state[i] = total > 0 ? this.nextState[i]! / total : 1 / count;
+    }
+    // A tempo outside the tracked range continues at double or half speed.
+    let period = this.period / factor;
+    while (period < this.minPeriod) period *= 2;
+    while (period > this.maxPeriod) period /= 2;
+    this.period = period;
+    this.bpm = (60 * this.frameRate) / period;
+    // Beats keep their place relative to now.
+    this.lastBeat = Math.round(newest - (newest - this.lastBeat) / factor);
+    if (this.nextBeat >= 0) this.nextBeat = Math.round(newest + (this.nextBeat - newest) / factor);
+    this.beatFrames.fill(-1);
+    this.beatCount = 0;
+  }
+
+  /** Resamples a history ring so that the distance d from `newest` shows what was at d × factor. */
+  private retime(history: Float64Array, newest: number, factor: number): void {
+    const length = history.length;
+    const mask = length - 1;
+    const available = Math.min(length, newest + 1);
+    for (let d = 0; d < available; d++) this.scratch[d] = history[(newest - d) & mask]!;
+    for (let d = 0; d < available; d++) {
+      const position = d * factor;
+      const index = Math.floor(position);
+      const t = position - index;
+      const a = index < available ? this.scratch[index]! : 0;
+      const b = index + 1 < available ? this.scratch[index + 1]! : 0;
+      history[(newest - d) & mask] = a + (b - a) * t;
+    }
   }
 
   reset(): void {

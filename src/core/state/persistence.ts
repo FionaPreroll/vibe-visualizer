@@ -1,3 +1,4 @@
+import { sanitizeSound, type SoundSettings } from '../audio/dsp/sound-settings';
 import {
   sanitizeKaleido,
   type KaleidoPreset,
@@ -23,6 +24,7 @@ const PRESETS_KEY = 'vibe-visualizer:presets:v1';
 const KALEIDO_KEY = 'vibe-visualizer:kaleido:v1';
 const KALEIDO_PRESETS_KEY = 'vibe-visualizer:kaleido-presets:v1';
 const EXPORT_KEY = 'vibe-visualizer:export:v1';
+const SOUND_KEY = 'vibe-visualizer:sound:v1';
 
 function read(key: string): unknown {
   try {
@@ -79,6 +81,15 @@ export function loadVisuals(): LogoSpectrumSettings {
 
 export function saveVisuals(visuals: LogoSpectrumSettings): void {
   write(VISUALS_KEY, visuals);
+}
+
+/** Tempo and effects, validated. */
+export function loadSound(): SoundSettings {
+  return sanitizeSound(read(SOUND_KEY));
+}
+
+export function saveSound(sound: SoundSettings): void {
+  write(SOUND_KEY, sound);
 }
 
 /** The user's own presets (PR-01). */

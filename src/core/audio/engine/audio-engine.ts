@@ -1,8 +1,9 @@
 import { createFeatureTimeline, FeatureTimelineReader } from '../../analysis/feature-timeline';
 import { WorkerClient } from '../../util/worker-rpc';
+import { DEFAULT_SOUND, type SoundSettings } from '../dsp/sound-settings';
 import { AudioRingMonitor, createAudioRing } from '../ring-buffer';
 import { createEngineControl, EngineControl } from './engine-control';
-import type { EngineProcessorOptions } from './engine.worklet';
+import type { EngineMessage, EngineProcessorOptions } from './engine.worklet';
 import workletUrl from './engine.worklet.ts?worker&url';
 import type { LoadResult } from './media.worker';
 import MediaWorker from './media.worker.ts?worker';
@@ -13,6 +14,9 @@ export type { LoadResult };
  * Main-thread face of the audio engine. The engine always runs at 48 kHz: files are converted
  * in the media worker, so tracks with different sample rates can follow each other and the
  * export can use the same code.
+ *
+ * The sound chain (tempo and effects) runs in the engine's AudioWorklet; the master volume
+ * comes after it.
  *
  * Live input (IN-01…04): an input stream goes through the input gain into the engine, which
  * then analyses it instead of the file; a monitor branch (off by default) plays it.
@@ -30,6 +34,7 @@ export class AudioEngine {
   readonly timelineBuffer = createFeatureTimeline(1024);
   private readonly media = new WorkerClient(new MediaWorker());
   private context: AudioContext | null = null;
+  private node: AudioWorkletNode | null = null;
   private gain: GainNode | null = null;
   private inputGain: GainNode | null = null;
   private monitorGain: GainNode | null = null;
@@ -38,6 +43,8 @@ export class AudioEngine {
   private volumeLevel = 1;
   private inputGainDb = 0;
   private monitoring = false;
+  private soundSettings: SoundSettings = DEFAULT_SOUND;
+  private nudgeFactor = 1;
 
   constructor() {
     this.timeline = new FeatureTimelineReader(this.timelineBuffer);
@@ -93,6 +100,9 @@ export class AudioEngine {
     inputGain.connect(node);
     inputGain.connect(monitorGain).connect(gain);
     this.context = context;
+    this.node = node;
+    this.post({ type: 'sound', settings: this.soundSettings });
+    if (this.nudgeFactor !== 1) this.post({ type: 'nudge', factor: this.nudgeFactor });
     this.gain = gain;
     this.inputGain = inputGain;
     this.monitorGain = monitorGain;
@@ -147,6 +157,30 @@ export class AudioEngine {
     if (this.monitorGain && this.context) {
       this.monitorGain.gain.setTargetAtTime(value ? 1 : 0, this.context.currentTime, 0.015);
     }
+  }
+
+  /** Tempo and effects (TMP, FX). */
+  get sound(): SoundSettings {
+    return this.soundSettings;
+  }
+
+  set sound(settings: SoundSettings) {
+    this.soundSettings = settings;
+    this.post({ type: 'sound', settings });
+  }
+
+  /** Temporary speed change on top of the tempo (TMP-03): 1 = none. */
+  get nudge(): number {
+    return this.nudgeFactor;
+  }
+
+  set nudge(factor: number) {
+    this.nudgeFactor = factor;
+    this.post({ type: 'nudge', factor });
+  }
+
+  private post(message: EngineMessage): void {
+    this.node?.port.postMessage(message);
   }
 
   /** Opens `file` and positions it at `startSeconds` (paused state is unchanged). */

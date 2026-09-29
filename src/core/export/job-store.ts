@@ -1,5 +1,5 @@
 import { StreamTarget, type StreamTargetChunk } from 'mediabunny';
-import type { ExportManifest } from './export-job';
+import { upgradeManifest, type ExportManifest } from './export-job';
 
 /**
  * Storage of the export job in the Origin Private File System (EX-07, EX-15): the manifest,
@@ -37,10 +37,8 @@ export async function readManifest(): Promise<ExportManifest | null> {
     for (const name of MANIFESTS) {
       try {
         const file = await (await dir.getFileHandle(name)).getFile();
-        const manifest = JSON.parse(await file.text()) as ExportManifest;
-        if (manifest.version === 1 && (!best || manifest.sequence > best.sequence)) {
-          best = manifest;
-        }
+        const manifest = upgradeManifest(JSON.parse(await file.text()));
+        if (manifest && (!best || manifest.sequence > best.sequence)) best = manifest;
       } catch {
         // Missing, or torn by a crash while writing: the other one is intact.
       }

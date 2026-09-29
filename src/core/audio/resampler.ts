@@ -18,7 +18,7 @@ export interface ResamplerOptions {
   beta?: number;
 }
 
-function besselI0(x: number): number {
+export function besselI0(x: number): number {
   let sum = 1;
   let term = 1;
   for (let k = 1; k < 50; k++) {

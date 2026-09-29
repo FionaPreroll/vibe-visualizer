@@ -1,18 +1,30 @@
 import { F } from '../analysis/features';
+import { LIMITER_LOOKAHEAD } from '../audio/dsp/limiter';
+import {
+  DEFAULT_SOUND,
+  isClean,
+  SOUND_PRESETS,
+  type SoundSettings,
+} from '../audio/dsp/sound-settings';
 import type { KaleidoSettings } from '../render/kaleido-settings';
 import type { LogoSpectrumSettings } from '../render/visual-settings';
 import type { VideoFormat } from './video-format';
 
 /**
  * An export job and its plan. The export runs in two passes: the audio pass decodes the range,
- * analyses it and encodes the audio; the video pass renders frame n at time n / fps from the
- * stored analysis and encodes it in segments (EX-01, EX-15). A manifest in the Origin Private
- * File System records what is done, so an interrupted export can resume.
+ * plays it through the sound chain (tempo and effects, EX-02), analyses it and encodes it; the
+ * video pass renders frame n at time n / fps from the stored analysis and encodes it in segments
+ * (EX-01, EX-15). A manifest in the Origin Private File System records what is done, so an
+ * interrupted export can resume.
+ *
+ * Times are counted in output frames (48 kHz) from the start of the processed stream, which
+ * begins at `sourceStart` in the file. With a tempo change, output frame o plays source frame
+ * sourceStart + o × rate; the effects delay what is heard by the limiter's look-ahead.
  */
 
 /** The engine rate: the export hears exactly what the live engine would play. */
 export const EXPORT_RATE = 48000;
-/** The analysis starts this long before the range, so tempo and levels are settled (seconds). */
+/** The analysis starts this long before the range, so tempo and levels are settled (output seconds). */
 export const ANALYSIS_PRE_ROLL = 10;
 /** Frames rendered (not encoded) before the range, so trails and motion are already running. */
 export const RENDER_PRE_ROLL = 3;
@@ -59,9 +71,11 @@ export interface ExportTiming {
   frames: number;
   /** Frames rendered before the range (not encoded). */
   preRollFrames: number;
-  /** Engine frame (48 kHz, from the start of the file) where the analysis starts. */
+  /** Source frame (48 kHz, from the start of the file) where the processed stream starts. */
+  sourceStart: number;
+  /** Output frame at which the first analysed frame is heard (the effects' delay). */
   analysisStart: number;
-  /** Engine frame of the first output sample (the range start). */
+  /** Output frame of the first encoded sample (the range start). */
   audioStart: number;
   /** Audio samples in the output: exactly the length of the video. */
   audioFrames: number;
@@ -73,7 +87,7 @@ export interface ExportTiming {
 }
 
 export interface ExportManifest {
-  version: 1;
+  version: 2;
   /** Increases with every write (the manifest is written to two files in turn). */
   sequence: number;
   id: string;
@@ -84,6 +98,8 @@ export interface ExportManifest {
   format: VideoFormat;
   codecs: ExportCodecs;
   visuals: ExportVisuals;
+  /** Tempo and effects of the audio (EX-02). */
+  sound: SoundSettings;
   /** Image files of the Logo Spectrum mode, stored with the job (their MIME types). */
   images: { background: string | null; logo: string | null };
   timing: ExportTiming;
@@ -99,24 +115,35 @@ export interface ExportManifest {
   resumeCount: number;
 }
 
-/** Plans frames, pre-rolls and segments for `range` (seconds) at `fps`. */
+/** Length of the video for `range` (source seconds) played at the tempo of `sound`. */
+export function exportSeconds(range: { start: number; end: number }, sound: SoundSettings): number {
+  return (range.end - range.start) / sound.rate;
+}
+
+/** Plans frames, pre-rolls and segments for `range` (source seconds) at `fps`. */
 export function planTiming(
   range: { start: number; end: number },
   fps: number,
   hop: number,
-  segmentSeconds = segmentSecondsFor(range.end - range.start),
+  sound: SoundSettings = DEFAULT_SOUND,
+  segmentSeconds = segmentSecondsFor(exportSeconds(range, sound)),
 ): ExportTiming {
-  const frames = Math.max(1, Math.round((range.end - range.start) * fps));
-  const audioStart = Math.round(range.start * EXPORT_RATE);
+  const rate = sound.rate;
+  const frames = Math.max(1, Math.round(exportSeconds(range, sound) * fps));
+  // The stream starts ANALYSIS_PRE_ROLL output seconds before the range (or at the file start).
+  const sourceStart = Math.round(Math.max(0, range.start - ANALYSIS_PRE_ROLL * rate) * EXPORT_RATE);
+  const analysisStart = LIMITER_LOOKAHEAD;
+  const lead = (range.start * EXPORT_RATE - sourceStart) / rate;
+  const audioStart = Math.round(lead) + analysisStart;
   const audioFrames = Math.round((frames / fps) * EXPORT_RATE);
-  const analysisStart = Math.round(Math.max(0, range.start - ANALYSIS_PRE_ROLL) * EXPORT_RATE);
-  const preRollFrames = Math.round(Math.min(RENDER_PRE_ROLL, range.start) * fps);
+  const preRollFrames = Math.round(Math.min(RENDER_PRE_ROLL, lead / EXPORT_RATE) * fps);
   const segmentFrames = Math.max(1, Math.round(segmentSeconds * fps));
   // Analysis up to one hop past the last frame, so its values can be interpolated.
   const analysisFrames = Math.ceil((audioStart + audioFrames - analysisStart) / hop) + 1;
   return {
     frames,
     preRollFrames,
+    sourceStart,
     analysisStart,
     audioStart,
     audioFrames,
@@ -127,25 +154,50 @@ export function planTiming(
   };
 }
 
-/** The engine frame heard at video frame `n` (negative n: the pre-roll). */
+/**
+ * A manifest of this version, from a stored one: exports started before tempo and effects
+ * (version 1) counted from the start of the file and played the sound unchanged.
+ */
+export function upgradeManifest(stored: unknown): ExportManifest | null {
+  const manifest = stored as ExportManifest | { version: 1; timing: ExportTiming } | null;
+  if (!manifest || typeof manifest !== 'object') return null;
+  if (manifest.version === 2) return manifest;
+  if (manifest.version !== 1) return null;
+  const timing = manifest.timing;
+  return {
+    ...(manifest as unknown as ExportManifest),
+    version: 2,
+    sound: DEFAULT_SOUND,
+    timing: {
+      ...timing,
+      sourceStart: timing.analysisStart,
+      analysisStart: 0,
+      audioStart: timing.audioStart - timing.analysisStart,
+    },
+  };
+}
+
+/** The output frame heard at video frame `n` (negative n: the pre-roll). */
 export function frameTime(timing: ExportTiming, fps: number, n: number): number {
   return timing.audioStart + (n / fps) * EXPORT_RATE;
 }
 
-/** Engine frame at which analysis frame `index` was complete (hops count from analysisStart). */
+/** Output frame at which analysis frame `index` is heard (hops count from analysisStart). */
 export function analysisFrameTime(timing: ExportTiming, index: number): number {
   return timing.analysisStart + (index + 1) * timing.hop;
 }
 
 /**
- * A file name for the video: "Artist - Title (0m30s-1m00s).mp4", without characters that file
- * systems reject (colons among them). The range uses a plain hyphen: some systems fall back to
- * "download" for other characters in suggested names.
+ * A file name for the video: "Artist - Title (0m30s-1m00s).mp4", with the sound preset if one
+ * is used ("… (Slowed + Reverb).mp4"), without characters that file systems reject (colons
+ * among them). The range uses a plain hyphen: some systems fall back to "download" for other
+ * characters in suggested names.
  */
 export function exportFileName(
   source: Pick<ExportSource, 'title' | 'artist'>,
   range: { start: number; end: number } | null,
   extension: string,
+  sound: SoundSettings = DEFAULT_SOUND,
 ): string {
   const clock = (seconds: number) => {
     const whole = Math.floor(seconds);
@@ -156,7 +208,15 @@ export function exportFileName(
   };
   const base = source.artist ? `${source.artist} - ${source.title}` : source.title;
   const part = range ? ` (${clock(range.start)}-${clock(range.end)})` : '';
-  const clean = Array.from(`${base}${part}`, (char) =>
+  const preset = isClean(sound)
+    ? undefined
+    : SOUND_PRESETS.find((entry) =>
+        (Object.keys(sound) as (keyof SoundSettings)[]).every(
+          (key) => entry.settings[key] === sound[key],
+        ),
+      );
+  const edit = preset ? ` (${preset.name})` : '';
+  const clean = Array.from(`${base}${part}${edit}`, (char) =>
     char < ' ' || '\\/:*?"<>|'.includes(char) ? '_' : char,
   )
     .join('')
