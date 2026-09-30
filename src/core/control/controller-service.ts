@@ -56,10 +56,6 @@ const FRAME_MS = 16;
 const JOG_SECONDS = 1.8 / 460;
 /** With SHIFT the jog wheel seeks this much faster: a turn of the top is about 30 s. */
 const JOG_SHIFT_FACTOR = 16;
-/** How often the jog wheel seeks, at most, in ms; its steps in between add up. */
-const JOG_SEEK_MS = 60;
-/** After this long without a step, the jog wheel starts from the playback position again. */
-const JOG_IDLE_MS = 300;
 /** Around the centre of the CFX knob and the tempo slider: the filter off, the tempo at 0 %. */
 const CENTRE = 0.01;
 /** How close the playhead must be to the cue point to be at it, in seconds. */
@@ -78,12 +74,6 @@ export class ControllerService {
   /** Monitor entries not shown yet, the oldest first. */
   private logged: MonitorEntry[] = [];
   private frame: ReturnType<typeof setTimeout> | undefined;
-  /** Where the jog wheel wants the playhead, and when it said so (performance.now()). */
-  private jogTarget: number | null = null;
-  private jogAt = 0;
-  private jogSeek: ReturnType<typeof setTimeout> | undefined;
-  private jogMoved = false;
-  private jogIdle: ReturnType<typeof setTimeout> | undefined;
   /** CUE is held at the cue point: the music plays until it is let go. */
   private previewing = false;
   private lightTimer: ReturnType<typeof setInterval> | undefined;
@@ -162,8 +152,6 @@ export class ControllerService {
 
   dispose(): void {
     clearTimeout(this.frame);
-    clearTimeout(this.jogSeek);
-    clearTimeout(this.jogIdle);
     clearInterval(this.lightTimer);
     for (const cleanup of this.cleanups) cleanup();
     this.hub.stop();
@@ -219,7 +207,7 @@ export class ControllerService {
       void this.player.stop();
       return;
     }
-    const position = this.jogPosition() ?? this.player.position;
+    const position = this.player.position;
     if (Math.abs(position - (track.marks.in ?? 0)) < AT_CUE) {
       this.previewing = true;
       void this.player.play();
@@ -227,7 +215,6 @@ export class ControllerService {
     }
     this.player.mark('in', position);
     // The playhead goes to the marker, which may have snapped to the beat.
-    this.jogTarget = null;
     const marked = this.player.currentTrack?.marks.in ?? null;
     if (marked !== null && Math.abs(marked - position) > 1e-3) void this.player.seek(marked);
     this.showLights(this.player.state);
@@ -239,12 +226,9 @@ export class ControllerService {
       this.player.setCue(index, null);
       return;
     }
-    // Just after the jog wheel moved, the playhead may not be there yet: the cue goes where
-    // the jog wheel took it.
-    const jogged = this.jogPosition();
-    const empty = (this.player.currentTrack?.cues[index] ?? null) === null;
-    if (jogged !== null && empty) this.player.setCue(index, jogged);
-    else void this.player.cue(index);
+    // Just after the jog wheel moved, the playhead is where the jog wheel took it, even
+    // before the engine is there.
+    void this.player.cue(index);
   }
 
   /** Passes knobs, faders and the monitor on at the next frame. */
@@ -288,39 +272,11 @@ export class ControllerService {
     }
   }
 
-  /** The jog wheel seeks: at once, then at most every JOG_SEEK_MS with the steps added up. */
+  /** The jog wheel scrubs: the playhead follows it at once, the engine a little later. */
   private jog(delta: number, shift: boolean): void {
-    const track = this.player.currentTrack;
-    if (!track || delta === 0 || this.player.live) return;
-    const from = this.jogPosition() ?? this.player.position;
+    if (!this.player.currentTrack || delta === 0 || this.player.live) return;
     const step = JOG_SECONDS * (shift ? JOG_SHIFT_FACTOR : 1);
-    this.jogTarget = Math.max(0, Math.min(track.duration ?? Infinity, from + delta * step));
-    this.jogAt = performance.now();
-    clearTimeout(this.jogIdle);
-    this.jogIdle = setTimeout(() => (this.jogTarget = null), JOG_IDLE_MS);
-    this.seekJog();
-  }
-
-  private seekJog(): void {
-    if (this.jogSeek !== undefined) {
-      this.jogMoved = true;
-      return;
-    }
-    if (this.jogTarget !== null) void this.player.seek(this.jogTarget);
-    this.jogSeek = setTimeout(() => {
-      this.jogSeek = undefined;
-      if (!this.jogMoved) return;
-      this.jogMoved = false;
-      this.seekJog();
-    }, JOG_SEEK_MS);
-  }
-
-  /** Where the jog wheel took the playhead, moving on with the music; null when it rests. */
-  private jogPosition(): number | null {
-    if (this.jogTarget === null) return null;
-    const { playing, sound } = this.player.state;
-    if (!playing) return this.jogTarget;
-    return this.jogTarget + ((performance.now() - this.jogAt) / 1000) * sound.rate;
+    this.player.scrub(this.player.position + delta * step);
   }
 
   private showLights(state: AppState): void {
@@ -331,7 +287,7 @@ export class ControllerService {
     let cue: 'on' | 'off' | 'blink' = 'off';
     if (this.previewing) cue = 'on';
     else if (track && !live && !state.playing) {
-      const position = this.jogPosition() ?? this.player.position;
+      const position = this.player.position;
       cue = Math.abs(position - (track.marks.in ?? 0)) < AT_CUE ? 'on' : 'blink';
     }
     this.hub.setLight({ control: 'cue', deck: 1 }, cue);

@@ -70,6 +70,12 @@ const COMMIT_SECONDS = 1.5;
 const ANSWER_RESERVE_SECONDS = 0.25;
 /** Length of the crossfade at a cut in the middle of the music (seconds). */
 const CROSSFADE_SECONDS = 0.01;
+/**
+ * Decoding can run on promises alone for a long time (a file read at once, a new stream filling
+ * the ring): messages are let in at least this often (ms), so a newer seek takes over at once
+ * instead of waiting until the ring is full.
+ */
+const YIELD_MS = 4;
 
 let producer: AudioRingProducer | null = null;
 let engineRate = 48000;
@@ -85,6 +91,21 @@ let currentPosition = 0;
 let holding = false;
 let answer: Answer | null = null;
 let streamToken = 0;
+
+/** Resolves after the messages that are waiting (a message to itself queues behind them). */
+const wakeups: (() => void)[] = [];
+const yielder = new MessageChannel();
+yielder.port1.onmessage = () => wakeups.shift()?.();
+let lastYield = 0;
+
+async function letMessagesIn(): Promise<void> {
+  if (performance.now() - lastYield < YIELD_MS) return;
+  await new Promise<void>((resolve) => {
+    wakeups.push(resolve);
+    yielder.port2.postMessage(null);
+  });
+  lastYield = performance.now();
+}
 
 function init(args: { ring: SharedArrayBuffer; channels: number; sampleRate: number }) {
   producer = new AudioRingProducer(args.ring, args.channels);
@@ -237,6 +258,7 @@ async function stream(
     // back, or fades in. The first file of a stream is faded in by the tempo stage.
     const fadeIn = !firstFile && incoming.length === 0 && from > 0 ? crossfade : 0;
     for await (const decoded of decodeAtRate(source.track, resamplerFor(source.track), from)) {
+      await letMessagesIn();
       if (token !== streamToken) return;
       // Started in the middle of the file (a seek, an in marker), the resampler may give
       // nothing yet: it needs a few more frames first. That is not the end of the file.

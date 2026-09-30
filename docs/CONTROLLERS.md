@@ -81,7 +81,7 @@ The app gets a small controller service that maps the events to what the keyboar
 | HI / MID / LOW | Later: a new 3-band EQ with kills (FX-11), live and in the export |
 | CFX | The DJ filter (FX-06): left low-pass, right high-pass, off in the middle |
 | Channel fader, tempo slider | Volume; the tempo fader within its range (TMP-01). Both with pickup, so a fader that stands elsewhere does not make the value jump |
-| Jog wheel | Seek: a turn of the top is 1.8 s (460 steps, like a record at 33⅓ rpm), the outer ring seeks more finely; with SHIFT 16 times as fast. At most every 60 ms, with the steps in between added up. A pad pressed right after it sets its cue where the jog wheel went |
+| Jog wheel | Seek: a turn of the top is 1.8 s (460 steps, like a record at 33⅓ rpm), the outer ring seeks more finely; with SHIFT 16 times as fast. The playhead follows it at once; the music follows at most every 60 ms, with the steps in between added up. A pad pressed right after it sets its cue where the jog wheel went |
 | Other pad modes | Free at first. Ideas: sampler mode → visual presets 1–8, pad FX → the sound presets, beat loop → loops once they exist (TR-07) |
 | Deck 2, crossfader | Nothing for now (Q18). Later perhaps the visuals deck (CTL-05) |
 
