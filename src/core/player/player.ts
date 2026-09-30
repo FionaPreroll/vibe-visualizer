@@ -1,4 +1,10 @@
-import { nearestBeat, TEMPO_HINT_RANGE, type BeatGrid } from '../analysis/beat-grid';
+import {
+  hintRange,
+  nearestBeat,
+  TEMPO_HINT_RANGE,
+  TEMPO_RANGES,
+  type BeatGrid,
+} from '../analysis/beat-grid';
 import {
   clampShift,
   downbeatAt,
@@ -145,6 +151,7 @@ export class Player {
     this.engine.inputGainDecibels = this.state.settings.inputGain;
     this.engine.syncOffset = this.state.settings.syncOffset / 1000;
     this.engine.sound = this.state.sound;
+    this.updateTrackerRange();
     let lastSettings = this.state.settings;
     let lastVisuals = this.state.visuals;
     let lastKaleido = this.state.kaleido;
@@ -152,6 +159,7 @@ export class Player {
     let lastTracks = this.state.tracks;
     let lastCurrent = this.state.currentId;
     this.store.subscribe((state) => {
+      this.updateTrackerRange();
       const queueChanged =
         state.tracks !== lastTracks ||
         state.settings.shuffle !== lastSettings.shuffle ||
@@ -669,6 +677,30 @@ export class Player {
   /** The beat grid of the current track as the analysis found it (TR-11). */
   resetGrid(): void {
     this.editGrid(() => NO_GRID_EDIT);
+  }
+
+  /**
+   * Sets the tempo (BPM) of the live input (TMP-06): the live beat tracking keeps close to it;
+   * null lets it find the tempo itself. Tempos outside {@link TEMPO_HINT_RANGE} are ignored.
+   */
+  setLiveTempo(bpm: number | null): void {
+    if (bpm !== null && !(bpm >= TEMPO_HINT_RANGE.min && bpm <= TEMPO_HINT_RANGE.max)) return;
+    const tempo = bpm === null ? null : Math.round(bpm * 100) / 100;
+    if (tempo !== this.state.live.tempo) this.dispatch({ type: 'live/tempo', tempo });
+  }
+
+  /**
+   * The range of the live beat tracking (for live input, and for files until their grid is
+   * there): around the tempo given for the live input (TMP-06), or the tempo range (AN-12).
+   */
+  private updateTrackerRange(): void {
+    const { live, settings } = this.state;
+    this.engine.tempoRange =
+      live.status === 'on' && live.tempo !== null
+        ? hintRange(live.tempo)
+        : settings.bpmRange === 'auto'
+          ? null
+          : TEMPO_RANGES[settings.bpmRange];
   }
 
   /** Waveform and beat grid of a track, once analysed (TR-03, AN-07). */

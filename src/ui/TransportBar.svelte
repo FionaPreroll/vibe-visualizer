@@ -5,6 +5,7 @@
   import { REPEAT_MODES, type RepeatMode } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
+  import LiveTempo from './LiveTempo.svelte';
   import { usePlayer } from './player-context';
   import { CUE_COLOURS, drawWaveform } from './waveform-draw';
 
@@ -189,6 +190,7 @@
   {#if live}
     <div class="center live-center">
       <span class="badge"><span class="dot"></span> LIVE</span>
+      <LiveTempo />
       <span class="hint">Choose a track in the queue to go back to it.</span>
       <button onclick={() => player.stopLive()} data-testid="transport-stop-live">
         Stop live input

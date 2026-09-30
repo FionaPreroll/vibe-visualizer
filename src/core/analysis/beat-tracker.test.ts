@@ -118,4 +118,43 @@ describe('BeatTracker', () => {
     expect(beats).toBeLessThanOrEqual(2);
     expect(tracker.confidence).toBeLessThan(0.01);
   });
+
+  it('looks for the tempo in the range it is given (AN-12, TMP-06)', () => {
+    // Drum & bass at 174 BPM with every second beat weaker: half of it (87) in the default
+    // range, 174 in the fast one.
+    const strong = impulses(87, 0);
+    const weak = impulses(87, 0.5);
+    const pattern = {
+      bpm: 87,
+      seconds: 20,
+      onset: (phase: number) => strong(phase) + 0.4 * weak(phase),
+      offset: 0.3,
+    };
+    const automatic = new BeatTracker(FRAME_RATE);
+    track(pattern, automatic);
+    expect(Math.abs(automatic.bpm / 87 - 1)).toBeLessThan(0.02);
+    const fast = new BeatTracker(FRAME_RATE);
+    fast.setRange({ min: 120, max: 200, prior: 160, octaves: 0.5 });
+    const beats = track(pattern, fast);
+    expect(Math.abs(fast.bpm / 174 - 1)).toBeLessThan(0.02);
+    expect(onBeat(beats, 174, 0.6)).toBeGreaterThan(0.9);
+  });
+
+  it('keeps to a tempo the user gave, and goes back to the default range', () => {
+    const tracker = new BeatTracker(FRAME_RATE);
+    track({ bpm: 120, seconds: 10, onset: impulses(120, 0) }, tracker);
+    expect(Math.abs(tracker.bpm / 120 - 1)).toBeLessThan(0.01);
+    // Double: 240 BPM, a beat between the pulses.
+    tracker.setRange({ min: 200, max: 288, prior: 240, octaves: 0.1 });
+    expect(tracker.bpm).toBeGreaterThan(200);
+    track({ bpm: 120, seconds: 10, onset: impulses(120, 0) }, tracker);
+    expect(Math.abs(tracker.bpm / 240 - 1)).toBeLessThan(0.01);
+    // Half, then the default range again.
+    tracker.setRange({ min: 50, max: 72, prior: 60, octaves: 0.1 });
+    track({ bpm: 120, seconds: 10, onset: impulses(120, 0) }, tracker);
+    expect(Math.abs(tracker.bpm / 60 - 1)).toBeLessThan(0.01);
+    tracker.setRange(null);
+    track({ bpm: 120, seconds: 10, onset: impulses(120, 0) }, tracker);
+    expect(Math.abs(tracker.bpm / 120 - 1)).toBeLessThan(0.01);
+  });
 });

@@ -1,4 +1,5 @@
 import { Analyzer } from '../../analysis/analyzer';
+import type { TrackerRange } from '../../analysis/beat-tracker';
 import { FeatureTimelineWriter } from '../../analysis/feature-timeline';
 import { F } from '../../analysis/features';
 import { GridBeats } from '../../analysis/grid-beats';
@@ -18,6 +19,8 @@ export interface EngineProcessorOptions {
 export type EngineMessage =
   | { type: 'sound'; settings: SoundSettings }
   | { type: 'nudge'; factor: number }
+  /** The tempo range of the live beat tracking (AN-12, TMP-06); null for its own. */
+  | { type: 'tempo-range'; range: TrackerRange | null }
   /** The beat grid of the file with `token` (null: forget it). */
   | {
       type: 'grid';
@@ -105,6 +108,8 @@ class EngineProcessor extends AudioWorkletProcessor {
       this.dsp.setSettings(message.settings);
     } else if (message.type === 'nudge') {
       this.dsp.nudge = message.factor;
+    } else if (message.type === 'tempo-range') {
+      this.analyzer.setTempoRange(message.range);
     } else if (message.beats && message.confidence) {
       const beats = new GridBeats();
       beats.set({ beats: message.beats, confidence: message.confidence });

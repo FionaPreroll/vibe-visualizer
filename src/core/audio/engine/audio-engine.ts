@@ -1,4 +1,5 @@
 import type { BeatGrid } from '../../analysis/beat-grid';
+import type { TrackerRange } from '../../analysis/beat-tracker';
 import { createFeatureTimeline, FeatureTimelineReader } from '../../analysis/feature-timeline';
 import { WorkerClient } from '../../util/worker-rpc';
 import { DEFAULT_SOUND, type SoundSettings } from '../dsp/sound-settings';
@@ -46,6 +47,7 @@ export class AudioEngine {
   private monitoring = false;
   private soundSettings: SoundSettings = DEFAULT_SOUND;
   private nudgeFactor = 1;
+  private trackerRange: TrackerRange | null = null;
   private offset = 0;
 
   constructor() {
@@ -105,6 +107,7 @@ export class AudioEngine {
     this.node = node;
     this.post({ type: 'sound', settings: this.soundSettings });
     if (this.nudgeFactor !== 1) this.post({ type: 'nudge', factor: this.nudgeFactor });
+    if (this.trackerRange) this.post({ type: 'tempo-range', range: this.trackerRange });
     this.gain = gain;
     this.inputGain = inputGain;
     this.monitorGain = monitorGain;
@@ -169,6 +172,28 @@ export class AudioEngine {
   set sound(settings: SoundSettings) {
     this.soundSettings = settings;
     this.post({ type: 'sound', settings });
+  }
+
+  /**
+   * The tempo range of the live beat tracking, for live input and for files without a beat
+   * grid yet (AN-12, TMP-06); null for its own (75–180 BPM around 120).
+   */
+  get tempoRange(): TrackerRange | null {
+    return this.trackerRange;
+  }
+
+  set tempoRange(range: TrackerRange | null) {
+    const same =
+      range === this.trackerRange ||
+      (range !== null &&
+        this.trackerRange !== null &&
+        range.min === this.trackerRange.min &&
+        range.max === this.trackerRange.max &&
+        range.prior === this.trackerRange.prior &&
+        range.octaves === this.trackerRange.octaves);
+    if (same) return;
+    this.trackerRange = range;
+    this.post({ type: 'tempo-range', range });
   }
 
   /** Temporary speed change on top of the tempo (TMP-03): 1 = none. */

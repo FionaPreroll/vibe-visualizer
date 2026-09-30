@@ -117,3 +117,24 @@ test('choosing a track in the queue ends live input', async ({ page }) => {
   await expect(page.getByTestId('live-status')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('the tempo of the live input can be corrected (TMP-06)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByRole('tab', { name: /Live/ }).click();
+  await page.getByTestId('live-device').click();
+  await expect(page.getByTestId('now-title')).toHaveText('Live input');
+  // The clicks come every half second: 120 BPM.
+  const badge = page.getByTestId('live-bpm');
+  await expect(badge).toHaveText(/^12[0-2] BPM$/, { timeout: 20_000 });
+  await badge.click();
+  await expect(page.getByTestId('tempo-auto')).toBeDisabled();
+  await page.getByTestId('tempo-half').click();
+  await expect(badge).toHaveAttribute('title', /keeps close to 6[01] BPM/);
+  await expect(badge).toHaveText(/^6[01] BPM$/, { timeout: 15_000 });
+  // Back to the tempo the tracking finds.
+  await badge.click();
+  await page.getByTestId('tempo-auto').click();
+  await expect(badge).toHaveText(/^12[0-2] BPM$/, { timeout: 15_000 });
+  expect(errors).toEqual([]);
+});

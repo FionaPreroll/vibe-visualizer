@@ -1,5 +1,5 @@
 import FFT from 'fft.js';
-import { BeatTracker } from './beat-tracker';
+import { BeatTracker, type TrackerRange } from './beat-tracker';
 import { DRUM_TICK, DrumDetector, type DrumDetectorOptions } from './drums';
 import { BAND_NAMES, BAND_RANGES, F, SPECTRUM_BANDS, WAVEFORM_POINTS } from './features';
 
@@ -158,6 +158,11 @@ export class Analyzer {
   /** The music now plays `factor` times as fast (the tempo fader): the beat tracking follows. */
   scaleTempo(factor: number): void {
     this.beats.scaleTempo(factor);
+  }
+
+  /** The tempo range of the beat tracking (AN-12, TMP-06); null for its own. */
+  setTempoRange(range: TrackerRange | null): void {
+    this.beats.setRange(range);
   }
 
   reset(): void {
