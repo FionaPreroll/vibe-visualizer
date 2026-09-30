@@ -192,6 +192,46 @@ test('a DDJ-FLX2 plays, sets hot cues, filters and changes the tempo (CTL-02, CT
   expect(await light(page, 0x90, 0x0b)).toBe(0);
 });
 
+test('the jog wheel stays in the track, step by step', async ({ page, context }) => {
+  await context.grantPermissions(['midi']);
+  await page.goto('/');
+  // At 16 kHz the files are resampled, and a step of the jog wheel (1.8 s / 460) moves less
+  // than the 64 frames of the file the resampler needs before it gives anything: a run of steps
+  // is sure to start that close to the end of a decoded block of the file (2048 frames). Such
+  // a start used to be taken for the end of the file, and the next track followed.
+  await page.getByTestId('file-input').setInputFiles([
+    { name: 'One.wav', mimeType: 'audio/wav', buffer: createWav(10, 16000) },
+    { name: 'Two.wav', mimeType: 'audio/wav', buffer: createWav(10, 16000) },
+  ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items.first()).toHaveAttribute('data-status', 'ready');
+  await expect(items.nth(1)).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('controller-button').click();
+  const dialog = page.getByTestId('controller-dialog');
+  await dialog.getByTestId('controller-connect').click();
+  await expect(dialog.getByTestId('controller-status')).toHaveText('Connected');
+  await page.keyboard.press('Escape');
+  const play = () => receive(page, [0x90, 0x0b, 0x7f], [0x90, 0x0b, 0x00]);
+  await play();
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await play();
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Play');
+
+  // 45 steps (2,800 frames of the file), far enough apart to be a seek each.
+  for (let step = 0; step < 45; step++) {
+    await receive(page, [0xb0, 0x22, 0x41]);
+    await page.waitForTimeout(90);
+  }
+  await expect(items.first()).toHaveAttribute('aria-selected', 'true');
+  // It plays on from there, in the same track.
+  const elapsed = async () =>
+    Number(await page.getByTestId('elapsed').getAttribute('data-seconds'));
+  const jogged = await elapsed();
+  await play();
+  await expect.poll(elapsed).toBeGreaterThan(jogged + 0.5);
+  await expect(items.first()).toHaveAttribute('aria-selected', 'true');
+});
+
 test('the MIDI monitor shows what a controller sends', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('controller-button').click();
