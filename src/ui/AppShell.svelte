@@ -10,12 +10,12 @@
   import DetailWaveform from './DetailWaveform.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import ExportDialog from './ExportDialog.svelte';
+  import HelpDialog from './HelpDialog.svelte';
   import LivePanel from './LivePanel.svelte';
   import { provideExporter } from './exporter-context';
   import Icon from './Icon.svelte';
   import { providePlayer } from './player-context';
   import QueuePanel from './QueuePanel.svelte';
-  import ShortcutHelp from './ShortcutHelp.svelte';
   import { nextVisualMode, stepPreset } from './shortcuts';
   import SoundPanel from './SoundPanel.svelte';
   import TopBar from './TopBar.svelte';
@@ -34,6 +34,8 @@
   const app = player.store;
   let exportOpen = $state(false);
   let helpOpen = $state(false);
+  /** The help's section: where it was left, or the shortcuts for "?". */
+  let helpSection = $state('getting-started');
   let welcomeOpen = $state(false);
   let stage: HTMLElement;
   /** In fullscreen, the mouse cursor hides after a moment without movement (DS-01). */
@@ -193,6 +195,7 @@
           stepPreset(player, 1);
           break;
         case '?':
+          helpSection = 'keyboard-shortcuts';
           helpOpen = true;
           break;
         // In/out markers of the export range (TR-09); with Shift they are cleared.
@@ -377,9 +380,20 @@
   {/if}
   <TransportBar />
   <ExportDialog open={exportOpen} onclose={() => (exportOpen = false)} />
-  <ShortcutHelp open={helpOpen} onclose={() => (helpOpen = false)} />
+  <HelpDialog
+    open={helpOpen}
+    bind:section={helpSection}
+    onclose={() => (helpOpen = false)}
+    onwelcome={() => (welcomeOpen = true)}
+  />
   <DropOverlay />
-  <WelcomeIntro bind:open={welcomeOpen} onhelp={() => (helpOpen = true)} />
+  <WelcomeIntro
+    bind:open={welcomeOpen}
+    onhelp={() => {
+      helpSection = 'getting-started';
+      helpOpen = true;
+    }}
+  />
 </div>
 
 <style>

@@ -193,17 +193,33 @@ test('a folder is read with its subfolders, in natural order (SRC-03)', async ({
   expect(errors).toEqual([]);
 });
 
-test('? shows the shortcuts, and the A/V sync offset is kept (UI-04, AN-06)', async ({ page }) => {
+test('? shows the shortcuts and the help, and the A/V sync offset is kept (UI-04, UI-11, AN-06)', async ({
+  page,
+}) => {
   const errors = collectErrors(page);
   await page.goto('/');
   await page.keyboard.press('Shift+Slash');
-  const help = page.getByTestId('shortcut-help');
+  const help = page.getByTestId('help');
   await expect(help).toBeVisible();
   await expect(help).toContainText('Jump to a hot cue');
   await page.keyboard.press('Escape');
   await expect(help).toBeHidden();
+
+  // The ? in the top bar opens the user guide; its sections come from docs/USER-GUIDE.md.
   await page.getByTestId('shortcuts-button').click();
   await expect(help).toBeVisible();
+  const content = page.getByTestId('help-content');
+  await expect(content).toHaveAttribute('data-section', 'keyboard-shortcuts');
+  await page.getByTestId('help-nav-beat-grid-and-tempo').click();
+  await expect(content).toContainText('For drum & bass choose 120–200');
+  await page.getByTestId('help-nav-about').click();
+  await expect(page.getByTestId('help-bug')).toHaveAttribute('href', /^mailto:fipreroll\+app@/);
+  await page.getByTestId('help-welcome').click();
+  await expect(help).toBeHidden();
+  await expect(page.getByTestId('welcome')).toBeVisible();
+  await page.getByTestId('welcome-help').click();
+  await expect(help).toBeVisible();
+  await expect(content).toHaveAttribute('data-section', 'getting-started');
   await page.keyboard.press('Escape');
 
   // V: the next visual mode.

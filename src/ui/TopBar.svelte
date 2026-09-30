@@ -147,8 +147,8 @@
     <button
       class="toggle help"
       onclick={onHelp}
-      aria-label="Keyboard shortcuts"
-      title="Keyboard shortcuts (?)"
+      aria-label="Help"
+      title="Help and keyboard shortcuts (?)"
       data-testid="shortcuts-button"
     >
       ?
