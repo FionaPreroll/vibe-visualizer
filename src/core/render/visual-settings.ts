@@ -111,7 +111,8 @@ export interface LogoSpectrumSettings {
   bloom: number;
 }
 
-export const DEFAULT_LOGO_SPECTRUM: LogoSpectrumSettings = {
+/** The look the presets start from. */
+const CLASSIC: LogoSpectrumSettings = {
   backgroundFit: 'cover',
   backgroundBlur: 0.15,
   backgroundDim: 0.35,
@@ -172,11 +173,11 @@ export interface VisualPreset {
 }
 
 function preset(name: string, changes: Partial<LogoSpectrumSettings>): VisualPreset {
-  return { name, settings: { ...DEFAULT_LOGO_SPECTRUM, ...changes }, builtIn: true };
+  return { name, settings: { ...CLASSIC, ...changes }, builtIn: true };
 }
 
 export const BUILT_IN_PRESETS: readonly VisualPreset[] = [
-  preset('Classic Rainbow', {}),
+  preset('Classic Rainbow', { ...RESPONSIVENESS.twitchy }),
   preset('Neon Night', {
     palette: 'neon',
     layers: 5,
@@ -231,6 +232,9 @@ export const BUILT_IN_PRESETS: readonly VisualPreset[] = [
   }),
   preset('Sunset Drive', { palette: 'sunset', layers: 7, mirror: true, tilt: 0.1, glow: 0.6 }),
 ];
+
+/** The look of a first visit and of "Reset to defaults": the preset "Classic Rainbow". */
+export const DEFAULT_LOGO_SPECTRUM: LogoSpectrumSettings = BUILT_IN_PRESETS[0]!.settings;
 
 type NumericKey = {
   [K in keyof LogoSpectrumSettings]: LogoSpectrumSettings[K] extends number ? K : never;

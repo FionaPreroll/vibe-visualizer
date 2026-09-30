@@ -30,6 +30,8 @@ const BITMAP_OPTIONS: ImageBitmapOptions = {
 
 export class VisualAssets {
   private images: StoredImages = { background: null, logo: null };
+  /** The logo shown while the user has none (LS-12). */
+  private defaultLogo: StoredImage | null = null;
   private readonly listeners = new Set<(images: StoredImages) => void>();
   /** Resolves once stored images are loaded. */
   readonly ready: Promise<void>;
@@ -38,8 +40,21 @@ export class VisualAssets {
     this.ready = this.load();
   }
 
+  /** The user's images. */
   get current(): StoredImages {
     return this.images;
+  }
+
+  /** The images the visuals show: the user's, and the default logo where there is none. */
+  get shown(): StoredImages {
+    return { background: this.images.background, logo: this.images.logo ?? this.defaultLogo };
+  }
+
+  /** Sets the default logo (LS-12), shown while the user has no logo of their own. */
+  setDefaultLogo(blob: Blob | null): void {
+    if (this.defaultLogo) URL.revokeObjectURL(this.defaultLogo.url);
+    this.defaultLogo = blob ? { name: 'Default logo', blob, url: URL.createObjectURL(blob) } : null;
+    for (const listener of this.listeners) listener(this.images);
   }
 
   /** Svelte store contract. */

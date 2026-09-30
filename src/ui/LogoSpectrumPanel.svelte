@@ -179,6 +179,8 @@
     <ImagePicker
       label="Logo image"
       image={$assets.logo}
+      fallback={$assets.logo ? null : assets.shown.logo}
+      fallbackName="Default: the app's name"
       round
       testid="logo"
       onpick={(file) => pickImage('logo', file)}

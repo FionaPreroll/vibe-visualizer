@@ -23,7 +23,7 @@ test.use({
 });
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('vibe-visualizer:photosensitivity-ack', '1'));
+  await page.addInitScript(() => localStorage.setItem('vibe-visualizer:welcome:v1', '1'));
 });
 
 function collectErrors(page: Page): string[] {

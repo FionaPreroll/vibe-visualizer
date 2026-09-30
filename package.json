@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "description": "Audio-reactive music visualizer that renders HD videos in the browser",
+  "bugs": {
+    "email": "fipreroll+app@gmail.com"
+  },
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {
@@ -22,6 +25,7 @@
     "eval:drums": "vitest run tests/eval --silent=false"
   },
   "dependencies": {
+    "@fontsource/pacifico": "^5.3.0",
     "@mediabunny/aac-encoder": "^1.60.0",
     "fft.js": "^4.0.4",
     "mediabunny": "^1.60.0",
