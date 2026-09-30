@@ -1,12 +1,13 @@
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny';
 import { Analyzer } from '../analysis/analyzer';
-import { computeBeatGrid } from '../analysis/beat-grid';
+import { computeBeatGrid, type OnsetFeatures } from '../analysis/beat-grid';
 import { GridFeatureCollector } from '../analysis/grid-features';
-import { WAVEFORM_STRIDE, WaveformBuilder } from '../analysis/waveform';
+import { WAVEFORM_STRIDE, WaveformBuilder, type Waveform } from '../analysis/waveform';
 import { decodeAtRate } from '../audio/decode-stream';
 import { exposeWorker, withTransfer } from '../util/worker-rpc';
 import {
   readCachedAnalysis,
+  sameTempo,
   writeCachedAnalysis,
   type TrackAnalysisResult,
 } from './analysis-cache';
@@ -15,7 +16,8 @@ import {
  * Analyses whole tracks in the background (TR-03, AN-07, NF-06): decodes the file at its own
  * rate, builds the waveform and collects the onset strength of every analysis frame, then
  * computes the beat grid. The waveform is reported as it grows, so long mixes show it
- * progressively. Results are cached per fingerprint.
+ * progressively. Results are cached per fingerprint. The onset features of recent tracks stay in
+ * memory, so a tempo the user corrects (TMP-06) gives a new grid without decoding again.
  */
 
 export interface AnalysisProgress {
@@ -31,13 +33,79 @@ const REPORT_INTERVAL_MS = 500;
 
 const cancelled = new Set<string>();
 
+/** What a new grid for a track needs: its onset features, and the rest of its result. */
+interface Kept {
+  features: OnsetFeatures;
+  duration: number;
+  waveform: Waveform;
+  bytes: number;
+}
+
+/** Recently analysed tracks, oldest first, up to {@link KEPT_BYTES} (about six hours). */
+const kept = new Map<string, Kept>();
+const KEPT_BYTES = 64 * 1024 * 1024;
+
+function keep(fingerprint: string, entry: Kept): void {
+  kept.delete(fingerprint);
+  kept.set(fingerprint, entry);
+  let total = 0;
+  for (const { bytes } of kept.values()) total += bytes;
+  for (const [key, { bytes }] of kept) {
+    if (total <= KEPT_BYTES || key === fingerprint) break;
+    kept.delete(key);
+    total -= bytes;
+  }
+}
+
+/** A copy of the features, as compact as their length (the collector's lists have room). */
+function compact(features: OnsetFeatures): OnsetFeatures {
+  return {
+    ...features,
+    onset: features.onset.slice(),
+    accent: features.accent.slice(),
+    active: features.active.slice(),
+    kick: features.kick?.slice(),
+    snare: features.snare?.slice(),
+    levels: features.levels?.slice(),
+  };
+}
+
+function byteSize(features: OnsetFeatures, waveform: Waveform): number {
+  const lists = [
+    features.onset,
+    features.accent,
+    features.active,
+    features.kick,
+    features.snare,
+    features.levels,
+  ];
+  return lists.reduce((sum, list) => sum + (list?.byteLength ?? 0), waveform.data.byteLength);
+}
+
+/**
+ * The waveform and beat grid of a file, with the tempo the user gave (TMP-06) or null: from the
+ * cache, from the features kept in memory, or by decoding the file.
+ */
 async function analyse(
-  args: { file: File; fingerprint: string },
+  args: { file: File; fingerprint: string; tempo: number | null },
   progress: (update: AnalysisProgress) => void,
 ) {
   cancelled.delete(args.fingerprint);
   const cached = await readCachedAnalysis(args.fingerprint);
-  if (cached) return transferable(cached);
+  if (cached && sameTempo(cached.tempo, args.tempo)) return transferable(cached);
+  const known = kept.get(args.fingerprint);
+  if (known) {
+    keep(args.fingerprint, known);
+    const result: TrackAnalysisResult = {
+      fingerprint: args.fingerprint,
+      duration: known.duration,
+      waveform: { ...known.waveform, data: known.waveform.data.slice() },
+      grid: computeBeatGrid(known.features, { bpm: args.tempo }),
+      tempo: args.tempo,
+    };
+    await writeCachedAnalysis(result);
+    return transferable(result);
+  }
   const input = new Input({ source: new BlobSource(args.file), formats: ALL_FORMATS });
   try {
     const track = await input.getPrimaryAudioTrack();
@@ -70,12 +138,22 @@ async function analyse(
       }
     }
     const finished = waveform.finish();
-    const grid = computeBeatGrid(features.finish());
+    const onsets = compact(features.finish());
+    const shape = { rate: finished.rate, length: finished.length };
+    const whole = { ...shape, data: finished.data.slice(0, finished.length * WAVEFORM_STRIDE) };
+    const duration = samples / rate;
+    keep(args.fingerprint, {
+      features: onsets,
+      duration,
+      waveform: whole,
+      bytes: byteSize(onsets, whole),
+    });
     const result: TrackAnalysisResult = {
       fingerprint: args.fingerprint,
-      duration: samples / rate,
-      waveform: { rate: finished.rate, length: finished.length, data: finished.data.slice() },
-      grid,
+      duration,
+      waveform: { ...shape, data: whole.data.slice() },
+      grid: computeBeatGrid(onsets, { bpm: args.tempo }),
+      tempo: args.tempo,
     };
     await writeCachedAnalysis(result);
     return transferable(result);

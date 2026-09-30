@@ -45,6 +45,10 @@ describe('beats from the grid', () => {
 
   it('finds the tempo of a track', () => {
     expect(gridTempo(grid(128, 50))).toBeCloseTo(128, 6);
+    // Beats that alternate by a frame (at 94 frames per second) still give the tempo.
+    const jittered = grid(240, 64);
+    jittered.beats.forEach((time, k) => (jittered.beats[k] = time + (k % 2 ? 0.005 : -0.005)));
+    expect(gridTempo(jittered)).toBeCloseTo(240, 0);
     expect(gridTempo({ beats: new Float64Array(0), confidence: new Float32Array(0) })).toBe(0);
   });
 });

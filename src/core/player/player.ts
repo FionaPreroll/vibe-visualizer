@@ -1,4 +1,4 @@
-import { nearestBeat, type BeatGrid } from '../analysis/beat-grid';
+import { nearestBeat, TEMPO_HINT_RANGE, type BeatGrid } from '../analysis/beat-grid';
 import { rateLimits, TEMPO_STEP, type SoundSettings } from '../audio/dsp/sound-settings';
 import { AudioEngine, type NextFile } from '../audio/engine/audio-engine';
 import {
@@ -319,7 +319,9 @@ export class Player {
     this.notePlayed(id);
     const fingerprint = this.currentTrack?.fingerprint;
     const file = this.files.get(id);
-    if (fingerprint && file) this.analysis.request(fingerprint, file, true);
+    if (fingerprint && file) {
+      this.analysis.request(fingerprint, file, true, this.currentTrack?.tempo ?? null);
+    }
     // What follows this file: the stream waits for the answer at its end.
     this.planNext();
   }
@@ -492,7 +494,8 @@ export class Player {
       },
     });
     // Waveform and beat grid in the background; the track that plays first.
-    this.analysis.request(result.fingerprint, file, id === this.state.currentId);
+    const first = id === this.state.currentId;
+    this.analysis.request(result.fingerprint, file, first, stored?.tempo ?? null);
     return result;
   }
 
@@ -568,6 +571,26 @@ export class Player {
       currentId: this.state.currentId,
     };
     await saveQueue(queue);
+  }
+
+  /**
+   * Sets the tempo (BPM) of the beat grid of track `id` and of every other entry of its file
+   * (TMP-06), e.g. double the tempo found; null lets the grid find the tempo again. The grid is
+   * computed anew in the background; tempos outside {@link TEMPO_HINT_RANGE} are ignored.
+   */
+  setTempo(id: string, bpm: number | null): void {
+    const track = this.state.tracks.find((entry) => entry.id === id);
+    const fingerprint = track?.fingerprint;
+    if (!fingerprint) return;
+    if (bpm !== null && !(bpm >= TEMPO_HINT_RANGE.min && bpm <= TEMPO_HINT_RANGE.max)) return;
+    const tempo = bpm === null ? null : Math.round(bpm * 100) / 100;
+    if (tempo === track.tempo) return;
+    this.dispatch({ type: 'tracks/tempo', fingerprint, tempo });
+    const entry = this.state.tracks.find(
+      (other) => other.fingerprint === fingerprint && this.files.has(other.id),
+    );
+    const file = entry ? this.files.get(entry.id) : undefined;
+    if (file) this.analysis.request(fingerprint, file, id === this.state.currentId, tempo);
   }
 
   /** Waveform and beat grid of a track, once analysed (TR-03, AN-07). */
@@ -696,7 +719,9 @@ export class Player {
       this.loadedToken = token;
       this.dispatch({ type: 'player/current', id });
       const fingerprint = this.currentTrack?.fingerprint;
-      if (fingerprint) this.analysis.request(fingerprint, file, true);
+      if (fingerprint) {
+        this.analysis.request(fingerprint, file, true, this.currentTrack?.tempo ?? null);
+      }
       this.sendBeatGrids();
       this.engine.paused = false;
       this.dispatch({ type: 'player/playing', playing: true });
@@ -1046,7 +1071,7 @@ export class Player {
     void this.engine.dispose();
   }
 
-  /** Keeps the cues and markers of each file (TR-05), so they come back with it. */
+  /** Keeps the cues, markers and tempo of each file (TR-05), so they come back with it. */
   private storeTrackData(previous: readonly Track[], next: readonly Track[]): void {
     const before = new Map(previous.map((track) => [track.id, track]));
     for (const track of next) {
@@ -1055,8 +1080,12 @@ export class Player {
       const unchanged =
         old?.fingerprint === track.fingerprint &&
         old.cues === track.cues &&
-        old.marks === track.marks;
-      if (!unchanged) saveTrackData(track.fingerprint, { cues: track.cues, marks: track.marks });
+        old.marks === track.marks &&
+        old.tempo === track.tempo;
+      if (!unchanged) {
+        const { cues, marks, tempo } = track;
+        saveTrackData(track.fingerprint, { cues, marks, tempo });
+      }
     }
   }
 

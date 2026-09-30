@@ -5,18 +5,19 @@
  *
  * 1. Tempo path: every half second, the autocorrelation of the last 10 s of onsets (kept up to
  *    date as a running sum) is scored with a comb over four multiples of each candidate period,
- *    times a preference for tempos around 120 BPM. A Viterbi pass over the whole track finds the
- *    most likely path of tempos, preferring small changes.
+ *    times a preference for tempos around 120 BPM (or, once the user has corrected the tempo,
+ *    around that one, TMP-06). A Viterbi pass over the whole track finds the most likely path
+ *    of tempos, preferring small changes.
  * 2. Beats: dynamic programming (after Ellis, "Beat Tracking by Dynamic Programming", 2007)
  *    chooses the sequence of beats that best matches strong onsets while keeping each interval
  *    close to the local period. Accents (kicks and drum bodies) count extra, so beats land on
  *    the kicks rather than on the offbeat hi-hats.
  * 3. Each beat gets a confidence: how much stronger the onsets are on the beats than around them.
- * 4. The tempo is checked against the snares: double or 3/2 of the tempo found wins where it
- *    puts them clearly on the second and fourth beat of each bar (drum & bass read as 87 or 116
- *    instead of 174, hardcore as 89 instead of 178). Slower tempos are not tried, since a
- *    half-time feel (dubstep, trap) and swing show a backbeat there too. This is decided in
- *    windows of a few seconds, so a mix may change its tempo.
+ * 4. Unless the user gave the tempo, it is checked against the snares: double or 3/2 of it wins
+ *    where it puts them clearly on the second and fourth beat of each bar (drum & bass read as
+ *    87 or 116 instead of 174, hardcore as 89 instead of 178). Slower tempos are not tried,
+ *    since a half-time feel (dubstep, trap) and swing show a backbeat there too. This is
+ *    decided in windows of a few seconds, so a mix may change its tempo.
  * 5. The bars: which beat of its bar each beat is, from the changes of harmony and the drums
  *    ({@link findBars}).
  */
@@ -65,11 +66,23 @@ export interface BeatGrid {
   beatInBar?: Uint8Array;
 }
 
-const MIN_BPM = 75;
-const MAX_BPM = 180;
-const PRIOR_BPM = 120;
-/** Width of the tempo preference, in octaves. */
-const PRIOR_OCTAVES = 0.8;
+/** Tempos the grid looks for, and the preference among them (around 120 BPM). */
+interface TempoRange {
+  min: number;
+  max: number;
+  prior: number;
+  /** Width of the preference, in octaves. */
+  octaves: number;
+}
+const AUTOMATIC: TempoRange = { min: 75, max: 180, prior: 120, octaves: 0.8 };
+/**
+ * With a tempo from the user (TMP-06): within this factor of it, so no related tempo (4/3, 3/2,
+ * double) can take its place, and a narrow preference for it.
+ */
+const HINT_SPREAD = 1.2;
+const HINT_OCTAVES = 0.1;
+/** Tempos the user can give, in BPM. */
+export const TEMPO_HINT_RANGE = { min: 40, max: 250 } as const;
 const TEMPO_WINDOW_SECONDS = 10;
 const TEMPO_STEP_SECONDS = 0.5;
 /** Candidate periods are spaced this many frames apart. */
@@ -100,8 +113,16 @@ const BACKBEAT_MARGIN = 0.15;
 const RATIO_NONE = 2.5;
 const RATIO_FULL = 4.5;
 
+export interface BeatGridOptions {
+  /**
+   * The tempo of the track in BPM, as the user corrected it (TMP-06): the grid keeps close to
+   * it, and the snares do not change it. Null or absent: the grid finds the tempo itself.
+   */
+  bpm?: number | null;
+}
+
 /** The beats of a track from its onset features. */
-export function computeBeatGrid(features: OnsetFeatures): BeatGrid {
+export function computeBeatGrid(features: OnsetFeatures, options: BeatGridOptions = {}): BeatGrid {
   const frames = features.onset.length;
   if (frames < 4) {
     return {
@@ -112,9 +133,13 @@ export function computeBeatGrid(features: OnsetFeatures): BeatGrid {
   }
   const onset = detrend(features.onset);
   const score = beatScore(onset, detrend(features.accent));
-  let periods = tempoPath(onset, features.frameRate);
+  const hint = options.bpm ?? null;
+  const range: TempoRange = hint
+    ? { min: hint / HINT_SPREAD, max: hint * HINT_SPREAD, prior: hint, octaves: HINT_OCTAVES }
+    : AUTOMATIC;
+  let periods = tempoPath(onset, features.frameRate, range);
   let beatFrames = trackBeats(score, periods);
-  if (features.snare) {
+  if (features.snare && !hint) {
     const checked = checkBackbeat(score, periods, beatFrames, features.snare, features.frameRate);
     if (checked !== periods) {
       periods = checked;
@@ -153,14 +178,14 @@ function detrend(values: Float32Array): Float64Array {
 }
 
 /** The most likely beat period (frames) at every frame, from a Viterbi pass over the track. */
-function tempoPath(onset: Float64Array, frameRate: number): Float64Array {
+function tempoPath(onset: Float64Array, frameRate: number, range: TempoRange): Float64Array {
   const frames = onset.length;
-  const minPeriod = (60 * frameRate) / MAX_BPM;
-  const maxPeriod = (60 * frameRate) / MIN_BPM;
+  const minPeriod = (60 * frameRate) / range.max;
+  const maxPeriod = (60 * frameRate) / range.min;
   const count = Math.floor((maxPeriod - minPeriod) / PERIOD_STEP) + 1;
   const candidates = Float64Array.from({ length: count }, (_, i) => minPeriod + i * PERIOD_STEP);
   const logPrior = candidates.map((period) => {
-    const octaves = Math.log2((60 * frameRate) / period / PRIOR_BPM) / PRIOR_OCTAVES;
+    const octaves = Math.log2((60 * frameRate) / period / range.prior) / range.octaves;
     return -0.5 * octaves * octaves;
   });
   const window = Math.round(TEMPO_WINDOW_SECONDS * frameRate);

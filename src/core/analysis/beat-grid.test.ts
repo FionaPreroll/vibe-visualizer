@@ -65,6 +65,21 @@ describe('beat grid', () => {
     expect(matched(grid.beats, truth, 0)).toBeGreaterThan(0.97);
   });
 
+  it('keeps close to a tempo the user gave (TMP-06)', () => {
+    const truth = beatsOf(40, () => 120);
+    const features = pulses(truth, 40);
+    expect(Math.round(gridTempo(computeBeatGrid(features)))).toBe(120);
+    // Double and half: a beat between the pulses too, or only on every second pulse.
+    expect(Math.round(gridTempo(computeBeatGrid(features, { bpm: 240 })))).toBe(240);
+    const half = computeBeatGrid(features, { bpm: 60 });
+    expect(Math.round(gridTempo(half))).toBe(60);
+    // Its beats are on the pulses (on every second one, whichever).
+    const onPulses = Array.from(half.beats.subarray(2)).filter((beat) =>
+      truth.some((time) => Math.abs(time - beat) < 0.025),
+    );
+    expect(onPulses.length).toBeGreaterThan(0.9 * (half.beats.length - 2));
+  });
+
   it('has no confidence where there is no beat', () => {
     const random = createPrng(9);
     const frames = Math.round(30 * FRAME_RATE);

@@ -13,6 +13,16 @@ export interface TrackAnalysisResult {
   duration: number;
   waveform: Waveform;
   grid: BeatGrid;
+  /** The tempo the user gave for the grid (TMP-06), or null: the grid found the tempo itself. */
+  tempo: number | null;
+}
+
+/**
+ * Tempos (BPM) that give the same grid: both null, or equal within a hundredth of a BPM (the
+ * cache stores them as float32).
+ */
+export function sameTempo(a: number | null, b: number | null): boolean {
+  return a === null || b === null ? a === b : Math.abs(a - b) < 0.01;
 }
 
 const DIRECTORY = 'track-analysis';
@@ -39,6 +49,7 @@ export function encodeAnalysis(result: TrackAnalysisResult): ArrayBuffer {
   view.setUint32(8, result.waveform.rate, true);
   view.setUint32(12, result.waveform.length, true);
   view.setUint32(16, beats, true);
+  view.setFloat32(20, result.tempo ?? 0, true);
   view.setFloat64(24, result.duration, true);
   new Uint8Array(buffer, HEADER_BYTES, waveformBytes).set(
     result.waveform.data.subarray(0, waveformBytes),
@@ -65,6 +76,7 @@ export function decodeAnalysis(
   const rate = view.getUint32(8, true);
   const length = view.getUint32(12, true);
   const beats = view.getUint32(16, true);
+  const tempo = view.getFloat32(20, true);
   const duration = view.getFloat64(24, true);
   const waveformBytes = length * WAVEFORM_STRIDE;
   const beatsOffset = align(HEADER_BYTES + waveformBytes, 8);
@@ -84,6 +96,7 @@ export function decodeAnalysis(
       confidence: new Float32Array(buffer.slice(confidenceOffset, barOffset)),
       beatInBar: new Uint8Array(buffer.slice(barOffset, barOffset + beats)),
     },
+    tempo: tempo > 0 ? tempo : null,
   };
 }
 

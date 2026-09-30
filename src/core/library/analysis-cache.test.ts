@@ -17,9 +17,13 @@ describe('track analysis cache', () => {
         confidence: Float32Array.of(0.25, 1, 0.5),
         beatInBar: Uint8Array.of(3, 0, 1),
       },
+      tempo: null,
     };
     const read = decodeAnalysis(encodeAnalysis(result), 'f00d');
     expect(read).toEqual(result);
+    // With a tempo the user gave (TMP-06).
+    const corrected = { ...result, tempo: 174 };
+    expect(decodeAnalysis(encodeAnalysis(corrected), 'f00d')?.tempo).toBe(174);
   });
 
   it('ignores anything that is not a current analysis', () => {

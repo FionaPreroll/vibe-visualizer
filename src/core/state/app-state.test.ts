@@ -63,10 +63,10 @@ describe('app state', () => {
         format: 'MP3',
         coverUrl: null,
         fingerprint: 'abc',
-        stored: { cues, marks: { in: 10, out: 40 } },
+        stored: { cues, marks: { in: 10, out: 40 }, tempo: 174 },
       },
     });
-    expect(state.tracks[0]).toMatchObject({ cues, marks: { in: 10, out: 40 } });
+    expect(state.tracks[0]).toMatchObject({ cues, marks: { in: 10, out: 40 }, tempo: 174 });
     state = reducer(state, { type: 'tracks/cue', id: 't0', index: 1, seconds: 500 });
     expect(state.tracks[0]!.cues[1]).toBe(180);
     state = reducer(state, { type: 'tracks/cue', id: 't0', index: 0, seconds: null });
@@ -98,7 +98,7 @@ describe('app state', () => {
     let state = reducer(withTracks('New.mp3'), {
       type: 'tracks/restored',
       tracks: [
-        restoredTrack('r0', info, 'locked', { cues, marks: { in: null, out: 20 } }),
+        restoredTrack('r0', info, 'locked', { cues, marks: { in: null, out: 20 }, tempo: null }),
         restoredTrack('r1', { ...info, fileName: 'Gone.mp3' }, 'missing'),
       ],
       currentId: 'r1',
