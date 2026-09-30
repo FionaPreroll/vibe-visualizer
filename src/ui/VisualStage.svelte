@@ -1,11 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { aspectRatio, type AspectRatio } from '../core/export/video-format';
+  import { BUILT_IN_KALEIDO_PRESETS } from '../core/render/kaleido-settings';
   import type { ImageKind } from '../core/render/logo-spectrum';
+  import { switchingPool } from '../core/render/preset-director';
   import type { SceneKind } from '../core/render/render-protocol';
   import { Renderer } from '../core/render/renderer';
   import { decodeImage, type StoredImage } from '../core/render/visual-assets';
+  import { BUILT_IN_PRESETS } from '../core/render/visual-settings';
   import { usePlayer } from './player-context';
+  import { kaleidoPresets, logoSpectrumPresets } from './preset-store';
   import SafeAreas from './SafeAreas.svelte';
   import { useAssets } from './visuals-context';
 
@@ -13,6 +17,7 @@
    * The visuals (Logo Spectrum or Kaleidoscope), drawn by the render worker at the canvas's
    * native resolution (VE-01), letterboxed to the video's aspect ratio (VE-09). Switching between
    * the two keeps the worker and both scenes; settings and images are forwarded as they change.
+   * The worker switches presets on its own (PR-02) and says so, so the panels show the preset.
    */
   interface Props {
     mode: SceneKind;
@@ -42,6 +47,18 @@
     renderer?.setRunning(visible && !paused);
   });
 
+  // Automatic preset switching: its settings and the presets of each mode that take part.
+  const autoPresets = $derived($app.settings.autoPresets);
+  const favourites = $derived($app.settings.favourites);
+  $effect(() => {
+    const pool = autoPresets.pool;
+    renderer?.setAutoPresets(
+      autoPresets,
+      switchingPool(BUILT_IN_PRESETS, $logoSpectrumPresets, favourites.logoSpectrum, pool),
+      switchingPool(BUILT_IN_KALEIDO_PRESETS, $kaleidoPresets, favourites.kaleidoscope, pool),
+    );
+  });
+
   onMount(() => {
     const size = () => {
       const ratio = window.devicePixelRatio || 1;
@@ -57,7 +74,11 @@
     instance.onEvent = (event) => {
       if (event.type === 'ready') status = 'running';
       else if (event.type === 'stats') fps = event.fps;
-      else {
+      else if (event.type === 'preset') {
+        // The switching chose it: the panels show it (the worker morphs there already).
+        if (event.scene === 'logoSpectrum') player.replaceVisuals(event.settings);
+        else player.replaceKaleido(event.settings);
+      } else {
         status = 'failed';
         message = event.message;
       }

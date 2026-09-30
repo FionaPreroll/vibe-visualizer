@@ -29,7 +29,10 @@ import { SignalsmithStretch } from '../audio/stretch/signalsmith-stretch';
 import { sanitizeKaleido } from '../render/kaleido-settings';
 import { KaleidoscopeScene } from '../render/kaleidoscope';
 import { LogoSpectrumScene } from '../render/logo-spectrum';
-import { decodeSnapshot, encodeSnapshot, type Scene } from '../render/scene';
+import { PresetAutomation, SWITCHING_SEEDS } from '../render/preset-automation';
+import { sanitizeAutoPresets } from '../render/preset-director';
+import { decodeSnapshot, encodeSnapshot, type Scene, type SceneSnapshot } from '../render/scene';
+import { morphKaleido, morphLogoSpectrum } from '../render/settings-morph';
 import { sanitizeSettings } from '../render/visual-settings';
 import { exposeWorker } from '../util/worker-rpc';
 import {
@@ -460,21 +463,70 @@ async function audioPass(
   }
 }
 
+/** The automatic preset switching of the video (PR-02), frame by frame as in the preview. */
+interface Switching {
+  /** One frame: gives the scene the settings the switching and its morph have now. */
+  frame(dt: number, features: Float32Array): void;
+  /** The scene's snapshot with the switching's state added. */
+  save(snapshot: SceneSnapshot): SceneSnapshot;
+  /** Continues from such a snapshot (the scene gets its settings); returns the scene's part. */
+  restore(snapshot: SceneSnapshot): SceneSnapshot;
+}
+
+function createSwitching<T>(
+  automation: PresetAutomation<T>,
+  apply: (settings: T) => void,
+): Switching {
+  return {
+    frame(dt, features) {
+      const { settings } = automation.frame(dt, features);
+      if (settings) apply(settings);
+    },
+    save(snapshot) {
+      const { values, morph } = automation.saveState();
+      return {
+        values: { ...snapshot.values, ...values },
+        buffers: [...snapshot.buffers, new TextEncoder().encode(morph)],
+      };
+    },
+    restore(snapshot) {
+      const morph = snapshot.buffers.at(-1);
+      if (!(morph instanceof Uint8Array)) throw new Error('The saved preset switching is missing.');
+      automation.restoreState(snapshot.values, new TextDecoder().decode(morph));
+      apply(automation.current);
+      return { values: snapshot.values, buffers: snapshot.buffers.slice(0, -1) };
+    },
+  };
+}
+
 function createScene(
   gl: WebGL2RenderingContext,
   visuals: ExportVisuals,
   images: ResumeArgs['images'],
-): Scene {
+): { scene: Scene; switching: Switching | null } {
+  const config = visuals.auto?.config.on ? sanitizeAutoPresets(visuals.auto.config) : null;
   if (visuals.mode === 'logoSpectrum') {
     const scene = new LogoSpectrumScene(gl);
-    scene.setSettings(sanitizeSettings(visuals.settings));
+    const settings = sanitizeSettings(visuals.settings);
+    scene.setSettings(settings);
     scene.setImage('background', images.background);
     scene.setImage('logo', images.logo);
-    return scene;
+    if (!config || !visuals.auto) return { scene, switching: null };
+    const automation = new PresetAutomation(
+      morphLogoSpectrum,
+      settings,
+      SWITCHING_SEEDS.logoSpectrum,
+    );
+    automation.setAuto(config, visuals.auto.presets.map(sanitizeSettings));
+    return { scene, switching: createSwitching(automation, (next) => scene.setSettings(next)) };
   }
   const scene = new KaleidoscopeScene(gl);
-  scene.setSettings(sanitizeKaleido(visuals.settings));
-  return scene;
+  const settings = sanitizeKaleido(visuals.settings);
+  scene.setSettings(settings);
+  if (!config || !visuals.auto) return { scene, switching: null };
+  const automation = new PresetAutomation(morphKaleido, settings, SWITCHING_SEEDS.kaleidoscope);
+  automation.setAuto(config, visuals.auto.presets.map(sanitizeKaleido));
+  return { scene, switching: createSwitching(automation, (next) => scene.setSettings(next)) };
 }
 
 /** Pass 2: render and encode the video in segments, from the stored analysis. */
@@ -503,7 +555,7 @@ async function videoPass(
     powerPreference: 'high-performance',
   });
   if (!gl) throw new Error('WebGL2 is not available.');
-  const scene = createScene(gl, manifest.visuals, images);
+  const { scene, switching } = createScene(gl, manifest.visuals, images);
   try {
     scene.resize(format.width, format.height);
     const analysis = await store.file('features.bin');
@@ -521,7 +573,9 @@ async function videoPass(
       // Resume: the scene continues from the state saved after the previous segment.
       n = first * timing.segmentFrames;
       const state = await store.file(`state-${first}.bin`);
-      scene.restoreState(decodeSnapshot(await state.arrayBuffer()));
+      const snapshot = decodeSnapshot(await state.arrayBuffer());
+      // The switching first: the scene continues with the settings it had.
+      scene.restoreState(switching ? switching.restore(snapshot) : snapshot);
       const previous = frameTime(timing, fps, n - 1);
       feed.seek(previous);
       sampler.resetTo(previous);
@@ -532,6 +586,8 @@ async function videoPass(
       const at = frameTime(timing, fps, frame);
       await feed.ensure(at);
       sampler.sample(at, features);
+      // The switching counts from the first frame of the video, not in the pre-roll.
+      if (frame >= 0) switching?.frame(1 / fps, features);
       scene.render({ time: (frame + timing.preRollFrames) / fps, dt: 1 / fps, features });
     };
 
@@ -600,7 +656,11 @@ async function videoPass(
         throw error;
       }
       if (segment + 1 < timing.segments) {
-        await store.writeFile(`state-${segment + 1}.bin`, encodeSnapshot(scene.saveState()));
+        const snapshot = scene.saveState();
+        await store.writeFile(
+          `state-${segment + 1}.bin`,
+          encodeSnapshot(switching ? switching.save(snapshot) : snapshot),
+        );
       }
       await store.remove(`state-${segment}.bin`);
       manifest.progress.segmentsDone = segment + 1;

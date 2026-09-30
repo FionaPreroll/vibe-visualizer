@@ -118,7 +118,18 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
   await page.goto('/');
   await addTrack(page, 8);
   await page.getByRole('button', { name: 'Kaleidoscope', exact: true }).click();
+  // The presets switch every 5 s (PR-02): the resumed part goes on switching where it was.
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByText('Preset switching', { exact: true }).click();
+  await page.getByTestId('auto-presets').check();
+  await page
+    .getByRole('radiogroup', { name: 'Switch every' })
+    .getByRole('radio', { name: 'Seconds' })
+    .click();
+  await page.getByRole('slider', { name: 'Seconds', exact: true }).focus();
+  await page.keyboard.press('Home');
   await page.getByTestId('export-button').click();
+  await expect(page.getByTestId('export-switching')).toHaveText('(switching presets every 5 s)');
   await chooseSmallFormat(page);
   await page.getByTestId('export-start').click();
 
