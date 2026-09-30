@@ -1,6 +1,7 @@
 import { ALL_FORMATS, BlobSource, Input } from 'mediabunny';
-import { Analyzer, FLUX_DELAY } from '../analysis/analyzer';
+import { Analyzer } from '../analysis/analyzer';
 import { computeBeatGrid } from '../analysis/beat-grid';
+import { GridFeatureCollector } from '../analysis/grid-features';
 import { WAVEFORM_STRIDE, WaveformBuilder } from '../analysis/waveform';
 import { decodeAtRate } from '../audio/decode-stream';
 import { exposeWorker, withTransfer } from '../util/worker-rpc';
@@ -30,45 +31,6 @@ const REPORT_INTERVAL_MS = 500;
 
 const cancelled = new Set<string>();
 
-/** Growable lists of the per-frame onset features. */
-class FrameLists {
-  onset: Float32Array;
-  accent: Float32Array;
-  active: Uint8Array;
-  kick: Float32Array;
-  snare: Float32Array;
-  length = 0;
-
-  constructor(capacity: number) {
-    this.onset = new Float32Array(capacity);
-    this.accent = new Float32Array(capacity);
-    this.active = new Uint8Array(capacity);
-    this.kick = new Float32Array(capacity);
-    this.snare = new Float32Array(capacity);
-  }
-
-  push(analyzer: Analyzer): void {
-    if (this.length === this.onset.length) {
-      const grow = <T extends Float32Array | Uint8Array>(old: T, next: T) => {
-        next.set(old);
-        return next;
-      };
-      const capacity = this.onset.length * 2;
-      this.onset = grow(this.onset, new Float32Array(capacity));
-      this.accent = grow(this.accent, new Float32Array(capacity));
-      this.active = grow(this.active, new Uint8Array(capacity));
-      this.kick = grow(this.kick, new Float32Array(capacity));
-      this.snare = grow(this.snare, new Float32Array(capacity));
-    }
-    this.onset[this.length] = analyzer.flux;
-    this.accent[this.length] = analyzer.accent;
-    this.active[this.length] = analyzer.active ? 1 : 0;
-    this.kick[this.length] = analyzer.kick;
-    this.snare[this.length] = analyzer.snare;
-    this.length++;
-  }
-}
-
 async function analyse(
   args: { file: File; fingerprint: string },
   progress: (update: AnalysisProgress) => void,
@@ -84,8 +46,8 @@ async function analyse(
     const expected = (await input.getDurationFromMetadata()) ?? 60;
     const analyzer = new Analyzer(rate);
     const waveform = new WaveformBuilder(rate, expected);
-    const frames = new FrameLists(Math.ceil((expected * rate) / analyzer.hop) + 16);
-    const onFrame = () => frames.push(analyzer);
+    const features = new GridFeatureCollector(analyzer, (expected * rate) / analyzer.hop + 16);
+    const onFrame = () => features.push();
     let samples = 0;
     let sent = 0;
     let reported = performance.now();
@@ -108,15 +70,7 @@ async function analyse(
       }
     }
     const finished = waveform.finish();
-    const grid = computeBeatGrid({
-      frameRate: rate / analyzer.hop,
-      onset: frames.onset.subarray(0, frames.length),
-      accent: frames.accent.subarray(0, frames.length),
-      active: frames.active.subarray(0, frames.length),
-      kick: frames.kick.subarray(0, frames.length),
-      snare: frames.snare.subarray(0, frames.length),
-      delay: FLUX_DELAY,
-    });
+    const grid = computeBeatGrid(features.finish());
     const result: TrackAnalysisResult = {
       fingerprint: args.fingerprint,
       duration: samples / rate,
@@ -132,11 +86,13 @@ async function analyse(
 }
 
 function transferable(result: TrackAnalysisResult) {
-  return withTransfer(result, [
+  const buffers = [
     result.waveform.data.buffer,
     result.grid.beats.buffer,
     result.grid.confidence.buffer,
-  ]);
+  ];
+  if (result.grid.beatInBar) buffers.push(result.grid.beatInBar.buffer);
+  return withTransfer(result, buffers);
 }
 
 /** Stops the analysis of `fingerprint` at its next decoded block. */

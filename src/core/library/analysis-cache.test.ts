@@ -12,7 +12,11 @@ describe('track analysis cache', () => {
         length: 3,
         data: Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
       },
-      grid: { beats: Float64Array.of(0.5, 1.001, 1.5), confidence: Float32Array.of(0.25, 1, 0.5) },
+      grid: {
+        beats: Float64Array.of(0.5, 1.001, 1.5),
+        confidence: Float32Array.of(0.25, 1, 0.5),
+        beatInBar: Uint8Array.of(3, 0, 1),
+      },
     };
     const read = decodeAnalysis(encodeAnalysis(result), 'f00d');
     expect(read).toEqual(result);

@@ -1,6 +1,7 @@
-import { Analyzer, DRUM_DECAY_SECONDS, FLUX_DELAY, type AnalyzerOptions } from '../analyzer';
+import { Analyzer, DRUM_DECAY_SECONDS, type AnalyzerOptions } from '../analyzer';
 import type { OnsetFeatures } from '../beat-grid';
 import { F } from '../features';
+import { GridFeatureCollector } from '../grid-features';
 import type { OnsetScore } from './score';
 
 /** Event times in seconds, as reported by the analyzer. */
@@ -28,11 +29,7 @@ export function detectHits(
   const analyzer = new Analyzer(sampleRate, options);
   const lists: [number[], number[], number[]] = [[], [], []];
   const beats: number[] = [];
-  const onset: number[] = [];
-  const accent: number[] = [];
-  const active: number[] = [];
-  const kick: number[] = [];
-  const snare: number[] = [];
+  const collector = new GridFeatureCollector(analyzer, left.length / analyzer.hop);
   let bpm = 0;
   for (let start = 0; start < left.length; start += block) {
     const count = Math.min(block, left.length - start);
@@ -47,11 +44,7 @@ export function detectHits(
       }
       if (frame[F.beatHit] === 1) beats.push(time);
       bpm = frame[F.bpm]!;
-      onset.push(analyzer.flux);
-      accent.push(analyzer.accent);
-      active.push(analyzer.active ? 1 : 0);
-      kick.push(analyzer.kick);
-      snare.push(analyzer.snare);
+      collector.push();
     });
   }
   return {
@@ -60,15 +53,7 @@ export function detectHits(
     hats: lists[2],
     beats,
     bpm,
-    onsets: {
-      frameRate: sampleRate / analyzer.hop,
-      onset: Float32Array.from(onset),
-      accent: Float32Array.from(accent),
-      active: Uint8Array.from(active),
-      kick: Float32Array.from(kick),
-      snare: Float32Array.from(snare),
-      delay: FLUX_DELAY,
-    },
+    onsets: collector.finish(),
   };
 }
 

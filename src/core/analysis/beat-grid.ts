@@ -17,7 +17,11 @@
  *    instead of 174, hardcore as 89 instead of 178). Slower tempos are not tried, since a
  *    half-time feel (dubstep, trap) and swing show a backbeat there too. This is decided in
  *    windows of a few seconds, so a mix may change its tempo.
+ * 5. The bars: which beat of its bar each beat is, from the changes of harmony and the drums
+ *    ({@link findBars}).
  */
+
+import { findBars } from './bars';
 
 export interface OnsetFeatures {
   /** Analysis frames per second. */
@@ -36,6 +40,13 @@ export interface OnsetFeatures {
   kick?: Float32Array;
   snare?: Float32Array;
   /**
+   * A coarse spectrum, where the harmony changes (on the downbeats): the spectrum bands of the
+   * analysis frame (dB, before the auto-gain) averaged over `LEVEL_STEP` frames, in half-dB
+   * steps from `LEVEL_FLOOR_DB` (see bars.ts). Optional: without it the bars follow the drums
+   * alone.
+   */
+  levels?: Uint8Array;
+  /**
    * Seconds between an onset in the audio and the moment its frame reports it (the flux peaks
    * a little after the onset; frame i reports at (i + 1) / frameRate).
    */
@@ -47,6 +58,11 @@ export interface BeatGrid {
   beats: Float64Array;
   /** How clearly the music follows each beat, 0…1 (0 in silence). */
   confidence: Float32Array;
+  /**
+   * Position of each beat in its bar of four beats, 0 on the downbeat. Absent from grids
+   * without bars (those stored with export jobs).
+   */
+  beatInBar?: Uint8Array;
 }
 
 const MIN_BPM = 75;
@@ -87,7 +103,13 @@ const RATIO_FULL = 4.5;
 /** The beats of a track from its onset features. */
 export function computeBeatGrid(features: OnsetFeatures): BeatGrid {
   const frames = features.onset.length;
-  if (frames < 4) return { beats: new Float64Array(0), confidence: new Float32Array(0) };
+  if (frames < 4) {
+    return {
+      beats: new Float64Array(0),
+      confidence: new Float32Array(0),
+      beatInBar: new Uint8Array(0),
+    };
+  }
   const onset = detrend(features.onset);
   const score = beatScore(onset, detrend(features.accent));
   let periods = tempoPath(onset, features.frameRate);
@@ -103,7 +125,11 @@ export function computeBeatGrid(features: OnsetFeatures): BeatGrid {
   for (let k = 0; k < beatFrames.length; k++) {
     beats[k] = (refine(onset, beatFrames[k]!) + 1) / features.frameRate - features.delay;
   }
-  return { beats, confidence: confidences(score, beatFrames, features.active) };
+  return {
+    beats,
+    confidence: confidences(score, beatFrames, features.active),
+    beatInBar: findBars(beatFrames, features),
+  };
 }
 
 /** Onset strength above its local mean (an adaptive threshold), slightly smoothed. */

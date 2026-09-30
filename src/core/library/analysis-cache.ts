@@ -22,13 +22,17 @@ const VERSION = 2;
 const MAX_ENTRIES = 60;
 const HEADER_BYTES = 32;
 
-/** Serialises a result: a header, the waveform, then the beats and their confidence. */
+/**
+ * Serialises a result: a header, the waveform, then the beats, their confidence and their
+ * positions in the bar.
+ */
 export function encodeAnalysis(result: TrackAnalysisResult): ArrayBuffer {
   const waveformBytes = result.waveform.length * WAVEFORM_STRIDE;
   const beats = result.grid.beats.length;
   const beatsOffset = align(HEADER_BYTES + waveformBytes, 8);
   const confidenceOffset = beatsOffset + beats * 8;
-  const buffer = new ArrayBuffer(confidenceOffset + beats * 4);
+  const barOffset = confidenceOffset + beats * 4;
+  const buffer = new ArrayBuffer(barOffset + beats);
   const view = new DataView(buffer);
   view.setUint32(0, MAGIC, true);
   view.setUint32(4, VERSION, true);
@@ -41,7 +45,13 @@ export function encodeAnalysis(result: TrackAnalysisResult): ArrayBuffer {
   );
   new Float64Array(buffer, beatsOffset, beats).set(result.grid.beats);
   new Float32Array(buffer, confidenceOffset, beats).set(result.grid.confidence);
+  new Uint8Array(buffer, barOffset, beats).set(result.grid.beatInBar ?? countBars(beats));
   return buffer;
+}
+
+/** Positions in bars of four from the first beat on, for a grid without bars. */
+function countBars(beats: number): Uint8Array {
+  return Uint8Array.from({ length: beats }, (_, k) => k % 4);
 }
 
 /** The result stored in `buffer`, or null if it is not a (current) analysis. */
@@ -59,7 +69,8 @@ export function decodeAnalysis(
   const waveformBytes = length * WAVEFORM_STRIDE;
   const beatsOffset = align(HEADER_BYTES + waveformBytes, 8);
   const confidenceOffset = beatsOffset + beats * 8;
-  if (buffer.byteLength < confidenceOffset + beats * 4) return null;
+  const barOffset = confidenceOffset + beats * 4;
+  if (buffer.byteLength < barOffset + beats) return null;
   return {
     fingerprint,
     duration,
@@ -70,7 +81,8 @@ export function decodeAnalysis(
     },
     grid: {
       beats: new Float64Array(buffer.slice(beatsOffset, beatsOffset + beats * 8)),
-      confidence: new Float32Array(buffer.slice(confidenceOffset, confidenceOffset + beats * 4)),
+      confidence: new Float32Array(buffer.slice(confidenceOffset, barOffset)),
+      beatInBar: new Uint8Array(buffer.slice(barOffset, barOffset + beats)),
     },
   };
 }

@@ -31,12 +31,16 @@ interface Annotations {
   cymbals: number[];
 }
 
-function readBeats(path: string): number[] {
+/** Beat times from a `.beats` file (time and position in the bar), or only the downbeats. */
+function readBeats(path: string, downbeats = false): number[] {
   if (!existsSync(path)) return [];
   return readFileSync(path, 'utf8')
     .split('\n')
-    .map((line) => Number(line.trim().split(/\s+/)[0]))
-    .filter((time) => Number.isFinite(time) && time > 0);
+    .map((line) => line.trim().split(/\s+/).map(Number))
+    .filter(
+      ([time, position]) => Number.isFinite(time) && time! > 0 && (!downbeats || position === 1),
+    )
+    .map(([time]) => time!);
 }
 
 function readAnnotations(classPath: string, subclassPath: string): Annotations {
@@ -162,12 +166,16 @@ describe.skipIf(!root || !existsSync(root))('drum detection on MDB Drums', () =>
       hat: [] as OnsetScore[],
       beat: [] as OnsetScore[],
       grid: [] as OnsetScore[],
+      downbeat: [] as OnsetScore[],
       mainSnare: [] as VisualTally[],
       hatOrCymbal: [] as VisualTally[],
     };
     let tempoCorrect = 0;
     let gridTempoCorrect = 0;
     let gridMilliseconds = 0;
+    /** Downbeats with a grid beat within 70 ms, and those of them the grid counts as one. */
+    let barBeats = 0;
+    let barRight = 0;
     const lines: string[] = [];
     for (const track of tracks) {
       const [left, right] = loadTrack(join(mixDir, `${track}_MIX.wav`), track);
@@ -205,12 +213,31 @@ describe.skipIf(!root || !existsSync(root))('drum detection on MDB Drums', () =>
       const gridBpm = gridTempo(grid);
       const gridOk = Math.abs(gridBpm / truthBpm - 1) < 0.04;
       if (gridOk) gridTempoCorrect++;
+      // The bars: the grid's downbeats, and whether the beats it found on a downbeat count as one.
+      const downbeatTruth = within(
+        readBeats(join(root!, 'annotations', 'beats', `${track}_MIX.beats`), true),
+        5,
+        1e9,
+      );
+      const gridDownbeats = gridBeats.filter((_, k) => grid.beatInBar?.[k] === 0);
+      const downbeat = scoreOnsets(within(gridDownbeats, 5, 1e9), downbeatTruth, 0.07);
+      totals.downbeat.push(downbeat);
+      for (const time of downbeatTruth) {
+        let nearest = -1;
+        for (let k = 0; k < gridBeats.length; k++) {
+          if (Math.abs(gridBeats[k]! - time) < 0.07) nearest = k;
+        }
+        if (nearest < 0) continue;
+        barBeats++;
+        if (grid.beatInBar?.[nearest] === 0) barRight++;
+      }
       const f1 = (score: OnsetScore, count: number) =>
         count === 0 ? '   -  ' : `${(score.f1 * 100).toFixed(0).padStart(4)}% `;
       lines.push(
         `${track.replace('MusicDelta_', '').padEnd(14)} kick ${f1(kick, truth.kicks.length)}` +
           `snare ${f1(snare, truth.snares.length)}hat ${f1(hat, truth.hats.length)}` +
           `beat ${f1(beat, beatTruth.length)}grid ${f1(gridScore, beatTruth.length)}` +
+          `bar ${f1(downbeat, downbeatTruth.length)}` +
           `bpm ${hits.bpm.toFixed(0).padStart(3)}${tempoOk ? ' ' : '✗'} ` +
           `grid ${gridBpm.toFixed(0).padStart(3)}${gridOk ? ' ' : '✗'} ` +
           `(${truthBpm.toFixed(0).padStart(3)})`,
@@ -225,6 +252,8 @@ describe.skipIf(!root || !existsSync(root))('drum detection on MDB Drums', () =>
         formatScore('hat', sum(totals.hat)),
         formatScore('beat', sum(totals.beat)),
         formatScore('grid', sum(totals.grid)),
+        formatScore('bar', sum(totals.downbeat)),
+        `bars: ${barRight} of ${barBeats} downbeats with a grid beat counted as one`,
         'Visual relevance: snare recall without ghost notes and brushes; hi-hat precision with cymbals',
         formatVisual('snare', totals.mainSnare),
         formatVisual('hat', totals.hatOrCymbal),

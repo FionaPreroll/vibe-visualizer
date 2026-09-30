@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createPrng } from '../util/prng';
 import { beatBefore, computeBeatGrid, nearestBeat, type OnsetFeatures } from './beat-grid';
+import { detectHits } from './eval/evaluate';
+import { createPattern } from './eval/patterns';
+import { gridTempo } from './grid-beats';
 
 const FRAME_RATE = 48000 / 512;
 
@@ -73,6 +76,22 @@ describe('beat grid', () => {
       delay: 0,
     });
     expect(Math.max(...grid.confidence)).toBeLessThan(0.2);
+  });
+
+  // Drum & bass and hardcore tempt the tempo path to half their tempo; techno has a kick on
+  // every beat, so only the harmony and the snares tell its bars.
+  it.each(['dnb', 'hardcore', 'techno'])('finds the tempo and the bars of %s', (name) => {
+    const pattern = createPattern(name, 12);
+    const hits = detectHits(pattern.left, pattern.right, pattern.sampleRate);
+    const grid = computeBeatGrid(hits.onsets);
+    expect(gridTempo(grid) / pattern.bpm).toBeCloseTo(1, 1);
+    const downbeats = pattern.downbeats.slice(1);
+    const found = downbeats.filter((time) =>
+      grid.beats.some((beat, k) => Math.abs(beat - time) < 0.05 && grid.beatInBar![k] === 0),
+    );
+    expect(found.length).toBe(downbeats.length);
+    const bars = Array.from(grid.beatInBar!).filter((position) => position === 0).length;
+    expect(bars).toBeLessThanOrEqual(pattern.downbeats.length + 1);
   });
 
   it('finds the beat at or before a time', () => {

@@ -79,6 +79,13 @@ export const GROOVES: Record<string, Groove> = {
 
 const TWO_PI = 2 * Math.PI;
 
+/** A bass note with its first harmonics (like a filtered sawtooth). */
+function bassTone(frequency: number, t: number): number {
+  let value = 0;
+  for (let n = 1; n <= 5; n++) value += Math.sin(TWO_PI * n * frequency * t) / n;
+  return value / 1.5;
+}
+
 export function createPattern(name: string, bars = 16, sampleRate = 48000): Pattern {
   const groove = GROOVES[name];
   if (!groove) throw new Error(`Unknown pattern ${name}`);
@@ -141,7 +148,7 @@ export function createPattern(name: string, bars = 16, sampleRate = 48000): Patt
     const frequency = notes[bar % notes.length]!;
     if (groove.sustainedBass) {
       add(start, 4 * beat, 0.35, (t) => {
-        const detune = Math.sin(TWO_PI * frequency * t) + Math.sin(TWO_PI * frequency * 1.01 * t);
+        const detune = bassTone(frequency, t) + bassTone(frequency * 1.01, t);
         return 0.5 * detune * Math.min(1, t / 0.02);
       });
     } else {
@@ -150,7 +157,7 @@ export function createPattern(name: string, bars = 16, sampleRate = 48000): Patt
           start + at * beat,
           beat * 0.4,
           0.3,
-          (t) => Math.sin(TWO_PI * frequency * t) * Math.exp(-t / 0.15),
+          (t) => bassTone(frequency, t) * Math.exp(-t / 0.15),
         );
       }
     }

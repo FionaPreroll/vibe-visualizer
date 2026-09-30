@@ -64,7 +64,6 @@ export class Analyzer {
   private readonly bandHigh = new Float64Array(SPECTRUM_BANDS);
   private readonly bandTilt = new Float64Array(SPECTRUM_BANDS);
   private readonly energyBins: Int32Array[];
-  private readonly spectrumDb = new Float64Array(SPECTRUM_BANDS);
   private spectrumReference = -40;
   private readonly bandReference = new Float64Array(BAND_NAMES.length).fill(-40);
   private energyReference = -40;
@@ -98,6 +97,8 @@ export class Analyzer {
   /** The kick and snare rises of the last frame (dB), for the tempo and bars of a beat grid. */
   kick = 0;
   snare = 0;
+  /** The spectrum of the last frame in dB (tilted as in the frame, but not auto-gained). */
+  readonly spectrumDb = new Float64Array(SPECTRUM_BANDS);
 
   constructor(sampleRate: number, options: AnalyzerOptions = {}) {
     this.sampleRate = sampleRate;
