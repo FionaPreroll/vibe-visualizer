@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { beatBefore } from '../core/analysis/beat-grid';
+  import { tempoSections } from '../core/analysis/tempo-sections';
   import { REPEAT_MODES, type RepeatMode } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
@@ -43,6 +44,8 @@
   const analysis = $derived(current?.fingerprint ? $analyses.get(current.fingerprint) : undefined);
   const waveform = $derived(analysis?.waveform ?? null);
   const cues = $derived(current?.cues ?? []);
+  /** Where the beat grid changes tempo (Korrektur 5): the start and tempo of each new section. */
+  const tempoChanges = $derived(analysis?.grid ? tempoSections(analysis.grid).slice(1) : []);
 
   onMount(() => {
     let request = 0;
@@ -327,6 +330,20 @@
           {:else}
             <div class="track"><div class="fill" style:width="{fraction * 100}%"></div></div>
           {/if}
+          {#if duration > 0}
+            {#each tempoChanges as change (change.start)}
+              <div
+                class="tempo-change"
+                style:left="{(change.start / duration) * 100}%"
+                title="The beat grid changes to {change.bpm.toFixed(1)} BPM at {formatDuration(
+                  change.start,
+                )}"
+                data-testid="tempo-change"
+              >
+                {change.bpm.toFixed(0)}
+              </div>
+            {/each}
+          {/if}
           {#each cues as cue, index (index)}
             {#if cue !== null && duration > 0}
               <div
@@ -568,6 +585,32 @@
     color: #fff;
     font: 600 9px/11px var(--mono);
     pointer-events: none;
+  }
+  /* A tempo change of the beat grid: a line with the new tempo at its foot. */
+  .tempo-change {
+    position: absolute;
+    bottom: -3px;
+    height: 11px;
+    margin-left: -1px;
+    padding: 0 2px;
+    border-left: 2px solid var(--warning);
+    border-radius: 0 3px 3px 0;
+    background: color-mix(in srgb, var(--warning) 70%, black);
+    color: #000;
+    font: 600 9px/11px var(--mono);
+    pointer-events: none;
+  }
+  .tempo-change::before {
+    content: '';
+    position: absolute;
+    left: -2px;
+    bottom: 11px;
+    width: 1px;
+    height: 24px;
+    background: color-mix(in srgb, var(--warning) 70%, transparent);
+  }
+  .timeline:not(.wave) .tempo-change::before {
+    height: 12px;
   }
   .timeline.wave .range {
     top: 0;

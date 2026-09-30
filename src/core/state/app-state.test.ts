@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { NO_GRID_EDIT } from '../analysis/grid-edit';
 import { sceneDefaults } from '../render/kaleido-settings';
 import { DEFAULT_LOGO_SPECTRUM, RANGES } from '../render/visual-settings';
 import {
@@ -63,10 +64,20 @@ describe('app state', () => {
         format: 'MP3',
         coverUrl: null,
         fingerprint: 'abc',
-        stored: { cues, marks: { in: 10, out: 40 }, tempo: 174 },
+        stored: {
+          cues,
+          marks: { in: 10, out: 40 },
+          tempo: 174,
+          gridEdit: { shift: 0.02, downbeat: 1.5 },
+        },
       },
     });
-    expect(state.tracks[0]).toMatchObject({ cues, marks: { in: 10, out: 40 }, tempo: 174 });
+    expect(state.tracks[0]).toMatchObject({
+      cues,
+      marks: { in: 10, out: 40 },
+      tempo: 174,
+      gridEdit: { shift: 0.02, downbeat: 1.5 },
+    });
     state = reducer(state, { type: 'tracks/cue', id: 't0', index: 1, seconds: 500 });
     expect(state.tracks[0]!.cues[1]).toBe(180);
     state = reducer(state, { type: 'tracks/cue', id: 't0', index: 0, seconds: null });
@@ -74,6 +85,19 @@ describe('app state', () => {
     // Slots beyond the eight are ignored.
     const same = reducer(state, { type: 'tracks/cue', id: 't0', index: 8, seconds: 5 });
     expect(same.tracks[0]!.cues).toEqual(state.tracks[0]!.cues);
+  });
+
+  it('sets the tempo and the grid correction of every entry of a file', () => {
+    let state = withTracks('a', 'b', 'c');
+    state = {
+      ...state,
+      tracks: state.tracks.map((track, i) => ({ ...track, fingerprint: i < 2 ? 'same' : 'other' })),
+    };
+    state = reducer(state, { type: 'tracks/tempo', fingerprint: 'same', tempo: 174 });
+    const edit = { shift: -0.01, downbeat: 2.5 };
+    state = reducer(state, { type: 'tracks/grid', fingerprint: 'same', edit });
+    expect(state.tracks.map((track) => track.tempo)).toEqual([174, 174, null]);
+    expect(state.tracks.map((track) => track.gridEdit)).toEqual([edit, edit, NO_GRID_EDIT]);
   });
 
   it('moves tracks', () => {
@@ -98,7 +122,12 @@ describe('app state', () => {
     let state = reducer(withTracks('New.mp3'), {
       type: 'tracks/restored',
       tracks: [
-        restoredTrack('r0', info, 'locked', { cues, marks: { in: null, out: 20 }, tempo: null }),
+        restoredTrack('r0', info, 'locked', {
+          cues,
+          marks: { in: null, out: 20 },
+          tempo: null,
+          gridEdit: NO_GRID_EDIT,
+        }),
         restoredTrack('r1', { ...info, fileName: 'Gone.mp3' }, 'missing'),
       ],
       currentId: 'r1',

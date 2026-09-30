@@ -1,5 +1,6 @@
 <script lang="ts">
   import { gridTempo } from '../core/analysis/grid-beats';
+  import type { BeatGrid } from '../core/analysis/beat-grid';
   import {
     AUDIO_ACCEPT,
     entriesFromFiles,
@@ -7,7 +8,7 @@
     pickFiles,
     pickFolder,
   } from '../core/library/folder-reader';
-  import { sameTempo } from '../core/library/analysis-cache';
+  import { sameGrid } from '../core/library/analysis-cache';
   import type { Track } from '../core/state/app-state';
   import { errorMessage, formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
@@ -18,17 +19,23 @@
   const app = player.store;
   const analyses = player.analysis;
 
-  /** The track's tempo from its beat grid, once analysed. */
-  function tempoOf(fingerprint: string | null): number | null {
-    const grid = fingerprint ? $analyses.get(fingerprint)?.grid : null;
-    const tempo = grid ? gridTempo(grid) : 0;
-    return tempo > 0 ? tempo : null;
+  /**
+   * The track's beat grid, once analysed: with a tempo, or with one set by hand (which can then
+   * be changed again even where the grid finds no clear beat).
+   */
+  function gridOf(track: Track): BeatGrid | null {
+    const grid = track.fingerprint ? $analyses.get(track.fingerprint)?.grid : null;
+    return grid && (gridTempo(grid) > 0 || track.tempo !== null) ? grid : null;
   }
 
-  /** True while the grid is being computed anew for a corrected tempo (TMP-06). */
+  /**
+   * True while the grid is being computed anew for a corrected tempo (TMP-06) or another tempo
+   * range (AN-12).
+   */
   function regridding(track: Track): boolean {
     const state = track.fingerprint ? $analyses.get(track.fingerprint) : undefined;
-    return state !== undefined && !sameTempo(state.tempo, track.tempo);
+    const wanted = { tempo: track.tempo, range: $app.settings.bpmRange };
+    return state !== undefined && !sameGrid(state, wanted);
   }
 
   let fileInput: HTMLInputElement;
@@ -250,8 +257,8 @@
                   ? formatDuration(track.duration)
                   : ''}
             </span>
-            {#if tempoOf(track.fingerprint) !== null}
-              <TempoMenu {track} tempo={tempoOf(track.fingerprint)!} pending={regridding(track)} />
+            {#if gridOf(track)}
+              <TempoMenu {track} grid={gridOf(track)!} pending={regridding(track)} />
             {/if}
           </span>
           <button

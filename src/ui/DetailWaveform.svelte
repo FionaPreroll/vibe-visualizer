@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { beatBefore } from '../core/analysis/beat-grid';
+  import { isGridEdited } from '../core/analysis/grid-edit';
   import { CUE_COUNT } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import { usePlayer } from './player-context';
@@ -10,12 +11,15 @@
    * The detail view around the playhead (TR-08): the waveform of the seconds before and after,
    * zoomable, with the beat grid (the first beat of each bar stronger), the cues and the in/out
    * markers; drag it to move, click to jump, drag a marker to move it (it snaps to the beat
-   * while quantizing). A button switches the waveform style (TR-10). On the left the eight hot
-   * cues (TR-04): click to jump to one, or to set an empty one at the playhead; Shift+click or
-   * the right button deletes it. The keys 1–8 do the same.
+   * while quantizing). A button switches the waveform style (TR-10); others correct the beat
+   * grid (TR-11): the beat at the playhead starts its bar, the bars a beat earlier or later, the
+   * grid a few milliseconds earlier or later, or Shift+drag to move it. On the left the eight
+   * hot cues (TR-04): click to jump to one, or to set an empty one at the playhead; Shift+click
+   * or the right button deletes it. The keys 1–8 do the same.
    */
   const player = usePlayer();
   const app = player.store;
+  const analyses = player.analysis;
 
   /** Seconds shown across the view. */
   const ZOOMS = [2, 4, 8, 16, 32, 64];
@@ -28,9 +32,25 @@
   let markDrag: { mark: 'in' | 'out'; seconds: number } | null = null;
   /** How close to a marker (CSS pixels) a press grabs it. */
   const GRAB = 6;
+  /** While the beat grid is dragged (Shift+drag): where the drag started, the shift then and now. */
+  let gridDrag = $state<{ x: number; from: number; shift: number } | null>(null);
+  /** Steps of the grid buttons, in seconds (with Shift the fine one). */
+  const GRID_STEP = 0.005;
+  const GRID_FINE_STEP = 0.001;
 
   const current = $derived($app.tracks.find((track) => track.id === $app.currentId) ?? null);
   const cues = $derived(current?.cues ?? []);
+  const hasGrid = $derived(
+    current?.fingerprint ? ($analyses.get(current.fingerprint)?.grid ?? null) !== null : false,
+  );
+  /** A shift of the grid in milliseconds, to a tenth: "+5 ms", "-1.5 ms", "0 ms". */
+  function formatShift(seconds: number): string {
+    const ms = Math.round(seconds * 10000) / 10;
+    return `${ms > 0 ? '+' : ''}${ms || 0} ms`;
+  }
+
+  /** The grid's shift as shown: as dragged, or as corrected. */
+  const gridShift = $derived(gridDrag?.shift ?? current?.gridEdit.shift ?? 0);
 
   onMount(() => {
     let frame = 0;
@@ -170,6 +190,11 @@
   function onPointerDown(event: PointerEvent) {
     if (!canvas || !player.currentTrack || event.button !== 0) return;
     canvas.setPointerCapture(event.pointerId);
+    if (event.shiftKey && hasGrid) {
+      const shift = player.currentTrack.gridEdit.shift;
+      gridDrag = { x: event.clientX, from: shift, shift };
+      return;
+    }
     const mark = markerAt(event);
     if (mark) {
       markDrag = { mark, seconds: markTarget(mark, event) };
@@ -179,12 +204,21 @@
   }
 
   function onPointerMove(event: PointerEvent) {
+    if (gridDrag) {
+      const shift = gridDrag.from + (event.clientX - gridDrag.x) * secondsPerPixel();
+      gridDrag = { ...gridDrag, shift };
+      player.shiftGrid(shift, false);
+      return;
+    }
     if (markDrag) {
       markDrag = { mark: markDrag.mark, seconds: markTarget(markDrag.mark, event) };
       return;
     }
     if (!drag) {
-      if (canvas) canvas.style.cursor = markerAt(event) ? 'ew-resize' : '';
+      if (canvas) {
+        canvas.style.cursor =
+          event.shiftKey && hasGrid ? 'col-resize' : markerAt(event) ? 'ew-resize' : '';
+      }
       return;
     }
     const dx = event.clientX - drag.x;
@@ -194,6 +228,11 @@
   }
 
   function onPointerUp(event: PointerEvent) {
+    if (gridDrag) {
+      player.shiftGrid(gridDrag.shift, true);
+      gridDrag = null;
+      return;
+    }
     if (markDrag) {
       player.mark(markDrag.mark, markTarget(markDrag.mark, event), false);
       markDrag = null;
@@ -256,9 +295,61 @@
         drag = null;
         dragOffset = 0;
         markDrag = null;
+        if (gridDrag) player.shiftGrid(gridDrag.from, false);
+        gridDrag = null;
       }}
       onwheel={onWheel}
     ></canvas>
+    <div class="grid-tools" role="group" aria-label="Beat grid" data-testid="grid-tools">
+      <button
+        onclick={() => player.setDownbeat()}
+        disabled={!hasGrid}
+        title="Beat 1 here: the beat at the playhead starts its bar"
+        data-testid="grid-downbeat">1 here</button
+      >
+      <span class="pair">
+        <button
+          onclick={() => player.moveBars(-1)}
+          disabled={!hasGrid}
+          aria-label="Bars one beat earlier"
+          title="The bars start one beat earlier"
+          data-testid="grid-bars-earlier">◂</button
+        >
+        <span>bar</span>
+        <button
+          onclick={() => player.moveBars(1)}
+          disabled={!hasGrid}
+          aria-label="Bars one beat later"
+          title="The bars start one beat later"
+          data-testid="grid-bars-later">▸</button
+        >
+      </span>
+      <span class="pair">
+        <button
+          onclick={(event) => player.nudgeGrid(-(event.shiftKey ? GRID_FINE_STEP : GRID_STEP))}
+          disabled={!hasGrid}
+          aria-label="Beat grid earlier"
+          title="Move the beat grid 5 ms earlier (Shift: 1 ms), or Shift+drag the waveform"
+          data-testid="grid-earlier">◂</button
+        >
+        <span data-testid="grid-shift">{formatShift(gridShift)}</span>
+        <button
+          onclick={(event) => player.nudgeGrid(event.shiftKey ? GRID_FINE_STEP : GRID_STEP)}
+          disabled={!hasGrid}
+          aria-label="Beat grid later"
+          title="Move the beat grid 5 ms later (Shift: 1 ms), or Shift+drag the waveform"
+          data-testid="grid-later">▸</button
+        >
+      </span>
+      {#if current && isGridEdited(current.gridEdit)}
+        <button
+          onclick={() => player.resetGrid()}
+          aria-label="Reset the beat grid"
+          title="The beat grid as the analysis found it"
+          data-testid="grid-reset">↺</button
+        >
+      {/if}
+    </div>
     <button
       class="style"
       onclick={() =>
@@ -349,6 +440,43 @@
   .view:hover .style,
   .style:focus-visible {
     opacity: 1;
+  }
+  .grid-tools {
+    position: absolute;
+    left: 4px;
+    bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font: 10px/16px var(--mono);
+    color: var(--muted);
+    opacity: 0.6;
+  }
+  .view:hover .grid-tools,
+  .grid-tools:focus-within {
+    opacity: 1;
+  }
+  .grid-tools button {
+    padding: 0 5px;
+    border-color: transparent;
+    border-radius: 4px;
+    background: rgb(11 11 20 / 0.7);
+    font: inherit;
+    color: inherit;
+  }
+  .grid-tools button:hover:not(:disabled) {
+    color: var(--text);
+  }
+  .pair {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding: 0 1px;
+    border-radius: 4px;
+    background: rgb(11 11 20 / 0.7);
+  }
+  .pair button {
+    background: transparent;
   }
   canvas:active {
     cursor: grabbing;

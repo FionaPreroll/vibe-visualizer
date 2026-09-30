@@ -7,8 +7,9 @@ import { decodeAtRate } from '../audio/decode-stream';
 import { exposeWorker, withTransfer } from '../util/worker-rpc';
 import {
   readCachedAnalysis,
-  sameTempo,
+  sameGrid,
   writeCachedAnalysis,
+  type GridRequest,
   type TrackAnalysisResult,
 } from './analysis-cache';
 
@@ -17,7 +18,8 @@ import {
  * rate, builds the waveform and collects the onset strength of every analysis frame, then
  * computes the beat grid. The waveform is reported as it grows, so long mixes show it
  * progressively. Results are cached per fingerprint. The onset features of recent tracks stay in
- * memory, so a tempo the user corrects (TMP-06) gives a new grid without decoding again.
+ * memory, so a tempo the user corrects (TMP-06) or another tempo range (AN-12) gives a new grid
+ * without decoding again.
  */
 
 export interface AnalysisProgress {
@@ -83,16 +85,17 @@ function byteSize(features: OnsetFeatures, waveform: Waveform): number {
 }
 
 /**
- * The waveform and beat grid of a file, with the tempo the user gave (TMP-06) or null: from the
- * cache, from the features kept in memory, or by decoding the file.
+ * The waveform and beat grid of a file, with the tempo the user gave (TMP-06) or in the tempo
+ * range (AN-12): from the cache, from the features kept in memory, or by decoding the file.
  */
 async function analyse(
-  args: { file: File; fingerprint: string; tempo: number | null },
+  args: { file: File; fingerprint: string } & GridRequest,
   progress: (update: AnalysisProgress) => void,
 ) {
   cancelled.delete(args.fingerprint);
   const cached = await readCachedAnalysis(args.fingerprint);
-  if (cached && sameTempo(cached.tempo, args.tempo)) return transferable(cached);
+  if (cached && sameGrid(cached, args)) return transferable(cached);
+  const options = { bpm: args.tempo, range: args.range };
   const known = kept.get(args.fingerprint);
   if (known) {
     keep(args.fingerprint, known);
@@ -100,8 +103,9 @@ async function analyse(
       fingerprint: args.fingerprint,
       duration: known.duration,
       waveform: { ...known.waveform, data: known.waveform.data.slice() },
-      grid: computeBeatGrid(known.features, { bpm: args.tempo }),
+      grid: computeBeatGrid(known.features, options),
       tempo: args.tempo,
+      range: args.range,
     };
     await writeCachedAnalysis(result);
     return transferable(result);
@@ -152,8 +156,9 @@ async function analyse(
       fingerprint: args.fingerprint,
       duration,
       waveform: { ...shape, data: whole.data.slice() },
-      grid: computeBeatGrid(onsets, { bpm: args.tempo }),
+      grid: computeBeatGrid(onsets, options),
       tempo: args.tempo,
+      range: args.range,
     };
     await writeCachedAnalysis(result);
     return transferable(result);

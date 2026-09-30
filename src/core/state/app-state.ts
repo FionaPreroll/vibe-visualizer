@@ -1,3 +1,5 @@
+import type { TempoRangeId } from '../analysis/beat-grid';
+import { NO_GRID_EDIT, type GridEdit } from '../analysis/grid-edit';
 import {
   DEFAULT_SOUND,
   rateLimits,
@@ -57,13 +59,16 @@ export interface Track {
   cues: Cues;
   /** The tempo (BPM) the user gave for the beat grid (TMP-06); null: the grid finds it. */
   tempo: number | null;
+  /** The user's correction of the beat grid's phase and bars (TR-11). */
+  gridEdit: GridEdit;
 }
 
-/** What is kept per file (TR-05): cues, markers and a corrected tempo. */
+/** What is kept per file (TR-05): cues, markers, a corrected tempo and beat grid. */
 export interface TrackData {
   cues: Cues;
   marks: Marks;
   tempo: number | null;
+  gridEdit: GridEdit;
 }
 
 export interface Marks {
@@ -120,6 +125,8 @@ export interface Settings {
   appName: string;
   /** How the waveforms are drawn (TR-10). */
   waveformStyle: WaveformStyle;
+  /** The tempo range the beat grids are found in, for tracks without a tempo given (AN-12). */
+  bpmRange: TempoRangeId;
 }
 
 /**
@@ -190,7 +197,7 @@ export type ProbedInfo = Pick<
   | 'fingerprint'
 > & {
   title: string | null;
-  /** Cues, markers and tempo stored for this file earlier (TR-05). */
+  /** Cues, markers, tempo and grid correction stored for this file earlier (TR-05). */
   stored?: TrackData;
 };
 
@@ -214,6 +221,8 @@ export type AppAction =
   | { type: 'tracks/cue'; id: string; index: number; seconds: number | null }
   /** The tempo of a file's beat grid (TMP-06), for every entry of that file; null: automatic. */
   | { type: 'tracks/tempo'; fingerprint: string; tempo: number | null }
+  /** The correction of a file's beat grid (TR-11), for every entry of that file. */
+  | { type: 'tracks/grid'; fingerprint: string; edit: GridEdit }
   | { type: 'player/current'; id: string | null }
   | { type: 'player/playing'; playing: boolean }
   | { type: 'player/seeked'; seconds: number }
@@ -257,6 +266,7 @@ export const DEFAULT_SETTINGS: Settings = {
   quantize: true,
   appName: DEFAULT_APP_NAME,
   waveformStyle: 'bands',
+  bpmRange: 'auto',
 };
 
 export function initialState(
@@ -299,6 +309,7 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
     marks: { in: null, out: null },
     cues: NO_CUES,
     tempo: null,
+    gridEdit: NO_GRID_EDIT,
   };
 }
 
@@ -454,6 +465,13 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         tracks: state.tracks.map((track) =>
           track.fingerprint === action.fingerprint ? { ...track, tempo: action.tempo } : track,
+        ),
+      };
+    case 'tracks/grid':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.fingerprint === action.fingerprint ? { ...track, gridEdit: action.edit } : track,
         ),
       };
     case 'player/current':

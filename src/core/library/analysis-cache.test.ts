@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { decodeAnalysis, encodeAnalysis, type TrackAnalysisResult } from './analysis-cache';
+import {
+  decodeAnalysis,
+  encodeAnalysis,
+  sameGrid,
+  type TrackAnalysisResult,
+} from './analysis-cache';
 import { fingerprint } from './fingerprint';
 
 describe('track analysis cache', () => {
@@ -18,12 +23,23 @@ describe('track analysis cache', () => {
         beatInBar: Uint8Array.of(3, 0, 1),
       },
       tempo: null,
+      range: 'auto',
     };
     const read = decodeAnalysis(encodeAnalysis(result), 'f00d');
     expect(read).toEqual(result);
-    // With a tempo the user gave (TMP-06).
+    // With a tempo the user gave (TMP-06), and in a tempo range (AN-12).
     const corrected = { ...result, tempo: 174 };
     expect(decodeAnalysis(encodeAnalysis(corrected), 'f00d')?.tempo).toBe(174);
+    const fast = { ...result, range: 'fast' as const };
+    expect(decodeAnalysis(encodeAnalysis(fast), 'f00d')?.range).toBe('fast');
+  });
+
+  it('knows which requests give the same grid', () => {
+    expect(sameGrid({ tempo: null, range: 'auto' }, { tempo: null, range: 'auto' })).toBe(true);
+    expect(sameGrid({ tempo: null, range: 'auto' }, { tempo: null, range: 'fast' })).toBe(false);
+    // A tempo from the user decides; the range does not matter then.
+    expect(sameGrid({ tempo: 174, range: 'auto' }, { tempo: 174.004, range: 'fast' })).toBe(true);
+    expect(sameGrid({ tempo: 174, range: 'fast' }, { tempo: null, range: 'fast' })).toBe(false);
   });
 
   it('ignores anything that is not a current analysis', () => {
