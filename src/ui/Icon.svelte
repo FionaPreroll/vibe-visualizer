@@ -32,6 +32,7 @@
     repeat: 'M4 12V9a3 3 0 013-3h12M16 3l3 3-3 3M20 12v3a3 3 0 01-3 3H5M8 21l-3-3 3-3',
     folder: 'M3 6h6l2 2h10v11H3z',
     lock: 'M8 11V8a4 4 0 018 0v3M5 11h14v10H5z',
+    magnet: 'M6 4v8a6 6 0 0012 0V4M10 4v8a2 2 0 004 0V4M6 8h4M14 8h4',
   } as const;
   /** Icons drawn as lines instead of filled shapes. */
   const STROKED: readonly string[] = [
@@ -46,6 +47,7 @@
     'repeat',
     'folder',
     'lock',
+    'magnet',
   ];
   export type IconName = keyof typeof ICONS;
 </script>

@@ -37,7 +37,8 @@ const POSITION = 1; // consumer: frame of the heard file that is heard at RENDER
 const RENDER_TIME = 2; // consumer: context time at the end of the last render quantum
 const FIRST_FRAME_TIME = 3; // consumer: context time at which the generation's first frame played
 const BOUNDARY_START = 4; // per slot: frame of the generation at which the next file starts
-const FLOAT_FIELDS = BOUNDARY_START + BOUNDARY_SLOTS;
+const BOUNDARY_BASE = BOUNDARY_START + BOUNDARY_SLOTS; // per slot: the next file's own frame there
+const FLOAT_FIELDS = BOUNDARY_BASE + BOUNDARY_SLOTS;
 
 const HEADER_BYTES = CONTROL_INTS * 4 + FLOAT_FIELDS * 8;
 
@@ -124,12 +125,14 @@ export class AudioRingProducer extends AudioRingView {
 
   /**
    * The file with `token` follows in `generation`, from frame `streamFrame` of the generation
-   * on (the frames written so far). Call it before writing that file's first frame.
+   * on (the frames written so far), where its own frame `baseFrame` plays (its in marker, or
+   * 0). Call it before writing that file's first frame.
    */
-  markNext(generation: number, streamFrame: number, token: number): void {
+  markNext(generation: number, streamFrame: number, token: number, baseFrame = 0): void {
     const count = Atomics.load(this.control, BOUNDARIES);
     const slot = count % BOUNDARY_SLOTS;
     this.floats[BOUNDARY_START + slot] = streamFrame;
+    this.floats[BOUNDARY_BASE + slot] = baseFrame;
     Atomics.store(this.control, BOUNDARY_TOKEN + slot, token);
     Atomics.store(this.control, BOUNDARY_GENERATION + slot, generation);
     Atomics.store(this.control, BOUNDARIES, count + 1);
@@ -210,6 +213,16 @@ export class AudioRingConsumer extends AudioRingView {
   /** Token of the next file (valid while {@link nextStart} is not -1). */
   get nextToken(): number {
     return Atomics.load(this.control, BOUNDARY_TOKEN + (this.boundary % BOUNDARY_SLOTS));
+  }
+
+  /** The next file's own frame at {@link nextStart} (valid while that is not -1). */
+  get nextBase(): number {
+    return this.floats[BOUNDARY_BASE + (this.boundary % BOUNDARY_SLOTS)]!;
+  }
+
+  /** True when the producer has started a generation that this consumer has not switched to. */
+  get switchPending(): boolean {
+    return Atomics.load(this.control, GENERATION) !== this.generation;
   }
 
   /** The next file is being heard now: the following boundary becomes the next one. */

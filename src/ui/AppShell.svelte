@@ -37,6 +37,11 @@
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
+  // The name the user gave the app shows in the window title too.
+  $effect(() => {
+    document.title = $app.settings.appName;
+  });
+
   onDestroy(() => {
     clearTimeout(idleTimer);
     exporter.dispose();
@@ -76,6 +81,16 @@
     const onFullscreen = () => onPointerMove();
     document.addEventListener('fullscreenchange', onFullscreen);
     const onKey = (event: KeyboardEvent) => {
+      // Ctrl+Z (Cmd+Z) undoes a removal or deletion; text fields keep their own undo.
+      const command = event.metaKey || event.ctrlKey;
+      if (command && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
+        if (ownsKey(event.target, event.key) || document.querySelector('dialog[open]')) return;
+        if (player.state.undo) {
+          player.undo();
+          event.preventDefault();
+        }
+        return;
+      }
       // Brackets need AltGr or Option on some layouts (German, for one).
       const bracket = event.key === '[' || event.key === ']';
       if (event.metaKey || ((event.ctrlKey || event.altKey) && !bracket)) return;
@@ -117,6 +132,9 @@
           break;
         case 's':
           player.updateSettings({ shuffle: !player.state.settings.shuffle });
+          break;
+        case 'q':
+          player.updateSettings({ quantize: !player.state.settings.quantize });
           break;
         case 'r': {
           const index = REPEAT_MODES.indexOf(player.state.settings.repeat);
@@ -210,18 +228,28 @@
         <p>Or visualise music from another app or device: see the Live tab.</p>
       </div>
     {/if}
-    {#if !exportOpen && ['interrupted', 'done', 'failed'].includes($exporter.status)}
-      <button class="export-note" onclick={() => (exportOpen = true)} data-testid="export-note">
-        <Icon name="export" size={16} />
-        {#if $exporter.status === 'interrupted'}
-          An export was interrupted. Resume it…
-        {:else if $exporter.status === 'done'}
-          Your video is ready.
-        {:else}
-          The export stopped. Details…
-        {/if}
-      </button>
-    {/if}
+    <div class="notes">
+      {#if $app.undo}
+        <div class="undo" role="status" data-testid="undo-toast">
+          <span>{$app.undo}</span>
+          <button onclick={() => player.undo()} title="Undo (Ctrl+Z)" data-testid="undo">
+            Undo
+          </button>
+        </div>
+      {/if}
+      {#if !exportOpen && ['interrupted', 'done', 'failed'].includes($exporter.status)}
+        <button class="export-note" onclick={() => (exportOpen = true)} data-testid="export-note">
+          <Icon name="export" size={16} />
+          {#if $exporter.status === 'interrupted'}
+            An export was interrupted. Resume it…
+          {:else if $exporter.status === 'done'}
+            Your video is ready.
+          {:else}
+            The export stopped. Details…
+          {/if}
+        </button>
+      {/if}
+    </div>
     {#if $app.error}
       <div class="error" role="alert">
         <Icon name="alert" size={18} />
@@ -386,11 +414,34 @@
     margin-top: 4px;
     font-size: 14px;
   }
-  .export-note {
+  .notes {
     position: absolute;
     bottom: 16px;
     left: 50%;
     transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .undo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 6px 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .undo button {
+    padding: 4px 12px;
+    border-color: var(--accent);
+    color: var(--accent);
+    background: transparent;
+  }
+  .export-note {
     display: flex;
     align-items: center;
     gap: 8px;

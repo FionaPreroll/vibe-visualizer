@@ -8,9 +8,10 @@
 
   /**
    * The detail view around the playhead (TR-08): the waveform of the seconds before and after,
-   * zoomable, with the beat grid, the cues and the export markers; drag it to move, click to
-   * jump. On the left the eight hot cues (TR-04): click to jump to one, or to set an empty one
-   * at the playhead; Shift+click or the right button deletes it. The keys 1–8 do the same.
+   * zoomable, with the beat grid, the cues and the in/out markers; drag it to move, click to
+   * jump, drag a marker to move it (it snaps to the beat while quantizing). On the left the
+   * eight hot cues (TR-04): click to jump to one, or to set an empty one at the playhead;
+   * Shift+click or the right button deletes it. The keys 1–8 do the same.
    */
   const player = usePlayer();
   const app = player.store;
@@ -22,6 +23,10 @@
   /** While dragging: where the drag started and the position then. */
   let drag: { x: number; at: number; moved: boolean; pointer: number } | null = null;
   let dragOffset = 0;
+  /** While dragging a marker: which one, and where it would go. */
+  let markDrag: { mark: 'in' | 'out'; seconds: number } | null = null;
+  /** How close to a marker (CSS pixels) a press grabs it. */
+  const GRAB = 6;
 
   const current = $derived($app.tracks.find((track) => track.id === $app.currentId) ?? null);
   const cues = $derived(current?.cues ?? []);
@@ -80,8 +85,8 @@
         context.fillRect(Math.round(x(grid.beats[index]!)), 0, Math.max(1, ratio), height);
       }
     }
-    // The export range and its markers.
-    const marks = track?.marks;
+    // The play and export range and its markers (as dragged, while a marker is dragged).
+    const marks = shownMarks();
     if (marks && (marks.in !== null || marks.out !== null)) {
       const start = x(marks.in ?? 0);
       const end = x(marks.out ?? track?.duration ?? to);
@@ -114,14 +119,64 @@
     return canvas ? span() / canvas.clientWidth : 0;
   }
 
+  /** The current track's markers, with the one being dragged where it would go. */
+  function shownMarks() {
+    const marks = player.currentTrack?.marks;
+    if (!marks || !markDrag) return marks;
+    return { ...marks, [markDrag.mark]: markDrag.seconds };
+  }
+
+  /** Seconds under the pointer. */
+  function secondsAt(event: PointerEvent): number {
+    const rect = canvas!.getBoundingClientRect();
+    return centre() + (event.clientX - rect.left - rect.width / 2) * secondsPerPixel();
+  }
+
+  /** The marker within reach of the pointer, if any. */
+  function markerAt(event: PointerEvent): 'in' | 'out' | null {
+    const marks = player.currentTrack?.marks;
+    if (!marks || !canvas) return null;
+    const reach = GRAB * secondsPerPixel();
+    const at = secondsAt(event);
+    for (const mark of ['in', 'out'] as const) {
+      const seconds = marks[mark];
+      if (seconds !== null && Math.abs(seconds - at) <= reach) return mark;
+    }
+    return null;
+  }
+
+  /** Where a dragged marker goes: on the beat, within the track and on its side of the other. */
+  function markTarget(mark: 'in' | 'out', event: PointerEvent): number {
+    const track = player.currentTrack;
+    const duration = track?.duration ?? Infinity;
+    let seconds = Math.max(0, Math.min(duration, player.snap(secondsAt(event))));
+    const other = mark === 'in' ? track?.marks.out : track?.marks.in;
+    if (other !== null && other !== undefined) {
+      seconds = mark === 'in' ? Math.min(seconds, other - 0.1) : Math.max(seconds, other + 0.1);
+    }
+    return Math.max(0, seconds);
+  }
+
   function onPointerDown(event: PointerEvent) {
     if (!canvas || !player.currentTrack || event.button !== 0) return;
     canvas.setPointerCapture(event.pointerId);
+    const mark = markerAt(event);
+    if (mark) {
+      markDrag = { mark, seconds: markTarget(mark, event) };
+      return;
+    }
     drag = { x: event.clientX, at: player.position, moved: false, pointer: event.pointerId };
   }
 
   function onPointerMove(event: PointerEvent) {
-    if (!drag) return;
+    if (markDrag) {
+      markDrag = { mark: markDrag.mark, seconds: markTarget(markDrag.mark, event) };
+      return;
+    }
+    if (!drag) {
+      if (canvas) canvas.style.cursor = markerAt(event) ? 'ew-resize' : '';
+      return;
+    }
     const dx = event.clientX - drag.x;
     if (Math.abs(dx) > 3) drag.moved = true;
     // Dragging moves the waveform under the playhead.
@@ -129,6 +184,11 @@
   }
 
   function onPointerUp(event: PointerEvent) {
+    if (markDrag) {
+      player.mark(markDrag.mark, markTarget(markDrag.mark, event), false);
+      markDrag = null;
+      return;
+    }
     if (!drag || !canvas) return;
     const rect = canvas.getBoundingClientRect();
     const target = drag.moved
@@ -184,6 +244,7 @@
     onpointercancel={() => {
       drag = null;
       dragOffset = 0;
+      markDrag = null;
     }}
     onwheel={onWheel}
   ></canvas>

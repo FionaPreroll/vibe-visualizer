@@ -119,20 +119,25 @@ describe('audio ring buffer', () => {
     expect(monitor.heardToken).toBe(7);
     expect(consumer.nextStart).toBe(-1);
     producer.markNext(generation, 40, 8);
-    producer.markNext(generation, 60, 9); // a short file right after
+    producer.markNext(generation, 60, 9, 2400); // a short file right after, from its in marker
     expect(consumer.nextStart).toBe(40);
     expect(consumer.nextToken).toBe(8);
+    expect(consumer.nextBase).toBe(0);
     consumer.passBoundary();
     expect(consumer.nextStart).toBe(60);
     expect(consumer.nextToken).toBe(9);
+    expect(consumer.nextBase).toBe(2400);
     consumer.passBoundary();
     expect(consumer.nextStart).toBe(-1);
     consumer.publish(12, 1.5, 9);
     expect(monitor.heardToken).toBe(9);
     expect(monitor.position).toBe(12);
     // A new generation (a seek) has no next file until the producer says so again.
+    expect(consumer.switchPending).toBe(false);
     producer.beginGeneration(0, 8);
+    expect(consumer.switchPending).toBe(true);
     consumer.syncGeneration();
+    expect(consumer.switchPending).toBe(false);
     expect(consumer.nextStart).toBe(-1);
     expect(monitor.heardToken).toBe(8);
   });

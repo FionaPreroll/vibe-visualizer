@@ -243,28 +243,42 @@ export class AudioEngine {
 
   /**
    * Opens `file` as the file with `token` and positions it at `startSeconds` (paused state is
-   * unchanged). `next` follows it without a gap (PL-05). A newer load or seek meanwhile makes
-   * it fail.
+   * unchanged); it plays to `end` seconds (its out marker; null: its end). `next` follows it
+   * without a gap (PL-05). A newer load or seek meanwhile makes it fail.
    */
   async load(
     file: File,
     startSeconds: number,
     token: number,
+    end: number | null = null,
     next: NextFile | null = null,
   ): Promise<LoadResult> {
     await this.start();
-    return this.media.call<LoadResult>('load', { file, startSeconds, token, next });
+    return this.media.call<LoadResult>('load', { file, startSeconds, token, end, next });
   }
 
-  /** Jumps to `seconds` in `file` (known by `token`); `next` follows it without a gap. */
+  /**
+   * Jumps to `seconds` in `file` (known by `token`), to play to `end`; `next` follows it
+   * without a gap.
+   */
   async seek(
     seconds: number,
     token: number,
     file: File,
+    end: number | null = null,
     next: NextFile | null = null,
   ): Promise<void> {
     await this.start();
-    await this.media.call('seek', { seconds, token, file, next });
+    await this.media.call('seek', { seconds, token, file, end, next });
+  }
+
+  /**
+   * Moves where the playing file with `token` ends (seconds; null: at its end). False when it
+   * comes too late: the stream is already past the new end, or cuts at the old one.
+   */
+  async setEnd(token: number, end: number | null): Promise<boolean> {
+    if (!this.started) return true;
+    return this.media.call<boolean>('setEnd', { token, end });
   }
 
   /**

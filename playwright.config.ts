@@ -8,6 +8,9 @@ export default defineConfig({
   testDir: 'tests/e2e',
   timeout: 120_000,
   fullyParallel: false,
+  // On CI (few cores, no GPU) one test at a time: the software-rendered exports and the spike
+  // lab's encoders would otherwise compete for the CPU and miss their timeouts.
+  workers: process.env['CI'] ? 1 : undefined,
   forbidOnly: !!process.env['CI'],
   reporter: process.env['CI'] ? 'github' : 'list',
   use: {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPrng } from '../util/prng';
-import { beatBefore, computeBeatGrid, type OnsetFeatures } from './beat-grid';
+import { beatBefore, computeBeatGrid, nearestBeat, type OnsetFeatures } from './beat-grid';
 
 const FRAME_RATE = 48000 / 512;
 
@@ -81,5 +81,19 @@ describe('beat grid', () => {
     expect(beatBefore(grid, 0.5)).toBe(0);
     expect(beatBefore(grid, 1.2)).toBe(1);
     expect(beatBefore(grid, 9)).toBe(2);
+  });
+
+  it('snaps to the nearest beat where the rhythm is clear', () => {
+    const grid = { beats: Float64Array.of(0.5, 1, 1.5), confidence: Float32Array.of(1, 1, 0) };
+    expect(nearestBeat(grid, 0.3)).toBe(0.5);
+    expect(nearestBeat(grid, 0.7)).toBe(0.5);
+    expect(nearestBeat(grid, 0.8)).toBe(1);
+    // The last beat has no confidence: nothing to snap to.
+    expect(nearestBeat(grid, 1.4)).toBeNull();
+    // More than half a beat before the first beat: nothing near.
+    expect(nearestBeat(grid, 0.1)).toBeNull();
+    expect(
+      nearestBeat({ beats: new Float64Array(0), confidence: new Float32Array(0) }, 1),
+    ).toBeNull();
   });
 });

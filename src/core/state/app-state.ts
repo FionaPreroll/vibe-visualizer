@@ -105,7 +105,16 @@ export interface Settings {
   repeat: RepeatMode;
   /** The visuals come this much later (ms), on top of the latency the browser reports (AN-06). */
   syncOffset: number;
+  /** Markers and cues snap to the nearest beat when they are set (TR-06). */
+  quantize: boolean;
+  /** The name the app shows (top bar, window title); the user can change it. */
+  appName: string;
 }
+
+/** The app's name until the user gives it another one. */
+export const DEFAULT_APP_NAME = 'FibeStation';
+/** Longest name the app takes. */
+export const APP_NAME_LENGTH = 40;
 
 export type RepeatMode = 'off' | 'all' | 'one';
 export const REPEAT_MODES: readonly RepeatMode[] = ['off', 'all', 'one'];
@@ -145,6 +154,8 @@ export interface AppState {
   sound: SoundSettings;
   live: LiveState;
   error: string | null;
+  /** What the last removal or deletion was, while it can still be undone. */
+  undo: string | null;
 }
 
 export type ProbedInfo = Pick<
@@ -175,6 +186,8 @@ export type AppAction =
   | { type: 'tracks/arranged'; ids: string[] }
   | { type: 'tracks/probed'; id: string; info: ProbedInfo }
   | { type: 'tracks/removed'; id: string }
+  /** Tracks back at `index` (an undone removal); `currentId` becomes current if none is. */
+  | { type: 'tracks/inserted'; index: number; tracks: Track[]; currentId: string | null }
   | { type: 'tracks/moved'; from: number; to: number }
   | { type: 'tracks/cleared' }
   /** Sets (or clears, with null) the in or out marker of a track. */
@@ -185,6 +198,8 @@ export type AppAction =
   | { type: 'player/playing'; playing: boolean }
   | { type: 'player/seeked'; seconds: number }
   | { type: 'player/error'; message: string | null }
+  /** A removal or deletion that can be undone for a moment; null once it cannot. */
+  | { type: 'undo/offered'; label: string | null }
   | { type: 'settings/changed'; changes: Partial<Settings> }
   | { type: 'visuals/changed'; changes: Partial<LogoSpectrumSettings> }
   /** A preset was applied: all visual parameters at once. */
@@ -219,6 +234,8 @@ export const DEFAULT_SETTINGS: Settings = {
   shuffle: false,
   repeat: 'off',
   syncOffset: 0,
+  quantize: true,
+  appName: DEFAULT_APP_NAME,
 };
 
 export function initialState(
@@ -237,6 +254,7 @@ export function initialState(
     sound,
     live: LIVE_OFF,
     error: null,
+    undo: null,
   };
 }
 
@@ -379,6 +397,13 @@ export function reducer(state: AppState, action: AppAction): AppState {
         currentId: state.currentId === action.id ? null : state.currentId,
         playing: state.currentId === action.id ? false : state.playing,
       };
+    case 'tracks/inserted': {
+      const tracks = [...state.tracks];
+      tracks.splice(Math.max(0, Math.min(action.index, tracks.length)), 0, ...action.tracks);
+      return { ...state, tracks, currentId: state.currentId ?? action.currentId };
+    }
+    case 'undo/offered':
+      return state.undo === action.label ? state : { ...state, undo: action.label };
     case 'tracks/moved': {
       const { from, to } = action;
       if (from === to || from < 0 || from >= state.tracks.length) return state;

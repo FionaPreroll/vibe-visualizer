@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { beatBefore } from '../core/analysis/beat-grid';
   import { REPEAT_MODES, type RepeatMode } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
@@ -27,9 +28,16 @@
   const duration = $derived(current?.duration ?? 0);
   const shown = $derived(dragFraction !== null ? dragFraction * duration : position);
   const fraction = $derived(duration > 0 ? Math.min(1, shown / duration) : 0);
-  const marks = $derived(current?.marks ?? { in: null, out: null });
+  /** While a marker is dragged on the timeline: which one, and where it would go. */
+  let markDrag = $state<{ mark: 'in' | 'out'; seconds: number } | null>(null);
+  const marks = $derived.by(() => {
+    const stored = current?.marks ?? { in: null, out: null };
+    return markDrag ? { ...stored, [markDrag.mark]: markDrag.seconds } : stored;
+  });
   const marked = $derived(marks.in !== null || marks.out !== null);
   const inFraction = $derived(duration > 0 ? (marks.in ?? 0) / duration : 0);
+  /** The queue moves on at the out marker, unless the playhead is past it already. */
+  const playEnd = $derived(marks.out !== null && shown < marks.out ? marks.out : duration);
   const outFraction = $derived(duration > 0 ? (marks.out ?? duration) / duration : 1);
   /** The waveform of the whole track as the seek bar (TR-03), once it is being analysed. */
   const analysis = $derived(current?.fingerprint ? $analyses.get(current.fingerprint) : undefined);
@@ -90,6 +98,57 @@
     const target = fractionAt(event) * duration;
     dragFraction = null;
     void player.seek(target);
+  }
+
+  /** Where a marker goes: on the beat, within the track, and on its side of the other one. */
+  function clampMark(mark: 'in' | 'out', seconds: number): number {
+    const stored = current?.marks;
+    let target = Math.max(0, Math.min(duration, seconds));
+    const other = mark === 'in' ? stored?.out : stored?.in;
+    if (other !== null && other !== undefined) {
+      target = mark === 'in' ? Math.min(target, other - 0.1) : Math.max(target, other + 0.1);
+    }
+    return Math.max(0, target);
+  }
+
+  function grabMark(event: PointerEvent, mark: 'in' | 'out') {
+    // A marker is moved, not the playhead.
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    markDrag = { mark, seconds: clampMark(mark, player.snap(fractionAt(event) * duration)) };
+  }
+
+  function moveMark(event: PointerEvent) {
+    if (!markDrag) return;
+    event.stopPropagation();
+    const seconds = clampMark(markDrag.mark, player.snap(fractionAt(event) * duration));
+    markDrag = { mark: markDrag.mark, seconds };
+  }
+
+  function dropMark(event: PointerEvent) {
+    if (!markDrag) return;
+    event.stopPropagation();
+    const { mark, seconds } = markDrag;
+    markDrag = null;
+    player.mark(mark, seconds, false);
+  }
+
+  /** ←/→ on a marker: to the previous or next beat (0.1 s without a beat grid or quantizing). */
+  function onMarkKey(event: KeyboardEvent, mark: 'in' | 'out') {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const at = current?.marks[mark];
+    if (at === null || at === undefined) return;
+    const direction = event.key === 'ArrowLeft' ? -1 : 1;
+    const grid = analysis?.grid;
+    let target = at + direction * 0.1;
+    if (grid && $app.settings.quantize) {
+      const index = beatBefore(grid, at + direction * 1e-3) + (direction > 0 ? 1 : 0);
+      const beat = grid.beats[index];
+      if (beat !== undefined) target = beat;
+    }
+    player.mark(mark, clampMark(mark, target), false);
   }
 
   function onTimelineKey(event: KeyboardEvent) {
@@ -189,7 +248,7 @@
           class="icon"
           onclick={() => player.mark('in')}
           aria-label="Mark in"
-          title="Mark in (I): start of the export range"
+          title="Mark in (I): the track starts here, and so does the export"
           disabled={!current}
         >
           <Icon name="markIn" />
@@ -198,10 +257,21 @@
           class="icon"
           onclick={() => player.mark('out')}
           aria-label="Mark out"
-          title="Mark out (O): end of the export range"
+          title="Mark out (O): the queue moves on here, and the export ends"
           disabled={!current}
         >
           <Icon name="markOut" />
+        </button>
+        <button
+          class="icon"
+          class:on={$app.settings.quantize}
+          onclick={() => player.updateSettings({ quantize: !$app.settings.quantize })}
+          aria-label="Snap to the beat"
+          aria-pressed={$app.settings.quantize}
+          title="Snap markers and cues to the beat (Q)"
+          data-testid="quantize"
+        >
+          <Icon name="magnet" />
         </button>
         <button
           class="icon"
@@ -217,14 +287,14 @@
         {#if marked}
           <button
             class="marks"
-            onclick={() => {
-              player.mark('in', null);
-              player.mark('out', null);
-            }}
-            title="Clear the markers"
+            onclick={() => player.clearMarks()}
+            title="The part that plays and exports; click to clear the markers"
             data-testid="marks"
           >
             {formatDuration(marks.in ?? 0)}–{formatDuration(marks.out ?? duration)}
+            <span class="length" data-testid="marks-length">
+              · {formatDuration((marks.out ?? duration) - (marks.in ?? 0))}
+            </span>
             <Icon name="close" size={14} />
           </button>
         {/if}
@@ -276,12 +346,36 @@
               style:width="{Math.max(0, outFraction - inFraction) * 100}%"
               data-testid="marked-range"
             ></div>
-            {#if marks.in !== null}<div class="mark" style:left="{inFraction * 100}%"></div>{/if}
-            {#if marks.out !== null}<div class="mark" style:left="{outFraction * 100}%"></div>{/if}
+            {#each ['in', 'out'] as const as mark (mark)}
+              {@const seconds = marks[mark]}
+              {#if seconds !== null}
+                <div
+                  class="mark"
+                  class:dragging={markDrag?.mark === mark}
+                  style:left="{(seconds / duration) * 100}%"
+                  role="slider"
+                  tabindex="0"
+                  aria-label={mark === 'in' ? 'In marker' : 'Out marker'}
+                  aria-valuemin={0}
+                  aria-valuemax={Math.round(duration)}
+                  aria-valuenow={Math.round(seconds)}
+                  aria-valuetext={formatDuration(seconds)}
+                  title="Drag to move; ← → moves it by a beat"
+                  onpointerdown={(event) => grabMark(event, mark)}
+                  onpointermove={moveMark}
+                  onpointerup={dropMark}
+                  onpointercancel={() => (markDrag = null)}
+                  onkeydown={(event) => onMarkKey(event, mark)}
+                  data-testid="mark-{mark}"
+                ></div>
+              {/if}
+            {/each}
           {/if}
           <div class="knob" style:left="{fraction * 100}%"></div>
         </div>
-        <span class="time">-{formatDuration(Math.max(0, duration - shown))}</span>
+        <span class="time" title={playEnd < duration ? 'Until the out marker' : undefined}>
+          -{formatDuration(Math.max(0, playEnd - shown))}
+        </span>
       </div>
     </div>
   {/if}
@@ -514,14 +608,34 @@
     border: 1px solid color-mix(in srgb, var(--accent-2) 60%, transparent);
     pointer-events: none;
   }
+  /* A marker is a line with a wider, invisible grip around it. */
   .mark {
     position: absolute;
     top: 2px;
-    width: 2px;
+    width: 10px;
     height: 16px;
-    margin-left: -1px;
+    margin-left: -5px;
+    cursor: ew-resize;
+    touch-action: none;
+    z-index: 1;
+  }
+  .mark::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
     background: var(--accent-2);
-    pointer-events: none;
+  }
+  .mark:hover::before,
+  .mark:focus-visible::before,
+  .mark.dragging::before {
+    left: 3px;
+    width: 4px;
+  }
+  .mark:focus-visible {
+    outline: none;
   }
   .divider {
     width: 1px;
@@ -537,6 +651,9 @@
     font-family: var(--mono);
     font-size: 12px;
     color: var(--accent-2);
+  }
+  .marks .length {
+    color: var(--muted);
   }
   .knob {
     position: absolute;

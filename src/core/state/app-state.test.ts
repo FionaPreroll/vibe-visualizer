@@ -111,6 +111,19 @@ describe('app state', () => {
     expect(state.tracks[0]!.status).toBe('probing');
   });
 
+  it('puts removed tracks back where they were (undo)', () => {
+    const state = withTracks('a', 'b', 'c');
+    const removed = state.tracks[1]!;
+    let next = reducer(state, { type: 'tracks/removed', id: removed.id });
+    next = reducer(next, { type: 'undo/offered', label: 'Removed “b”' });
+    expect(next.undo).toBe('Removed “b”');
+    next = reducer(next, { type: 'tracks/inserted', index: 1, tracks: [removed], currentId: 't1' });
+    next = reducer(next, { type: 'undo/offered', label: null });
+    expect(next.tracks.map((t) => t.title)).toEqual(['a', 'b', 'c']);
+    expect(next.currentId).toBe('t1');
+    expect(next.undo).toBeNull();
+  });
+
   it('arranges tracks within the places they hold', () => {
     let state = withTracks('a', 'b', 'c', 'd');
     // A folder's files t1–t3, sorted by track number: they keep their places, in a new order.
