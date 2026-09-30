@@ -140,6 +140,48 @@ test('a DDJ-FLX2 plays, sets hot cues, filters and changes the tempo (CTL-02, CT
   await receive(page, [0x90, 0x0b, 0x7f], [0x90, 0x0b, 0x00]);
   await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Play');
 
+  // The jog wheel seeks: 100 steps of its top are 100 × 1.8 s / 460 = 0.39 s, and 16 times as
+  // far with SHIFT held.
+  const elapsed = async () =>
+    Number(await page.getByTestId('elapsed').getAttribute('data-seconds'));
+  const paused = await elapsed();
+  const turn = (data: number) => Array.from({ length: 10 }, () => [0xb0, data, 0x40 + 10]);
+  await receive(page, ...turn(0x22));
+  await expect.poll(elapsed).toBeCloseTo(paused + 0.391, 1);
+  await receive(page, [0x90, 0x3f, 0x7f], ...turn(0x29), [0x90, 0x3f, 0x00]);
+  const jogged = paused + 0.391 + 6.26;
+  await expect.poll(elapsed).toBeCloseTo(jogged, 1);
+  // A pad right after it sets its cue there.
+  await receive(page, [0x97, 0x01, 0x7f], [0x97, 0x01, 0x00]);
+  await expect(pads.nth(1)).toHaveAttribute('data-set', 'true');
+  // (On the nearest beat, and shown in whole seconds.)
+  const label = (await pads.nth(1).getAttribute('aria-label')) ?? '';
+  expect(Number(/^Cue 2 at 0:(\d\d)$/.exec(label)?.[1])).toBeCloseTo(jogged, -0.5);
+
+  // CUE as on a CDJ, with the in marker as the cue point. Paused away from it, CUE moves it
+  // to the playhead (on the beat), and its light goes on.
+  const cue = (pressed: boolean) => [0x90, 0x0c, pressed ? 0x7f : 0x00];
+  await receive(page, cue(true), cue(false));
+  const inMark = page.getByTestId('mark-in');
+  await expect(inMark).toBeVisible();
+  expect(Number(await inMark.getAttribute('aria-valuenow'))).toBeCloseTo(jogged, -0.5);
+  await expect.poll(() => light(page, 0x90, 0x0c)).toBe(0x7f);
+  const cuePoint = await elapsed();
+  // Held at the cue point, it plays until let go, then goes back.
+  await receive(page, cue(true));
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await page.waitForTimeout(400);
+  await receive(page, cue(false));
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Play');
+  await expect.poll(elapsed).toBeCloseTo(cuePoint, 1);
+  // PLAY while CUE is held plays on; CUE while playing goes back and pauses.
+  await receive(page, cue(true), [0x90, 0x0b, 0x7f], [0x90, 0x0b, 0x00], cue(false));
+  await page.waitForTimeout(400);
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await receive(page, cue(true), cue(false));
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Play');
+  await expect.poll(elapsed).toBeCloseTo(cuePoint, 1);
+
   // After a reload the controller comes back by itself, as MIDI is allowed.
   await page.reload();
   await page.getByTestId('controller-button').click();
@@ -148,6 +190,46 @@ test('a DDJ-FLX2 plays, sets hot cues, filters and changes the tempo (CTL-02, CT
   await expect(dialog.getByTestId('controller-status')).toHaveText('Not connected');
   // The lights go off when it is let go.
   expect(await light(page, 0x90, 0x0b)).toBe(0);
+});
+
+test('the jog wheel stays in the track, step by step', async ({ page, context }) => {
+  await context.grantPermissions(['midi']);
+  await page.goto('/');
+  // At 16 kHz the files are resampled, and a step of the jog wheel (1.8 s / 460) moves less
+  // than the 64 frames of the file the resampler needs before it gives anything: a run of steps
+  // is sure to start that close to the end of a decoded block of the file (2048 frames). Such
+  // a start used to be taken for the end of the file, and the next track followed.
+  await page.getByTestId('file-input').setInputFiles([
+    { name: 'One.wav', mimeType: 'audio/wav', buffer: createWav(10, 16000) },
+    { name: 'Two.wav', mimeType: 'audio/wav', buffer: createWav(10, 16000) },
+  ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items.first()).toHaveAttribute('data-status', 'ready');
+  await expect(items.nth(1)).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('controller-button').click();
+  const dialog = page.getByTestId('controller-dialog');
+  await dialog.getByTestId('controller-connect').click();
+  await expect(dialog.getByTestId('controller-status')).toHaveText('Connected');
+  await page.keyboard.press('Escape');
+  const play = () => receive(page, [0x90, 0x0b, 0x7f], [0x90, 0x0b, 0x00]);
+  await play();
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await play();
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Play');
+
+  // 45 steps (2,800 frames of the file), far enough apart to be a seek each.
+  for (let step = 0; step < 45; step++) {
+    await receive(page, [0xb0, 0x22, 0x41]);
+    await page.waitForTimeout(90);
+  }
+  await expect(items.first()).toHaveAttribute('aria-selected', 'true');
+  // It plays on from there, in the same track.
+  const elapsed = async () =>
+    Number(await page.getByTestId('elapsed').getAttribute('data-seconds'));
+  const jogged = await elapsed();
+  await play();
+  await expect.poll(elapsed).toBeGreaterThan(jogged + 0.5);
+  await expect(items.first()).toHaveAttribute('aria-selected', 'true');
 });
 
 test('the MIDI monitor shows what a controller sends', async ({ page }) => {

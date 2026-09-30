@@ -2,6 +2,7 @@ import {
   ControllerHub,
   PROFILES,
   SoftTakeover,
+  type AbsoluteControl,
   type AbsoluteEvent,
   type ConnectedController,
   type ControlEvent,
@@ -13,10 +14,14 @@ import { CUE_COUNT, type AppState } from '../state/app-state';
 
 /**
  * DJ controllers in the app (CTL-02, CTL-03): deck 1 plays, cues and sets hot cues, its CFX
- * knob is the DJ filter, the tempo slider the tempo fader, the channel fader the volume and the
- * jog wheel nudges. Deck 2 and the mixer's own controls do nothing yet, nor do the EQ knobs
- * (Q18). The lights follow the app: PLAY lit while playing and blinking while paused, a pad lit
- * for every hot cue that is set.
+ * knob is the DJ filter, the tempo slider the tempo fader, the channel fader the volume, and the
+ * jog wheel seeks (faster with SHIFT). CUE works as on a CDJ, with the in marker as the cue
+ * point (TR-09). Deck 2 and the mixer's own controls do nothing yet, nor do the EQ knobs (Q18).
+ * The lights follow the app: PLAY lit while playing and blinking while paused, CUE lit at the
+ * cue point and blinking while paused elsewhere, a pad lit for every hot cue that is set.
+ *
+ * A fader moved fast sends a hundred values a second, more than the app needs: knobs and faders
+ * are passed on once per frame, with their newest value, and so is the MIDI monitor.
  */
 
 export type ControllerStatus = 'off' | 'connecting' | 'on' | 'denied' | 'unsupported';
@@ -42,10 +47,25 @@ export interface ControllerState {
 
 /** How many messages the monitor keeps. */
 const MONITOR_LENGTH = 40;
-/** How long a nudge lasts after the jog wheel stopped moving, in ms. */
-const JOG_RELEASE_MS = 150;
+/** How often knobs, faders and the monitor are passed on, at most, in ms. */
+const FRAME_MS = 16;
+/**
+ * Seconds of the track per step of the jog wheel: a turn of its top (460 steps) is 1.8 s, as a
+ * record at 33⅓ rpm. The outer ring has fewer steps per turn, so it seeks more finely.
+ */
+const JOG_SECONDS = 1.8 / 460;
+/** With SHIFT the jog wheel seeks this much faster: a turn of the top is about 30 s. */
+const JOG_SHIFT_FACTOR = 16;
+/** How often the jog wheel seeks, at most, in ms; its steps in between add up. */
+const JOG_SEEK_MS = 60;
+/** After this long without a step, the jog wheel starts from the playback position again. */
+const JOG_IDLE_MS = 300;
 /** Around the centre of the CFX knob and the tempo slider: the filter off, the tempo at 0 %. */
 const CENTRE = 0.01;
+/** How close the playhead must be to the cue point to be at it, in seconds. */
+const AT_CUE = 0.05;
+/** How often the lights that follow the playhead (CUE) are checked, in ms. */
+const LIGHTS_MS = 250;
 
 export class ControllerService {
   private readonly hub: ControllerHub;
@@ -53,7 +73,20 @@ export class ControllerService {
   private current: ControllerState;
   private readonly listeners = new Set<(state: ControllerState) => void>();
   private readonly cleanups: (() => void)[] = [];
-  private jogTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Knobs and faders not passed on yet: the newest value of each. */
+  private readonly values = new Map<AbsoluteControl, AbsoluteEvent>();
+  /** Monitor entries not shown yet, the oldest first. */
+  private logged: MonitorEntry[] = [];
+  private frame: ReturnType<typeof setTimeout> | undefined;
+  /** Where the jog wheel wants the playhead, and when it said so (performance.now()). */
+  private jogTarget: number | null = null;
+  private jogAt = 0;
+  private jogSeek: ReturnType<typeof setTimeout> | undefined;
+  private jogMoved = false;
+  private jogIdle: ReturnType<typeof setTimeout> | undefined;
+  /** CUE is held at the cue point: the music plays until it is let go. */
+  private previewing = false;
+  private lightTimer: ReturnType<typeof setInterval> | undefined;
   private nextId = 0;
 
   constructor(
@@ -95,6 +128,8 @@ export class ControllerService {
     try {
       await this.hub.start();
       this.takeover.reset();
+      clearInterval(this.lightTimer);
+      this.lightTimer = setInterval(() => this.showLights(this.player.state), LIGHTS_MS);
       this.update({ status: 'on' });
       this.player.updateSettings({ controller: true });
     } catch {
@@ -103,6 +138,7 @@ export class ControllerService {
   }
 
   disconnect(): void {
+    clearInterval(this.lightTimer);
     this.hub.stop();
     this.update({ status: this.current.status === 'unsupported' ? 'unsupported' : 'off' });
     this.player.updateSettings({ controller: false });
@@ -120,11 +156,15 @@ export class ControllerService {
   }
 
   clearMonitor(): void {
+    this.logged = [];
     this.update({ messages: [] });
   }
 
   dispose(): void {
-    clearTimeout(this.jogTimer);
+    clearTimeout(this.frame);
+    clearTimeout(this.jogSeek);
+    clearTimeout(this.jogIdle);
+    clearInterval(this.lightTimer);
     for (const cleanup of this.cleanups) cleanup();
     this.hub.stop();
   }
@@ -133,54 +173,168 @@ export class ControllerService {
     // Only deck 1 for now.
     if (event.deck !== 1) return;
     if (event.kind === 'absolute') {
-      this.absolute(event);
+      // Pickup sees every value; what it lets through is passed on once per frame. Until then
+      // the value waiting counts as the app's.
+      const waiting = this.values.get(event.control);
+      const value = waiting ? waiting.value : this.position(event.control);
+      if (value === null || !this.takeover.accept(event.control, event.value, value)) return;
+      this.values.set(event.control, event);
+      this.schedule();
     } else if (event.kind === 'relative') {
-      if (event.control === 'jog') this.jog(event.delta);
+      if (event.control === 'jog') this.jog(event.delta, event.shift);
+    } else if (event.control === 'cue') {
+      this.cue(event.pressed);
     } else if (event.pressed) {
-      if (event.control === 'play') void this.player.toggle();
-      else if (event.control === 'cue') void this.player.stop();
+      if (event.control === 'play') this.play();
       else if (event.control === 'pad' && event.padMode === 'hotcue' && event.index) {
-        // Like the keys 1–8: set where empty, jump where set; with SHIFT, delete.
-        if (event.shift) this.player.setCue(event.index - 1, null);
-        else void this.player.cue(event.index - 1);
+        this.pad(event.index - 1, event.shift);
       }
     }
+  }
+
+  private play(): void {
+    // PLAY while CUE is held: the music plays on when CUE is let go, as on a CDJ.
+    if (this.previewing) {
+      this.previewing = false;
+      return;
+    }
+    void this.player.toggle();
+  }
+
+  /**
+   * CUE as on a CDJ, with the in marker as the cue point: while playing, back to it and pause;
+   * paused elsewhere, the cue point moves to the playhead (the in marker, on the beat with Q);
+   * paused at it, the music plays while CUE is held and goes back to it when CUE is let go.
+   */
+  private cue(pressed: boolean): void {
+    if (!pressed) {
+      if (!this.previewing) return;
+      this.previewing = false;
+      void this.player.stop();
+      return;
+    }
+    const track = this.player.currentTrack;
+    if (!track || this.player.live) return;
+    if (this.player.state.playing) {
+      void this.player.stop();
+      return;
+    }
+    const position = this.jogPosition() ?? this.player.position;
+    if (Math.abs(position - (track.marks.in ?? 0)) < AT_CUE) {
+      this.previewing = true;
+      void this.player.play();
+      return;
+    }
+    this.player.mark('in', position);
+    // The playhead goes to the marker, which may have snapped to the beat.
+    this.jogTarget = null;
+    const marked = this.player.currentTrack?.marks.in ?? null;
+    if (marked !== null && Math.abs(marked - position) > 1e-3) void this.player.seek(marked);
+    this.showLights(this.player.state);
+  }
+
+  /** Like the keys 1–8: set where empty, jump where set; with SHIFT, delete. */
+  private pad(index: number, shift: boolean): void {
+    if (shift) {
+      this.player.setCue(index, null);
+      return;
+    }
+    // Just after the jog wheel moved, the playhead may not be there yet: the cue goes where
+    // the jog wheel took it.
+    const jogged = this.jogPosition();
+    const empty = (this.player.currentTrack?.cues[index] ?? null) === null;
+    if (jogged !== null && empty) this.player.setCue(index, jogged);
+    else void this.player.cue(index);
+  }
+
+  /** Passes knobs, faders and the monitor on at the next frame. */
+  private schedule(): void {
+    this.frame ??= setTimeout(() => {
+      this.frame = undefined;
+      const values = [...this.values.values()];
+      this.values.clear();
+      for (const event of values) this.absolute(event);
+      if (this.logged.length > 0) {
+        const messages = [...this.logged.reverse(), ...this.current.messages];
+        this.logged = [];
+        this.update({ messages: messages.slice(0, MONITOR_LENGTH) });
+      }
+    }, FRAME_MS);
+  }
+
+  /** Where the app's value of a knob or fader is, as its position (0–1); null for unused ones. */
+  private position(control: AbsoluteControl): number | null {
+    const { sound, settings } = this.player.state;
+    if (control === 'filter') return (sound.filter + 1) / 2;
+    if (control === 'volume') return settings.volume;
+    if (control === 'tempo') {
+      const [low, high] = rateLimits(sound.tempoRange);
+      return Math.min(1, Math.max(0, (sound.rate - low) / (high - low)));
+    }
+    return null;
   }
 
   private absolute(event: AbsoluteEvent): void {
-    const { sound, settings } = this.player.state;
     const position = event.value;
     if (event.control === 'filter') {
-      const filter = Math.abs(position - 0.5) < CENTRE ? 0 : position * 2 - 1;
-      if (this.takeover.accept('filter', position, (sound.filter + 1) / 2)) {
-        this.player.updateSound({ filter });
-      }
+      this.player.updateSound({ filter: Math.abs(position - 0.5) < CENTRE ? 0 : position * 2 - 1 });
     } else if (event.control === 'tempo') {
       // The slider covers the tempo fader's range: slower at the top, faster at the bottom.
-      const [low, high] = rateLimits(sound.tempoRange);
-      const span = high - low;
-      const rate = Math.abs(position - 0.5) < CENTRE ? 1 : low + position * span;
-      const current = Math.min(1, Math.max(0, (sound.rate - low) / span));
-      if (this.takeover.accept('tempo', position, current)) this.player.updateSound({ rate });
+      const [low, high] = rateLimits(this.player.state.sound.tempoRange);
+      const rate = Math.abs(position - 0.5) < CENTRE ? 1 : low + position * (high - low);
+      this.player.updateSound({ rate });
     } else if (event.control === 'volume') {
-      if (this.takeover.accept('volume', position, settings.volume)) {
-        this.player.updateSettings({ volume: position });
-      }
+      this.player.updateSettings({ volume: position });
     }
   }
 
-  /** The jog wheel nudges the tempo while it turns (TMP-03). */
-  private jog(delta: number): void {
-    if (delta === 0) return;
-    this.player.nudge(delta > 0 ? 1 : -1);
-    clearTimeout(this.jogTimer);
-    this.jogTimer = setTimeout(() => this.player.nudge(0), JOG_RELEASE_MS);
+  /** The jog wheel seeks: at once, then at most every JOG_SEEK_MS with the steps added up. */
+  private jog(delta: number, shift: boolean): void {
+    const track = this.player.currentTrack;
+    if (!track || delta === 0 || this.player.live) return;
+    const from = this.jogPosition() ?? this.player.position;
+    const step = JOG_SECONDS * (shift ? JOG_SHIFT_FACTOR : 1);
+    this.jogTarget = Math.max(0, Math.min(track.duration ?? Infinity, from + delta * step));
+    this.jogAt = performance.now();
+    clearTimeout(this.jogIdle);
+    this.jogIdle = setTimeout(() => (this.jogTarget = null), JOG_IDLE_MS);
+    this.seekJog();
+  }
+
+  private seekJog(): void {
+    if (this.jogSeek !== undefined) {
+      this.jogMoved = true;
+      return;
+    }
+    if (this.jogTarget !== null) void this.player.seek(this.jogTarget);
+    this.jogSeek = setTimeout(() => {
+      this.jogSeek = undefined;
+      if (!this.jogMoved) return;
+      this.jogMoved = false;
+      this.seekJog();
+    }, JOG_SEEK_MS);
+  }
+
+  /** Where the jog wheel took the playhead, moving on with the music; null when it rests. */
+  private jogPosition(): number | null {
+    if (this.jogTarget === null) return null;
+    const { playing, sound } = this.player.state;
+    if (!playing) return this.jogTarget;
+    return this.jogTarget + ((performance.now() - this.jogAt) / 1000) * sound.rate;
   }
 
   private showLights(state: AppState): void {
     const track = state.tracks.find((entry) => entry.id === state.currentId);
-    const play = state.playing ? 'on' : track && state.live.status !== 'on' ? 'blink' : 'off';
+    const live = state.live.status === 'on';
+    const play = state.playing ? 'on' : track && !live ? 'blink' : 'off';
     this.hub.setLight({ control: 'play', deck: 1 }, play);
+    let cue: 'on' | 'off' | 'blink' = 'off';
+    if (this.previewing) cue = 'on';
+    else if (track && !live && !state.playing) {
+      const position = this.jogPosition() ?? this.player.position;
+      cue = Math.abs(position - (track.marks.in ?? 0)) < AT_CUE ? 'on' : 'blink';
+    }
+    this.hub.setLight({ control: 'cue', deck: 1 }, cue);
     for (let index = 1; index <= CUE_COUNT; index++) {
       const set = (track?.cues[index - 1] ?? null) !== null ? 'on' : 'off';
       for (const shift of [false, true]) {
@@ -191,13 +345,14 @@ export class ControllerService {
 
   private log(device: string, data: Uint8Array, known: boolean): void {
     const bytes = [...data].map((byte) => byte.toString(16).toUpperCase().padStart(2, '0'));
-    const entry = { id: this.nextId++, device, bytes: bytes.join(' '), control: null, known };
-    this.update({ messages: [entry, ...this.current.messages].slice(0, MONITOR_LENGTH) });
+    this.logged.push({ id: this.nextId++, device, bytes: bytes.join(' '), control: null, known });
+    if (this.logged.length > MONITOR_LENGTH) this.logged.shift();
+    this.schedule();
   }
 
-  /** Names the control of the newest message in the monitor. */
+  /** Names the control of the newest message for the monitor. */
   private describe(event: ControlEvent): void {
-    const [newest, ...rest] = this.current.messages;
+    const newest = this.logged.at(-1);
     if (!newest) return;
     const where = event.deck === null ? 'mixer' : `deck ${event.deck}`;
     const what =
@@ -206,8 +361,7 @@ export class ControllerService {
         : event.kind === 'absolute'
           ? `${event.control} ${event.value.toFixed(3)}`
           : `${event.control} ${event.delta > 0 ? '+' : ''}${event.delta}`;
-    const control = `${where} ${what}${event.shift ? ' + shift' : ''}`;
-    this.update({ messages: [{ ...newest, control }, ...rest] });
+    newest.control = `${where} ${what}${event.shift ? ' + shift' : ''}`;
   }
 
   private update(changes: Partial<ControllerState>): void {

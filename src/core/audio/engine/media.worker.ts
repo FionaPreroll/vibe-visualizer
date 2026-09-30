@@ -42,7 +42,6 @@ interface Source {
   token: number;
   input: Input;
   track: InputAudioTrack;
-  resampler: Resampler | null;
   duration: number;
 }
 
@@ -117,12 +116,8 @@ async function openSource(file: File, token: number): Promise<Source> {
     if (!(await track.canDecode())) {
       throw new Error(`This browser cannot decode ${track.codec ?? 'this audio format'}`);
     }
-    const resampler =
-      track.sampleRate === engineRate
-        ? null
-        : new Resampler(Math.min(2, track.numberOfChannels), track.sampleRate, engineRate);
     const duration = (await input.getDurationFromMetadata()) ?? (await input.computeDuration());
-    const source: Source = { token, input, track, resampler, duration };
+    const source: Source = { token, input, track, duration };
     sources.set(token, source);
     prune();
     return source;
@@ -140,6 +135,17 @@ function prune(): void {
     source.input.dispose();
     sources.delete(token);
   }
+}
+
+/**
+ * A converter of `track` to the engine rate (null if it has that rate already). Every stream
+ * decodes with one of its own: a stream that a seek replaced still pushes the piece it was
+ * decoding, which would shift the audio of the new one.
+ */
+function resamplerFor(track: InputAudioTrack): Resampler | null {
+  return track.sampleRate === engineRate
+    ? null
+    : new Resampler(Math.min(2, track.numberOfChannels), track.sampleRate, engineRate);
 }
 
 /** Seconds to engine frames (null stays null). */
@@ -230,12 +236,16 @@ async function stream(
     // A start in the middle of the music (an in marker) crosses from what the last file held
     // back, or fades in. The first file of a stream is faded in by the tempo stage.
     const fadeIn = !firstFile && incoming.length === 0 && from > 0 ? crossfade : 0;
-    for await (const decoded of decodeAtRate(source.track, source.resampler, from)) {
+    for await (const decoded of decodeAtRate(source.track, resamplerFor(source.track), from)) {
       if (token !== streamToken) return;
+      // Started in the middle of the file (a seek, an in marker), the resampler may give
+      // nothing yet: it needs a few more frames first. That is not the end of the file.
+      if (decoded[0]!.length === 0) continue;
       const limit = currentEnd;
       const position = currentPosition;
       let count = decoded[0]!.length;
       if (limit !== null) count = Math.max(0, Math.min(count, limit - position));
+      // The out marker is reached.
       if (count === 0) break;
       // Two planes of their own: the fades change them in place (a mono file gets a copy).
       const planes = [

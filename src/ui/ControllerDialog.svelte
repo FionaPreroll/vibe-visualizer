@@ -33,13 +33,20 @@
 
   const MAPPING: readonly [string, string][] = [
     ['PLAY/PAUSE', 'Play and pause; it lights while the music plays and blinks while paused'],
-    ['CUE', 'Back to the in marker (or the start), and stop'],
-    ['Pads (HOT CUE mode)', 'Hot cues 1–8: set one where the pad is dark, jump to it where lit'],
+    [
+      'CUE',
+      'As on a CDJ, with the in marker as the cue point: paused, it sets the cue point at the playhead; held at the cue point, it plays until let go; while playing, back to the cue point and pause',
+    ],
+    [
+      'Pads (HOT CUE mode)',
+      'Hot cues 1–8: a dark pad sets its cue at the playhead (turn the jog wheel to the spot first), a lit pad jumps to it',
+    ],
     ['SHIFT + pad', 'Delete the hot cue'],
     ['CFX', 'The DJ filter: low-pass to the left, high-pass to the right, off in the middle'],
     ['Tempo slider', 'The tempo, within the range set in the Sound tab'],
     ['Channel fader', 'The volume'],
-    ['Jog wheel', 'Nudge: faster or slower while it turns'],
+    ['Jog wheel', 'Seek: a turn of its top is 1.8 s, like a record'],
+    ['SHIFT + jog wheel', 'Seek 16 times as fast'],
   ];
 
   function describe(entry: MonitorEntry): string {

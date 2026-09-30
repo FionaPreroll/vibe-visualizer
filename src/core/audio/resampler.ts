@@ -34,6 +34,45 @@ function gcd(a: number, b: number): number {
   return a;
 }
 
+/**
+ * Coefficient tables, shared by the resamplers that use the same one: a new resampler for every
+ * seek costs nothing but its buffers. The tables are never changed once made.
+ */
+const tables = new Map<string, Float64Array>();
+
+/** table[phase * taps + j] = h(j - (halfWidth - 1) - phase / phases), taps = 2 × halfWidth. */
+function kernelTable(
+  halfWidth: number,
+  phases: number,
+  cutoff: number,
+  beta: number,
+): Float64Array {
+  const key = `${halfWidth} ${phases} ${cutoff} ${beta}`;
+  const known = tables.get(key);
+  if (known) return known;
+  const taps = halfWidth * 2;
+  const i0Beta = besselI0(beta);
+  const table = new Float64Array((phases + 1) * taps);
+  for (let phase = 0; phase <= phases; phase++) {
+    const offset = phase / phases;
+    let sum = 0;
+    for (let j = 0; j < taps; j++) {
+      const x = j - (halfWidth - 1) - offset;
+      const r = x / halfWidth;
+      const window = Math.abs(r) >= 1 ? 0 : besselI0(beta * Math.sqrt(1 - r * r)) / i0Beta;
+      const arg = 2 * cutoff * x;
+      const sinc = arg === 0 ? 1 : Math.sin(Math.PI * arg) / (Math.PI * arg);
+      const value = 2 * cutoff * sinc * window;
+      table[phase * taps + j] = value;
+      sum += value;
+    }
+    // Unity gain at DC for every phase.
+    for (let j = 0; j < taps; j++) table[phase * taps + j]! /= sum;
+  }
+  tables.set(key, table);
+  return table;
+}
+
 export class Resampler {
   readonly channels: number;
   readonly inputRate: number;
@@ -70,27 +109,7 @@ export class Resampler {
     this.phases = options.phases ?? 512;
     // Cutoff in cycles per input frame, below the lower of the two Nyquist frequencies.
     const cutoff = (0.5 * (options.cutoff ?? 0.92)) / scale;
-    const beta = options.beta ?? 8.6;
-    const i0Beta = besselI0(beta);
-
-    // table[phase * taps + j] = h(j - (halfWidth - 1) - phase / phases)
-    this.table = new Float64Array((this.phases + 1) * this.taps);
-    for (let phase = 0; phase <= this.phases; phase++) {
-      const offset = phase / this.phases;
-      let sum = 0;
-      for (let j = 0; j < this.taps; j++) {
-        const x = j - (this.halfWidth - 1) - offset;
-        const r = x / this.halfWidth;
-        const window = Math.abs(r) >= 1 ? 0 : besselI0(beta * Math.sqrt(1 - r * r)) / i0Beta;
-        const arg = 2 * cutoff * x;
-        const sinc = arg === 0 ? 1 : Math.sin(Math.PI * arg) / (Math.PI * arg);
-        const value = 2 * cutoff * sinc * window;
-        this.table[phase * this.taps + j] = value;
-        sum += value;
-      }
-      // Unity gain at DC for every phase.
-      for (let j = 0; j < this.taps; j++) this.table[phase * this.taps + j]! /= sum;
-    }
+    this.table = kernelTable(this.halfWidth, this.phases, cutoff, options.beta ?? 8.6);
     this.buffers = Array.from({ length: channels }, () => new Float64Array(8192));
     this.reset(0);
   }

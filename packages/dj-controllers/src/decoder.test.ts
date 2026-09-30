@@ -83,6 +83,13 @@ describe('Decoder', () => {
     const flx2 = decoder();
     expect(flx2.decode([0xb0, 0x21, 0x41], 0)).toMatchObject({ control: 'jog', delta: 1 });
     expect(flx2.decode([0xb0, 0x21, 0x3d], 0)).toMatchObject({ control: 'jog', delta: -3 });
+    // The top of the jog wheel while SHIFT is held.
+    flx2.decode([0x90, 0x3f, 0x7f], 0);
+    expect(flx2.decode([0xb0, 0x29, 0x42], 0)).toMatchObject({ delta: 2, shift: true });
+    expect(flx2.decode([0x90, 0x67, 0x7f], 0)).toMatchObject({
+      control: 'jogTouch',
+      shift: true,
+    });
     const profile: ControllerProfile = {
       id: 'test',
       name: 'Test',

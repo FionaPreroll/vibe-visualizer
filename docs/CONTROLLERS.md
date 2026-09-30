@@ -76,12 +76,12 @@ The app gets a small controller service that maps the events to what the keyboar
 | DDJ-FLX2 | FibeStation |
 |---|---|
 | PLAY/PAUSE | Play and pause (TR-01); its light shows whether the music plays |
-| CUE | Back to the in marker or the start, and stop |
+| CUE | As on a CDJ, with the in marker (TR-09) as the cue point: paused elsewhere, it sets the in marker at the playhead (on the beat with Q) and the playhead goes there; held at the cue point, the music plays until it is let go (PLAY meanwhile plays on); while playing, back to the cue point and pause. Lit at the cue point, blinking while paused elsewhere |
 | Pads in hot cue mode | Hot cues 1–8, as the keys 1–8: set where empty, jump where set; SHIFT + pad deletes. The pads of the cues that are set light up |
 | HI / MID / LOW | Later: a new 3-band EQ with kills (FX-11), live and in the export |
 | CFX | The DJ filter (FX-06): left low-pass, right high-pass, off in the middle |
 | Channel fader, tempo slider | Volume; the tempo fader within its range (TMP-01). Both with pickup, so a fader that stands elsewhere does not make the value jump |
-| Jog wheel | Nudge (TMP-03) while it turns, the ring and the top alike; scrubbing later |
+| Jog wheel | Seek: a turn of the top is 1.8 s (460 steps, like a record at 33⅓ rpm), the outer ring seeks more finely; with SHIFT 16 times as fast. At most every 60 ms, with the steps in between added up. A pad pressed right after it sets its cue where the jog wheel went |
 | Other pad modes | Free at first. Ideas: sampler mode → visual presets 1–8, pad FX → the sound presets, beat loop → loops once they exist (TR-07) |
 | Deck 2, crossfader | Nothing for now (Q18). Later perhaps the visuals deck (CTL-05) |
 

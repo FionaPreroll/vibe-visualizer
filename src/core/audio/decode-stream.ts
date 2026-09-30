@@ -27,8 +27,9 @@ export function openInput(file: Blob): Input {
 /**
  * The decoded audio of `track` from `startFrame` on (frames at the output rate), as blocks of
  * planes: one plane for mono files, two for everything else (only the first two channels are
- * kept). `resampler` converts to the output rate; null when the file already has it. Silence
- * before the start of the file comes from the resampler.
+ * kept). `resampler` converts to the output rate; null when the file already has it. It is
+ * reset first, so it serves one decoding at a time. Silence before the start of the file comes
+ * from the resampler, and a block may be empty (the resampler waits for more of the file).
  *
  * The live engine and the export both decode through here, so they get exactly the same
  * samples (the resampler's output does not depend on how the input is chunked).
