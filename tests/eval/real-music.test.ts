@@ -222,22 +222,26 @@ describe.skipIf(!root || !existsSync(root))('drum detection on MDB Drums', () =>
       const gridDownbeats = gridBeats.filter((_, k) => grid.beatInBar?.[k] === 0);
       const downbeat = scoreOnsets(within(gridDownbeats, 5, 1e9), downbeatTruth, 0.07);
       totals.downbeat.push(downbeat);
+      let trackBars = 0;
+      let trackRight = 0;
       for (const time of downbeatTruth) {
         let nearest = -1;
         for (let k = 0; k < gridBeats.length; k++) {
           if (Math.abs(gridBeats[k]! - time) < 0.07) nearest = k;
         }
         if (nearest < 0) continue;
-        barBeats++;
-        if (grid.beatInBar?.[nearest] === 0) barRight++;
+        trackBars++;
+        if (grid.beatInBar?.[nearest] === 0) trackRight++;
       }
+      barBeats += trackBars;
+      barRight += trackRight;
       const f1 = (score: OnsetScore, count: number) =>
         count === 0 ? '   -  ' : `${(score.f1 * 100).toFixed(0).padStart(4)}% `;
       lines.push(
         `${track.replace('MusicDelta_', '').padEnd(14)} kick ${f1(kick, truth.kicks.length)}` +
           `snare ${f1(snare, truth.snares.length)}hat ${f1(hat, truth.hats.length)}` +
           `beat ${f1(beat, beatTruth.length)}grid ${f1(gridScore, beatTruth.length)}` +
-          `bar ${f1(downbeat, downbeatTruth.length)}` +
+          `bar ${f1(downbeat, downbeatTruth.length)}(${trackRight}/${trackBars}) ` +
           `bpm ${hits.bpm.toFixed(0).padStart(3)}${tempoOk ? ' ' : '✗'} ` +
           `grid ${gridBpm.toFixed(0).padStart(3)}${gridOk ? ' ' : '✗'} ` +
           `(${truthBpm.toFixed(0).padStart(3)})`,
