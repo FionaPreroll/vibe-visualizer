@@ -1,0 +1,11 @@
+{
+  "name": "@fibestation/dj-controllers",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DJ controllers in the browser: Web MIDI, device profiles, semantic controls and lights",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
