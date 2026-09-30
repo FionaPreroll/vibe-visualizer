@@ -39,7 +39,7 @@ Code: `src/core/analysis/drums.ts`. It works in steps of 128 samples (2.7 ms), f
 Code: `src/core/analysis/beat-tracker.ts`, after the BTrack algorithm (Stark, Davies & Plumbley, DAFx 2009).
 
 - **Onset strength:** the spectral flux (mean rise in dB over all FFT bins), once per frame.
-- **Tempo:** autocorrelation of the onset strength over the last 5.5 s, summed over the first four multiples of each candidate period (75–180 BPM), with a preference for about 120 BPM. A Viterbi-style step favours small tempo changes. The first estimate comes after 1.4 s.
+- **Tempo:** autocorrelation of the onset strength over the last 5.5 s, summed over the first four multiples of each candidate period (75–180 BPM), with a preference for about 120 BPM. The tempo range (AN-12) chooses other candidates, and so does a tempo set for live input (IN-05): then the tracker keeps within ±20 % of it. The candidates are prepared once for 50–250 BPM, so a new range allocates nothing on the audio thread. A Viterbi-style step favours small tempo changes. The first estimate comes after 1.4 s.
 - **Phase:** a cumulative score adds each frame's onset strength to the best score about one beat earlier. Halfway between two beats, the score is extended into the future to predict the next beat. Because beats are predicted, they are reported 21 ms early, which cancels the delay of the flux itself.
 - **Offbeat check:** with steady eighth notes (hi-hats), the score cannot tell beats from offbeats and may lock onto the "and". Every four beats, the kick and drum-body energy on the beats is compared with the energy halfway between. If the halfway points are clearly stronger (× 1.3), the tracker moves by half a beat.
 - **Confidence:** onset strength on the beats compared with the average. In silence it falls within about half a second, so paused playback stops pulsing.
@@ -131,7 +131,7 @@ Every track now has one tempo throughout, and in the range up to 200 BPM all fiv
 - **Straight grids** assume a fixed tempo. A track that speeds up slowly, or a live recording, keeps the moving grid when too few of its beats lie on one line; one that changes tempo keeps its sections. A track whose music really shifts by half a beat somewhere (rare in produced music) gets a straight grid that is half a beat off there.
 - **One tempo per track** applies to files up to 15 minutes. A mix keeps every tempo the path finds, including misreadings at a related tempo; those are corrected for the whole file only (see below).
 - **Bars** are bars of four beats; waltzes and other meters get bars of four too. Without drums and without changes of harmony (ambient), the positions are a guess.
-- **Live input** has no grid: it is heard as it comes, so the live tracker stays in charge there.
+- **Live input** has no grid: it is heard as it comes, so the live tracker stays in charge there. Where it settles on a related tempo, the tempo can be set by hand next to the LIVE badge.
 
 Planned:
 

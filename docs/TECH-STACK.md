@@ -13,17 +13,19 @@
 | Graphics | WebGL2 with GLSL shaders, own thin renderer | Works in every desktop browser and inside workers (OffscreenCanvas); float render targets for smooth HD feedback; huge pool of shader know-how (Shadertoy) |
 | Audio engine | Own streaming engine: a DSP core in TypeScript that runs in an AudioWorklet (live) and in a worker (export) | The export sounds exactly like the preview; 3-hour files stream instead of filling the RAM; sample-accurate cues |
 | Time-stretching (key lock) | Signalsmith Stretch (MIT) as WebAssembly | High quality, permissive licence. A Vite plugin extracts the WASM core from the npm package; our thin binding runs it in the AudioWorklet and in workers, with seeded randomness for bit-identical output |
-| Decoding & file writing | Mediabunny (MPL-2.0) on top of WebCodecs | Reads MP3, M4A, Ogg, FLAC and WAV in pieces with fast seeking; the same library writes the MP4 |
+| Decoding & file writing | Mediabunny (MPL-2.0) on top of WebCodecs | Reads MP3, M4A, Ogg, FLAC and WAV in pieces with fast seeking; the same library writes the MP4. Firefox reads the files in slices instead of streams: there, reading a second file failed while one played ("Error in input stream") |
 | Tags & cover art | Mediabunny (`getMetadataTags`) | Title, artist, album, BPM and cover art for MP3, MP4, FLAC, Ogg and WAV; a separate tag library is not needed |
 | Video/audio encoding | WebCodecs, hardware-accelerated where available; `@mediabunny/aac-encoder` (WebAssembly) as AAC fallback | Fast and native; no 30 MB ffmpeg.wasm download |
 | Thread communication | SharedArrayBuffer ring buffers for realtime data; a small RPC helper for control calls | No memory allocation on the audio thread, so no crackles. The spikes use a 100-line helper; whether Comlink is worth it is decided in P1 |
 | Storage | localStorage for settings, presets, and each file's cues, markers, tempo and grid correction; IndexedDB (a thin wrapper, no library needed) for the queue and its file handles; Origin Private File System for the analysis cache, images and render segments | Persistent, large, usable from workers; file handles can only be kept in IndexedDB |
+| Default logo font | Pacifico (SIL Open Font License 1.1) from `@fontsource/pacifico` | Bundled with the app, so no request goes to a font service (NF-01); the logo is drawn on a canvas from the app's name |
+| In-app help | The user guide (`docs/USER-GUIDE.md`) imported as text, with a small Markdown renderer of our own | One text for GitHub and the app; it knows the few constructs the guide uses and escapes everything else |
 | Validation | Zod 4 | Checks imported preset and project files; TypeScript types come from the schemas |
 | FFT | fft.js (MIT) | Fast radix-4 FFT in plain JS; easy to replace |
 | Tests | Vitest 5 (unit and DSP golden tests; browser mode for WebGL and WebCodecs), Playwright (end-to-end) | Shares Vite's config; GPU and codec tests run in real Chromium |
 | Lint & format | ESLint with typescript-eslint and eslint-plugin-svelte; Prettier | Standard for Svelte + TypeScript |
 | Tooling | pnpm, Node 24 LTS (CI) | Fast, strict installs; locally Node 22.13 or newer works |
-| CI | GitHub Actions | Type check, lint, tests, build and an end-to-end smoke test on every push |
+| CI | GitHub Actions | Type check, lint, tests, build and an end-to-end smoke test on every push; the README screenshots when the Screenshots workflow is run by hand |
 | Hosting | Cloudflare Pages (static, free) | Preview deploy per branch; can send the COOP/COEP headers that SharedArrayBuffer requires (GitHub Pages can't) |
 
 **Licences:** all dependencies are MIT, ISC, Apache-2.0 or MPL-2.0 (Mediabunny). The optional AAC fallback contains FFmpeg's AAC encoder (LGPL) as a separate WebAssembly module. No GPL code.
@@ -119,13 +121,16 @@ src/
     state/       store with timestamped actions, app state, persistence
     env/, util/, video/
   ui/            Svelte app: shell, top bar, stage, analysis view, queue, sound, visuals and live
-                 panels, transport with waveform and cues, detail waveform, export, A/V sync and
-                 shortcut dialogs
+                 panels, transport with waveform and cues, detail waveform, export, A/V sync,
+                 welcome and help dialogs, default logo
   spikes/        Spike Lab and the P0 prototypes (throwaway)
 vite-plugins/    extraction of the Signalsmith Stretch WASM core
 tests/e2e/       Playwright tests
 tests/eval/      evaluation on real recordings (optional dataset, see docs/ANALYSIS.md)
-docs/            FEATURES.md, TECH-STACK.md, ANALYSIS.md
+tests/screenshots/
+                 the README screenshots (docs/screenshots)
+docs/            FEATURES.md, TECH-STACK.md, ANALYSIS.md, CONTROLLERS.md (proposal), USER-GUIDE.md
+                 (also the in-app help), screenshots/
 ```
 
 `core/` does not depend on the UI framework.
@@ -167,4 +172,6 @@ The development container (headless Chromium, software GPU) and CI run all five 
 - Second-priority machines (Q14): Chrome on Windows and Firefox on Linux. A hosted preview makes this easiest.
 - Hosting needs a (free) Cloudflare account.
 - Listening test of tempo and effects on the main machine: vinyl and key lock at 0.5–1.5×, the reverb's character, the delay in time with the beat, no clicks when changing anything.
+- Firefox: reading a file while another one plays (fixed with reads in slices) is still to be checked in Firefox.
+- The Screenshots workflow can be started once it is on `main`: GitHub offers manual workflows from the default branch.
 - Export on the main machine: the tests cover both paths, VP9 + Opus (WebM) in the development container, which has no H.264 encoder, and H.264 + AAC (MP4) in CI. The render speed on Chrome/macOS and a YouTube/TikTok upload of an export are still to be checked.
