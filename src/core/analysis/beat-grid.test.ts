@@ -3,7 +3,7 @@ import { createPrng } from '../util/prng';
 import { beatBefore, computeBeatGrid, nearestBeat, type OnsetFeatures } from './beat-grid';
 import { detectHits } from './eval/evaluate';
 import { createPattern } from './eval/patterns';
-import { gridTempo } from './grid-beats';
+import { gridTempo, tempoSections } from './grid-beats';
 
 const FRAME_RATE = 48000 / 512;
 
@@ -78,6 +78,74 @@ describe('beat grid', () => {
       truth.some((time) => Math.abs(time - beat) < 0.025),
     );
     expect(onPulses.length).toBeGreaterThan(0.9 * (half.beats.length - 2));
+  });
+
+  it('gives a track with a fixed tempo a straight grid', () => {
+    // Beats up to 8 ms early or late, a few missing, a few onsets between them.
+    const random = createPrng(5);
+    const truth = beatsOf(60, () => 128);
+    const played = truth
+      .filter(() => random() > 0.05)
+      .map((time) => time + (random() - 0.5) * 0.016);
+    const extra = truth.filter(() => random() < 0.05).map((time) => time + 60 / 128 / 2);
+    const grid = computeBeatGrid(
+      pulses(
+        [...played, ...extra].sort((a, b) => a - b),
+        60,
+      ),
+    );
+    const beats = grid.beats;
+    const period = (beats[beats.length - 1]! - beats[0]!) / (beats.length - 1);
+    expect(60 / period).toBeCloseTo(128, 1);
+    for (let k = 1; k < beats.length; k++) expect(beats[k]! - beats[k - 1]!).toBeCloseTo(period, 9);
+    expect(matched(beats, truth, 0)).toBeGreaterThan(0.97);
+  });
+
+  it('keeps the grid of a fixed tempo where the onsets stress the offbeat for a while', () => {
+    // From 30 to 40 s, the onsets are half a beat late: the drums of that section stress the
+    // offbeat, the grid of the track stays.
+    const beat = 60 / 172;
+    const truth = beatsOf(70, () => 172);
+    const onsets = truth.map((time) => (time >= 30 && time < 40 ? time + beat / 2 : time));
+    const grid = computeBeatGrid(pulses(onsets, 70));
+    const beats = grid.beats;
+    const period = (beats[beats.length - 1]! - beats[0]!) / (beats.length - 1);
+    for (let k = 1; k < beats.length; k++) expect(beats[k]! - beats[k - 1]!).toBeCloseTo(period, 9);
+    expect(matched(beats, truth, 0)).toBeGreaterThan(0.97);
+  });
+
+  it('keeps one tempo in a single track: a stretch at 2/3 of it is brought to it', () => {
+    // The middle of the track reads at 2/3 of its tempo (as drum & bass with kicks every three
+    // eighths does); the grid stays at the tempo of the rest.
+    const truth = beatsOf(90, () => 130);
+    const middle = beatsOf(60, () => (130 * 2) / 3, 30).filter((time) => time < 60);
+    const onsets = [...truth.filter((time) => time < 30 || time >= 60), ...middle];
+    const grid = computeBeatGrid(
+      pulses(
+        onsets.sort((a, b) => a - b),
+        90,
+      ),
+    );
+    expect(gridTempo(grid)).toBeCloseTo(130, 0);
+    expect(tempoSections(grid)).toHaveLength(1);
+    const outside = truth.filter((time) => time < 30 || time >= 60);
+    const found = outside.filter((time) =>
+      grid.beats.some((beat) => Math.abs(beat - time) < 0.025),
+    );
+    expect(found.length / outside.length).toBeGreaterThan(0.97);
+  });
+
+  it('finds fast tempos in the fast tempo range (AN-12)', () => {
+    // At 174 BPM with only every second pulse sounding strongly, the automatic range prefers
+    // half the tempo; the fast range does not reach down to it.
+    const truth = beatsOf(40, () => 174);
+    const features = pulses(truth, 40);
+    for (let k = 1; k < truth.length; k += 2) {
+      const frame = Math.round(truth[k]! * FRAME_RATE) - 1;
+      features.onset[frame] = 0.45;
+      features.accent[frame] = 0.2;
+    }
+    expect(Math.round(gridTempo(computeBeatGrid(features, { range: 'fast' })))).toBe(174);
   });
 
   it('has no confidence where there is no beat', () => {

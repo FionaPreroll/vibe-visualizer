@@ -5,20 +5,28 @@
  *
  * 1. Tempo path: every half second, the autocorrelation of the last 10 s of onsets (kept up to
  *    date as a running sum) is scored with a comb over four multiples of each candidate period,
- *    times a preference for tempos around 120 BPM (or, once the user has corrected the tempo,
- *    around that one, TMP-06). A Viterbi pass over the whole track finds the most likely path
- *    of tempos, preferring small changes.
- * 2. Beats: dynamic programming (after Ellis, "Beat Tracking by Dynamic Programming", 2007)
- *    chooses the sequence of beats that best matches strong onsets while keeping each interval
- *    close to the local period. Accents (kicks and drum bodies) count extra, so beats land on
- *    the kicks rather than on the offbeat hi-hats.
- * 3. Each beat gets a confidence: how much stronger the onsets are on the beats than around them.
- * 4. Unless the user gave the tempo, it is checked against the snares: double or 3/2 of it wins
+ *    times a preference within the tempo range: around 120 BPM in the automatic range, around
+ *    the middle of a range the user chose (AN-12), or around the tempo the user gave (TMP-06).
+ *    A Viterbi pass over the whole track finds the most likely path of tempos, preferring small
+ *    changes.
+ * 2. In the automatic range, the tempo is checked against the snares: double or 3/2 of it wins
  *    where it puts them clearly on the second and fourth beat of each bar (drum & bass read as
  *    87 or 116 instead of 174, hardcore as 89 instead of 178). Slower tempos are not tried,
  *    since a half-time feel (dubstep, trap) and swing show a backbeat there too. This is
- *    decided in windows of a few seconds, so a mix may change its tempo.
- * 5. The bars: which beat of its bar each beat is, from the changes of harmony and the drums
+ *    decided in windows of a few seconds.
+ * 3. A single track (a file up to 15 minutes) keeps one tempo: stretches at a related tempo
+ *    (half, 2/3, 3/4 of it or the inverse) are brought to the main tempo, the one the snares
+ *    confirmed or else the one most of the track has. Longer files are mixes and keep their
+ *    tempo changes.
+ * 4. Beats: dynamic programming (after Ellis, "Beat Tracking by Dynamic Programming", 2007)
+ *    chooses the sequence of beats that best matches strong onsets while keeping each interval
+ *    close to the local period. Accents (kicks and drum bodies) count extra, so beats land on
+ *    the kicks rather than on the offbeat hi-hats.
+ * 5. Each beat gets a confidence: how much stronger the onsets are on the beats than around them.
+ * 6. A single track whose sure beats lie on one straight grid gets that grid instead: produced
+ *    music has a fixed tempo, and the straight grid holds through breaks and stretches where the
+ *    beats of step 4 stumble or follow the offbeat.
+ * 7. The bars: which beat of its bar each beat is, from the changes of harmony and the drums
  *    ({@link findBars}).
  */
 
@@ -66,7 +74,7 @@ export interface BeatGrid {
   beatInBar?: Uint8Array;
 }
 
-/** Tempos the grid looks for, and the preference among them (around 120 BPM). */
+/** Tempos the grid looks for, and the preference among them. */
 interface TempoRange {
   min: number;
   max: number;
@@ -74,7 +82,20 @@ interface TempoRange {
   /** Width of the preference, in octaves. */
   octaves: number;
 }
-const AUTOMATIC: TempoRange = { min: 75, max: 180, prior: 120, octaves: 0.8 };
+
+/**
+ * The tempo ranges the user can choose for the analysis (AN-12), as in DJ software: without one,
+ * the grid prefers tempos around 120 BPM, and fast genres can read at half or 2/3 of their
+ * tempo; within 120–200 BPM they cannot.
+ */
+export type TempoRangeId = 'auto' | 'slow' | 'mid' | 'fast';
+export const TEMPO_RANGES: Readonly<Record<TempoRangeId, Readonly<TempoRange>>> = {
+  auto: { min: 75, max: 180, prior: 120, octaves: 0.8 },
+  slow: { min: 60, max: 120, prior: 85, octaves: 0.5 },
+  mid: { min: 90, max: 150, prior: 122, octaves: 0.5 },
+  fast: { min: 120, max: 200, prior: 160, octaves: 0.5 },
+};
+export const TEMPO_RANGE_IDS: readonly TempoRangeId[] = ['auto', 'slow', 'mid', 'fast'];
 /**
  * With a tempo from the user (TMP-06): within this factor of it, so no related tempo (4/3, 3/2,
  * double) can take its place, and a narrow preference for it.
@@ -107,6 +128,30 @@ const BACKBEAT_HOP_SECONDS = 6;
 const BACKBEAT_MIN = 0.3;
 const BACKBEAT_MARGIN = 0.15;
 /**
+ * Files up to this long are single tracks, keeping one tempo; longer ones are mixes, whose tempo
+ * may change from track to track.
+ */
+const SINGLE_TRACK_SECONDS = 15 * 60;
+/** Tempos a single track does not change to: these factors of its main tempo are brought to it. */
+const RELATED_FACTORS = [0.5, 2 / 3, 3 / 4, 4 / 3, 1.5, 2];
+/** Tempos within this factor count as the same. */
+const SAME_TEMPO = 1.04;
+/**
+ * A track with a fixed tempo gets a straight grid: when at least this share of its sure beats
+ * lie within this share of a beat of one (and this many at least), and their spread about it
+ * (root mean square, in beats) is at most this. The period is searched within this share of the
+ * typical beat interval.
+ */
+const STEADY_SHARE = 0.7;
+const STEADY_TOLERANCE = 0.1;
+const STEADY_MIN_BEATS = 32;
+const STEADY_SPREAD = 0.04;
+const STEADY_SEARCH = 0.01;
+/** Bins of the beat positions within a period, in the search for the straight grid. */
+const PHASE_BINS = 50;
+/** Beats this sure count for the straight grid. */
+const STEADY_CONFIDENCE = 0.3;
+/**
  * Ratios of the score on the beats to the typical score between them, for no and for full
  * confidence. Measured: noise 2.1, a sustained pad 1.5, real recordings (MDB Drums) 5.2–8.8.
  */
@@ -119,6 +164,8 @@ export interface BeatGridOptions {
    * it, and the snares do not change it. Null or absent: the grid finds the tempo itself.
    */
   bpm?: number | null;
+  /** The tempo range the grid looks in when it finds the tempo itself (AN-12). */
+  range?: TempoRangeId;
 }
 
 /** The beats of a track from its onset features. */
@@ -133,28 +180,41 @@ export function computeBeatGrid(features: OnsetFeatures, options: BeatGridOption
   }
   const onset = detrend(features.onset);
   const score = beatScore(onset, detrend(features.accent));
+  const frameRate = features.frameRate;
   const hint = options.bpm ?? null;
+  const rangeId = options.range ?? 'auto';
   const range: TempoRange = hint
     ? { min: hint / HINT_SPREAD, max: hint * HINT_SPREAD, prior: hint, octaves: HINT_OCTAVES }
-    : AUTOMATIC;
-  let periods = tempoPath(onset, features.frameRate, range);
-  let beatFrames = trackBeats(score, periods);
-  if (features.snare && !hint) {
-    const checked = checkBackbeat(score, periods, beatFrames, features.snare, features.frameRate);
-    if (checked !== periods) {
-      periods = checked;
-      beatFrames = trackBeats(score, periods);
-    }
+    : TEMPO_RANGES[rangeId];
+  let periods = tempoPath(onset, frameRate, range);
+  // Only without a range or a tempo from the user: the snares may make the tempo faster.
+  let confirmed: Uint8Array | null = null;
+  if (features.snare && !hint && rangeId === 'auto') {
+    const checked = checkBackbeat(score, periods, features.snare, frameRate);
+    periods = checked.periods;
+    confirmed = checked.confirmed;
   }
+  const single = frames / frameRate <= SINGLE_TRACK_SECONDS;
+  if (single) periods = unifyTempo(periods, confirmed, features.active, frameRate);
+  const beatFrames = trackBeats(score, periods);
   const beats = new Float64Array(beatFrames.length);
   for (let k = 0; k < beatFrames.length; k++) {
-    beats[k] = (refine(onset, beatFrames[k]!) + 1) / features.frameRate - features.delay;
+    beats[k] = (refine(onset, beatFrames[k]!) + 1) / frameRate - features.delay;
   }
-  return {
-    beats,
-    confidence: confidences(score, beatFrames, features.active),
-    beatInBar: findBars(beatFrames, features),
-  };
+  const confidence = confidences(score, beatFrames, features.active);
+  // A fixed tempo: one straight grid instead of beats that follow every onset.
+  const straight = single ? straightGrid(beats, confidence) : null;
+  if (straight) {
+    const straightFrames = Array.from(straight, (time) =>
+      Math.max(0, Math.min(frames - 1, Math.round((time + features.delay) * frameRate) - 1)),
+    );
+    return {
+      beats: straight,
+      confidence: confidences(score, straightFrames, features.active),
+      beatInBar: findBars(straightFrames, features),
+    };
+  }
+  return { beats, confidence, beatInBar: findBars(beatFrames, features) };
 }
 
 /** Onset strength above its local mean (an adaptive threshold), slightly smoothed. */
@@ -357,17 +417,17 @@ function backbeatClarity(beatFrames: readonly number[], snare: Float32Array): nu
 
 /**
  * Checks the tempo against the snares, window by window: where a faster related tempo puts them
- * much more clearly on the second and fourth beat, that tempo wins. Returns `periods` when
- * nothing changes, otherwise the corrected periods.
+ * much more clearly on the second and fourth beat, that tempo wins. Returns the periods (the
+ * same array when nothing changes) and the frames where the snares made the tempo faster.
  */
 function checkBackbeat(
   score: Float64Array,
   periods: Float64Array,
-  beatFrames: number[],
   snare: Float32Array,
   frameRate: number,
-): Float64Array {
+): { periods: Float64Array; confirmed: Uint8Array | null } {
   const frames = periods.length;
+  const beatFrames = trackBeats(score, periods);
   const window = Math.round(BACKBEAT_WINDOW_SECONDS * frameRate);
   const hop = Math.round(BACKBEAT_HOP_SECONDS * frameRate);
   const minPeriod = (60 * frameRate) / FASTER_MAX_BPM;
@@ -402,13 +462,169 @@ function checkBackbeat(
     const around = [choice[w - 1], value, choice[w + 1]].filter((v) => v !== undefined);
     return around.filter((v) => v === value).length * 2 > around.length ? value : 0;
   });
-  if (smoothed.every((value) => value === 0)) return periods;
+  if (smoothed.every((value) => value === 0)) return { periods, confirmed: null };
   const corrected = new Float64Array(frames);
+  const confirmed = new Uint8Array(frames);
   for (let n = 0; n < frames; n++) {
     const w = Math.min(starts.length - 1, Math.max(0, Math.round((n - window / 2) / hop)));
     corrected[n] = periods[n]! / candidates[smoothed[w]!]!;
+    confirmed[n] = smoothed[w]! > 0 ? 1 : 0;
   }
-  return corrected;
+  return { periods: corrected, confirmed };
+}
+
+/**
+ * One tempo for a single track: sections at half, 2/3, 3/2 or double the main tempo are brought
+ * to it (a drum & bass track read at 119 BPM in its breaks and at 178 elsewhere is at 178
+ * throughout). The main tempo is the one the snares confirmed where they did (see
+ * {@link checkBackbeat}), else the one most of the track has. Returns `periods` when nothing
+ * changes.
+ */
+function unifyTempo(
+  periods: Float64Array,
+  confirmed: Uint8Array | null,
+  active: Uint8Array,
+  frameRate: number,
+): Float64Array {
+  const frames = periods.length;
+  // A histogram of the tempo in bins of 1/100 octave, over the frames with sound (or over the
+  // confirmed ones, where there are enough).
+  const bins = new Float64Array(400);
+  const binOf = (period: number) => Math.round(100 * Math.log2((60 * frameRate) / period / 30));
+  let confirmedCount = 0;
+  let activeCount = 0;
+  for (let n = 0; n < frames; n++) {
+    if (!active[n]) continue;
+    activeCount++;
+    if (confirmed?.[n]) confirmedCount++;
+  }
+  const useConfirmed = confirmed !== null && confirmedCount >= 0.05 * activeCount;
+  for (let n = 0; n < frames; n++) {
+    if (!active[n] || (useConfirmed && !confirmed[n])) continue;
+    const bin = binOf(periods[n]!);
+    if (bin >= 0 && bin < bins.length) bins[bin]!++;
+  }
+  let best = -1;
+  let bestWeight = 0;
+  for (let b = 0; b < bins.length; b++) {
+    let weight = 0;
+    for (let d = -2; d <= 2; d++) weight += bins[b + d] ?? 0;
+    if (weight > bestWeight) {
+      bestWeight = weight;
+      best = b;
+    }
+  }
+  if (best < 0) return periods;
+  const main = 30 * 2 ** (best / 100);
+  let changed = false;
+  const unified = periods.slice();
+  for (let n = 0; n < frames; n++) {
+    const ratio = (60 * frameRate) / periods[n]! / main;
+    for (const factor of RELATED_FACTORS) {
+      if (Math.abs(Math.log(ratio / factor)) < Math.log(SAME_TEMPO)) {
+        unified[n] = periods[n]! * factor;
+        changed = true;
+        break;
+      }
+    }
+  }
+  return changed ? unified : periods;
+}
+
+/**
+ * A straight grid for a track with a fixed tempo, or null: the period and phase on which most
+ * of the sure beats lie (the phase coherence of the beats, searched near their typical interval,
+ * then a least-squares fit to the beats on it), if enough of them lie on it closely. Beats the
+ * tracker missed, added or put on the offbeat for a while (the drums of a section stress it)
+ * do not count against the rest. The straight grid spans the beats found.
+ */
+function straightGrid(beats: Float64Array, confidence: Float32Array): Float64Array | null {
+  const count = beats.length;
+  const sure: number[] = [];
+  for (let k = 0; k < count; k++) if (confidence[k]! >= STEADY_CONFIDENCE) sure.push(k);
+  if (sure.length < STEADY_MIN_BEATS) return null;
+  const intervals: number[] = [];
+  for (let j = 1; j < sure.length; j++) {
+    if (sure[j]! === sure[j - 1]! + 1) intervals.push(beats[sure[j]!]! - beats[sure[j - 1]!]!);
+  }
+  if (intervals.length < STEADY_MIN_BEATS) return null;
+  const guess = median(intervals);
+  // The grid through most sure beats: for periods near the guess, in steps finer than the width
+  // of a match (a period divided by the beats spanned), the phase with the most beats near it.
+  const spanned = (beats[sure[sure.length - 1]!]! - beats[sure[0]!]!) / guess;
+  const step = guess / Math.max(1, spanned) / 8;
+  const bins = new Int32Array(PHASE_BINS);
+  const reach = Math.round(STEADY_TOLERANCE * PHASE_BINS);
+  let best = { period: guess, phase: 0, count: -1 };
+  for (
+    let period = guess * (1 - STEADY_SEARCH);
+    period <= guess * (1 + STEADY_SEARCH);
+    period += step
+  ) {
+    bins.fill(0);
+    for (const k of sure) {
+      const position = beats[k]! / period;
+      bins[Math.floor((position - Math.floor(position)) * PHASE_BINS) % PHASE_BINS]!++;
+    }
+    for (let b = 0; b < PHASE_BINS; b++) {
+      let near = 0;
+      for (let d = -reach; d <= reach; d++) near += bins[(b + d + PHASE_BINS) % PHASE_BINS]!;
+      if (near > best.count) best = { period, phase: (b + 0.5) / PHASE_BINS, count: near };
+    }
+  }
+  let period = best.period;
+  let offset = best.phase * period;
+  // The beats on the grid, then the line through them (twice, as the grid settles).
+  const onGrid = () =>
+    sure.filter((k) => {
+      const position = (beats[k]! - offset) / period;
+      return Math.abs(position - Math.round(position)) < STEADY_TOLERANCE;
+    });
+  let use = onGrid();
+  for (let pass = 0; pass < 2 && use.length >= STEADY_MIN_BEATS; pass++) {
+    const index = use.map((k) => Math.round((beats[k]! - offset) / period));
+    const fit = lineFit(
+      index,
+      use.map((k) => beats[k]!),
+    );
+    period = fit.period;
+    offset = fit.offset;
+    use = onGrid();
+  }
+  let squares = 0;
+  for (const k of use) {
+    const position = (beats[k]! - offset) / period;
+    squares += (position - Math.round(position)) ** 2;
+  }
+  const spread = Math.sqrt(squares / Math.max(1, use.length));
+  if (use.length < Math.max(STEADY_MIN_BEATS, STEADY_SHARE * sure.length)) return null;
+  if (spread > STEADY_SPREAD) return null;
+  const first = Math.round((beats[0]! - offset) / period);
+  const last = Math.round((beats[count - 1]! - offset) / period);
+  const straight = new Float64Array(Math.max(0, last - first + 1));
+  for (let m = first; m <= last; m++) straight[m - first] = offset + period * m;
+  return straight;
+}
+
+/** The least-squares line y = offset + period · x. */
+function lineFit(x: number[], y: number[]): { offset: number; period: number } {
+  const n = x.length;
+  let sx = 0;
+  let sy = 0;
+  for (let i = 0; i < n; i++) {
+    sx += x[i]!;
+    sy += y[i]!;
+  }
+  const mx = sx / n;
+  const my = sy / n;
+  let sxy = 0;
+  let sxx = 0;
+  for (let i = 0; i < n; i++) {
+    sxy += (x[i]! - mx) * (y[i]! - my);
+    sxx += (x[i]! - mx) ** 2;
+  }
+  const period = sxx > 0 ? sxy / sxx : 0;
+  return { offset: my - period * mx, period };
 }
 
 /** Sub-frame position of the onset peak near frame `t` (parabolic interpolation). */
