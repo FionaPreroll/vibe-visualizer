@@ -4,6 +4,8 @@ The app calls itself **FibeStation**; double-click the name in the top bar to gi
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
+![FibeStation playing a track: the Logo Spectrum, the queue with the tempo, the detail waveform with the beat grid, and the hot cues](docs/screenshots/logo-spectrum.jpg)
+
 > **Status:** P1, P2, P3 and P5 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, the video export (whole tracks or clips, in segments that survive a crash), live input from audio devices and other apps, tempo (vinyl and key lock) and effects (DJ filter, delay, reverb, one-click "Slowed + Reverb", "Sped up" and "Nightcore"), waveforms and hot cues, a beat grid for files, gapless playback with shuffle and repeat, folders, a queue that survives reloads, A/V sync calibration and a shortcut overview, and a usability pass (play ranges, snapping to the beat, undo, bars and tempo correction in the beat grid, two waveform styles, one tempo and a straight grid per track, tempo ranges, grid correction by hand). Next: P4 (more scenes and video polish).
 > Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md) · [audio analysis](docs/ANALYSIS.md)
 
@@ -16,6 +18,16 @@ Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and 
 - **Private:** everything runs in the browser; no server, no uploads.
 
 **How to use it:** see the [user guide](docs/USER-GUIDE.md). The same guide opens in the app: click **?** in the top bar (or press ? for the keyboard shortcuts).
+
+## Screenshots
+
+| | |
+|---|---|
+| ![The Kaleidoscope's Vortex scene](docs/screenshots/kaleidoscope.jpg) *Kaleidoscope:* the Vortex scene | ![A 9:16 frame with its safe areas, and the Visuals tab](docs/screenshots/tiktok.jpg) *9:16 for TikTok,* with the safe areas and the Visuals tab |
+| ![The tempo menu of a track](docs/screenshots/tempo-menu.jpg) *Tempo:* double, halve, hold, type or tap it | ![The export dialog](docs/screenshots/export.jpg) *Export:* YouTube, 4K or TikTok, a track or a clip |
+| ![The welcome at the first start](docs/screenshots/welcome.jpg) *The welcome* at the first start | |
+
+The screenshots are taken in the app with a synthetic track (`pnpm screenshots`). On GitHub, the *Screenshots* workflow (Actions → Screenshots → Run workflow) takes them again and commits them to the branch it runs on.
 
 ## Run it locally
 
@@ -52,6 +64,7 @@ Run the spikes, click **Copy report** and paste the report into the chat.
 | `pnpm lint`, `pnpm format` | ESLint, Prettier |
 | `pnpm test` | Unit tests (Vitest) |
 | `pnpm test:e2e` | End-to-end tests (Playwright); run the spikes in quick mode |
+| `pnpm screenshots` | The README screenshots (docs/screenshots), taken in the app while a synthetic track plays |
 | `pnpm eval:drums` | Drum detection, beat tracking and beat grid scores on real recordings (needs the MDB Drums dataset), and the beat grid on your own electronic tracks (`EDM_DIR`); see [ANALYSIS.md](docs/ANALYSIS.md#5-evaluation) |
 
 ## Hosting
@@ -73,5 +86,8 @@ src/spikes/     Spike Lab and the P0 prototypes
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core
 tests/e2e/      Playwright tests
 tests/eval/     analysis evaluation on real recordings
-docs/           user guide (also the in-app help), feature list, tech stack, audio analysis
+tests/screenshots/
+                the README screenshots (pnpm screenshots)
+docs/           user guide (also the in-app help), feature list, tech stack, audio analysis,
+                screenshots
 ```

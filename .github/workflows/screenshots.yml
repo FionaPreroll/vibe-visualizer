@@ -1,0 +1,54 @@
+name: Screenshots
+
+# Takes the README screenshots again (docs/screenshots, from tests/screenshots) and commits them
+# to the branch it runs on. Run it by hand after changes worth showing: Actions → Screenshots →
+# Run workflow, and pick the branch.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Take the screenshots
+        run: |
+          # Google Chrome (on the runner image) encodes H.264 like most users' browsers, so the
+          # export dialog shows an MP4 export; Playwright's Chromium would show WebM.
+          if command -v google-chrome > /dev/null; then export PW_CHANNEL=chrome; fi
+          pnpm screenshots
+      - name: Keep the screenshots and the traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: |
+            docs/screenshots
+            test-results
+          if-no-files-found: ignore
+      - name: Commit the screenshots
+        if: github.ref_type == 'branch'
+        run: |
+          git add docs/screenshots
+          if git diff --cached --quiet; then
+            echo "The screenshots have not changed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update the screenshots"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
