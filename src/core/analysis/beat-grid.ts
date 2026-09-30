@@ -23,14 +23,15 @@
  *    close to the local period. Accents (kicks and drum bodies) count extra, so beats land on
  *    the kicks rather than on the offbeat hi-hats.
  * 5. Each beat gets a confidence: how much stronger the onsets are on the beats than around them.
- * 6. A single track whose sure beats lie on one straight grid gets that grid instead: produced
- *    music has a fixed tempo, and the straight grid holds through breaks and stretches where the
- *    beats of step 4 stumble or follow the offbeat.
+ * 6. A single track with one tempo throughout, whose sure beats lie on one straight grid, gets
+ *    that grid instead: produced music has a fixed tempo, and the straight grid holds through
+ *    breaks and stretches where the beats of step 4 stumble or follow the offbeat.
  * 7. The bars: which beat of its bar each beat is, from the changes of harmony and the drums
  *    ({@link findBars}).
  */
 
 import { findBars } from './bars';
+import { tempoSections } from './tempo-sections';
 
 export interface OnsetFeatures {
   /** Analysis frames per second. */
@@ -203,7 +204,8 @@ export function computeBeatGrid(features: OnsetFeatures, options: BeatGridOption
   }
   const confidence = confidences(score, beatFrames, features.active);
   // A fixed tempo: one straight grid instead of beats that follow every onset.
-  const straight = single ? straightGrid(beats, confidence) : null;
+  const steady = single && tempoSections({ beats, confidence }).length === 1;
+  const straight = steady ? straightGrid(beats, confidence) : null;
   if (straight) {
     const straightFrames = Array.from(straight, (time) =>
       Math.max(0, Math.min(frames - 1, Math.round((time + features.delay) * frameRate) - 1)),

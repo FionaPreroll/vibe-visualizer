@@ -3,7 +3,8 @@ import { createPrng } from '../util/prng';
 import { beatBefore, computeBeatGrid, nearestBeat, type OnsetFeatures } from './beat-grid';
 import { detectHits } from './eval/evaluate';
 import { createPattern } from './eval/patterns';
-import { gridTempo, tempoSections } from './grid-beats';
+import { gridTempo } from './grid-beats';
+import { tempoSections } from './tempo-sections';
 
 const FRAME_RATE = 48000 / 512;
 

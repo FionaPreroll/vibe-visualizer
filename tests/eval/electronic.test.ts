@@ -9,7 +9,8 @@ import {
   type TempoRangeId,
 } from '../../src/core/analysis/beat-grid';
 import { detectHits } from '../../src/core/analysis/eval/evaluate';
-import { gridTempo, tempoSections } from '../../src/core/analysis/grid-beats';
+import { gridTempo } from '../../src/core/analysis/grid-beats';
+import { tempoSections } from '../../src/core/analysis/tempo-sections';
 import { readWav } from './wav-reader';
 
 /**
