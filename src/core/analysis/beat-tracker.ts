@@ -15,15 +15,27 @@
  *   moves by half a beat.
  * - Known tempo changes (the player's tempo fader): {@link scaleTempo} re-times the history as
  *   if it had been played at the new tempo, so the beat is kept instead of found again.
+ * - A tempo range ({@link setRange}): the range of the analysis (AN-12), or a narrow one around
+ *   a tempo the user gave for the live input (TMP-06). The candidates for the widest range are
+ *   there from the start; a range only chooses the ones in use, so changing it allocates nothing.
  *
  * Allocation-free after construction: safe to run in the AudioWorklet.
  */
 
-const MIN_BPM = 75;
-const MAX_BPM = 180;
-const PRIOR_BPM = 120;
-/** Width of the tempo preference, in octaves. */
-const PRIOR_OCTAVES = 0.9;
+/** Tempos the tracker looks for, and its preference among them. */
+export interface TrackerRange {
+  min: number;
+  max: number;
+  prior: number;
+  /** Width of the preference, in octaves. */
+  octaves: number;
+}
+
+/** The range without another one set: 75–180 BPM, around 120. */
+const DEFAULT_RANGE: TrackerRange = { min: 75, max: 180, prior: 120, octaves: 0.9 };
+/** The widest range the tracker can be set to. */
+const LOWEST_BPM = 50;
+const HIGHEST_BPM = 250;
 /** Seconds of onset strength used for tempo estimation. */
 const TEMPO_WINDOW_SECONDS = 5.5;
 /** Tempo is re-estimated every this many frames. */
@@ -53,7 +65,7 @@ export class BeatTracker {
   /** Beats are reported this many frames before the onset strength peaks. */
   readonly lead: number;
   /** Tempo in beats per minute. */
-  bpm = PRIOR_BPM;
+  bpm = DEFAULT_RANGE.prior;
   /** Beat period in frames. */
   period: number;
   /** 0…1: how clearly the onsets follow the beat; 0 in silence. */
@@ -73,8 +85,12 @@ export class BeatTracker {
   private readonly future: Float64Array;
   /** Scratch space for {@link scaleTempo}. */
   private readonly scratch: Float64Array;
-  private readonly minPeriod: number;
-  private readonly maxPeriod: number;
+  /** The range in use: its candidates (first to last) and periods (frames). */
+  private range = DEFAULT_RANGE;
+  private first = 0;
+  private last = 0;
+  private minPeriod = 0;
+  private maxPeriod = 0;
   private readonly beatFrames = new Float64Array(PHASE_CHECK_BEATS).fill(-1);
   private beatCount = 0;
   /** Frames processed so far. */
@@ -95,11 +111,13 @@ export class BeatTracker {
   constructor(frameRate: number, lead = 0) {
     this.frameRate = frameRate;
     this.lead = lead;
-    this.period = (60 * frameRate) / PRIOR_BPM;
-    const maxPeriod = (60 * frameRate) / MIN_BPM;
-    const minPeriod = (60 * frameRate) / MAX_BPM;
-    this.maxPeriod = maxPeriod;
-    this.minPeriod = minPeriod;
+    this.period = (60 * frameRate) / DEFAULT_RANGE.prior;
+    const maxPeriod = (60 * frameRate) / LOWEST_BPM;
+    // The candidates are spaced from the fastest tempo of the default range, so that range has
+    // the same candidates as a tracker made for it alone.
+    const defaultMin = (60 * frameRate) / DEFAULT_RANGE.max;
+    const lowest = (60 * frameRate) / HIGHEST_BPM;
+    const minPeriod = defaultMin - Math.floor((defaultMin - lowest) / PERIOD_STEP) * PERIOD_STEP;
     // Enough history for the tempo window and for the offbeat check.
     const history = Math.max(TEMPO_WINDOW_SECONDS * frameRate, (PHASE_CHECK_BEATS + 2) * maxPeriod);
     const length = 2 ** Math.ceil(Math.log2(history));
@@ -110,11 +128,8 @@ export class BeatTracker {
     this.autocorrelation = new Float64Array(Math.ceil(4 * maxPeriod) + 2);
     const count = Math.floor((maxPeriod - minPeriod) / PERIOD_STEP) + 1;
     this.periods = Float64Array.from({ length: count }, (_, i) => minPeriod + i * PERIOD_STEP);
-    this.prior = this.periods.map((period) => {
-      const octaves = Math.log2((60 * frameRate) / period / PRIOR_BPM) / PRIOR_OCTAVES;
-      return Math.exp(-0.5 * octaves * octaves);
-    });
-    this.state = new Float64Array(count).fill(1 / count);
+    this.prior = new Float64Array(count);
+    this.state = new Float64Array(count);
     this.nextState = new Float64Array(count);
     this.transition = new Float64Array(count * count);
     for (let i = 0; i < count; i++) {
@@ -125,6 +140,51 @@ export class BeatTracker {
     }
     this.future = new Float64Array(Math.ceil(maxPeriod) + 2);
     this.scratch = new Float64Array(length);
+    this.setRange(null);
+  }
+
+  /**
+   * Looks for the tempo within `range` from now on (null: 75–180 BPM around 120), limited to
+   * 50–250 BPM. The tempo found so far stays where it lies within the range; otherwise the
+   * tracker starts from the one closest to it, an octave up or down.
+   */
+  setRange(range: TrackerRange | null): void {
+    const wanted = range ?? DEFAULT_RANGE;
+    const periods = this.periods;
+    const count = periods.length;
+    const toPeriod = (bpm: number) => (60 * this.frameRate) / bpm;
+    const index = (period: number) => (period - periods[0]!) / PERIOD_STEP;
+    this.first = Math.max(0, Math.min(count - 1, Math.ceil(index(toPeriod(wanted.max)) - 1e-9)));
+    this.last = Math.max(this.first, Math.min(count - 1, Math.floor(index(toPeriod(wanted.min)))));
+    this.minPeriod = periods[this.first]!;
+    this.maxPeriod = periods[this.last]!;
+    this.range = wanted;
+    let total = 0;
+    for (let i = 0; i < count; i++) {
+      const inRange = i >= this.first && i <= this.last;
+      const octaves =
+        Math.log2((60 * this.frameRate) / periods[i]! / wanted.prior) / wanted.octaves;
+      this.prior[i] = inRange ? Math.exp(-0.5 * octaves * octaves) : 0;
+      if (!inRange) this.state[i] = 0;
+      total += this.state[i]!;
+    }
+    const used = this.last - this.first + 1;
+    for (let i = this.first; i <= this.last; i++) {
+      this.state[i] = total > 1e-12 ? this.state[i]! / total : 1 / used;
+    }
+    this.setPeriod(this.period);
+  }
+
+  /** Sets the period, brought into the range by octaves (or to its edge). */
+  private setPeriod(period: number): void {
+    let value = period;
+    for (let step = 0; step < 8; step++) {
+      if (value < this.minPeriod) value *= 2;
+      else if (value > this.maxPeriod) value /= 2;
+      else break;
+    }
+    this.period = Math.max(this.minPeriod, Math.min(this.maxPeriod, value));
+    this.bpm = (60 * this.frameRate) / this.period;
   }
 
   /** The reported time, in frames: the last processed frame plus the lead. */
@@ -295,7 +355,8 @@ export class BeatTracker {
       previous = current;
     }
     const acf = this.autocorrelation;
-    for (let lag = 0; lag < acf.length; lag++) {
+    const lags = Math.min(acf.length, Math.ceil(4 * this.maxPeriod) + 2);
+    for (let lag = 0; lag < lags; lag++) {
       let sum = 0;
       for (let i = lag; i < length; i++) sum += this.detrended[i]! * this.detrended[i - lag]!;
       // Unbiased: compensates for the shrinking overlap.
@@ -306,29 +367,32 @@ export class BeatTracker {
     // Comb over the first four multiples of each period, times the tempo preference, then a
     // Viterbi-style step from the previous estimate.
     const periods = this.periods;
+    const first = this.first;
+    const last = this.last;
+    const used = last - first + 1;
     let total = 0;
-    for (let i = 0; i < periods.length; i++) {
+    for (let i = first; i <= last; i++) {
       let comb = 0;
-      for (let m = 1; m <= 4; m++) comb += interpolate(acf, periods[i]! * m) / acf[0]!;
+      for (let m = 1; m <= 4; m++) comb += interpolate(acf, periods[i]! * m, lags) / acf[0]!;
       const likelihood = Math.max(1e-6, comb) * this.prior[i]!;
       let best = 0;
       const row = i * periods.length;
-      for (let j = 0; j < periods.length; j++) {
+      for (let j = first; j <= last; j++) {
         const value = this.state[j]! * this.transition[row + j]!;
         if (value > best) best = value;
       }
-      this.nextState[i] = likelihood * (best + 1e-3 / periods.length);
+      this.nextState[i] = likelihood * (best + 1e-3 / used);
       total += this.nextState[i]!;
     }
-    let bestIndex = 0;
-    for (let i = 0; i < periods.length; i++) {
+    let bestIndex = first;
+    for (let i = first; i <= last; i++) {
       this.state[i] = this.nextState[i]! / total;
       if (this.state[i]! > this.state[bestIndex]!) bestIndex = i;
     }
     // Refine between neighbouring candidates (parabolic interpolation).
-    const left = this.state[Math.max(0, bestIndex - 1)]!;
+    const left = this.state[Math.max(first, bestIndex - 1)]!;
     const center = this.state[bestIndex]!;
-    const right = this.state[Math.min(periods.length - 1, bestIndex + 1)]!;
+    const right = this.state[Math.min(last, bestIndex + 1)]!;
     const curvature = left - 2 * center + right;
     const shift =
       curvature < 0 ? Math.max(-0.5, Math.min(0.5, (0.5 * (left - right)) / curvature)) : 0;
@@ -350,26 +414,23 @@ export class BeatTracker {
     }
     // The tempo candidates: the probability of period p moves to p / factor.
     const periods = this.periods;
-    const count = periods.length;
+    const first = this.first;
+    const last = this.last;
     let total = 0;
-    for (let i = 0; i < count; i++) {
-      const old = (periods[i]! * factor - this.minPeriod) / PERIOD_STEP;
+    for (let i = first; i <= last; i++) {
+      const old = (periods[i]! * factor - periods[0]!) / PERIOD_STEP;
       const index = Math.floor(old);
       const t = old - index;
-      const a = index >= 0 && index < count ? this.state[index]! : 0;
-      const b = index + 1 >= 0 && index + 1 < count ? this.state[index + 1]! : 0;
+      const a = index >= first && index <= last ? this.state[index]! : 0;
+      const b = index + 1 >= first && index + 1 <= last ? this.state[index + 1]! : 0;
       this.nextState[i] = a + (b - a) * t;
       total += this.nextState[i]!;
     }
-    for (let i = 0; i < count; i++) {
-      this.state[i] = total > 0 ? this.nextState[i]! / total : 1 / count;
+    for (let i = first; i <= last; i++) {
+      this.state[i] = total > 0 ? this.nextState[i]! / total : 1 / (last - first + 1);
     }
     // A tempo outside the tracked range continues at double or half speed.
-    let period = this.period / factor;
-    while (period < this.minPeriod) period *= 2;
-    while (period > this.maxPeriod) period /= 2;
-    this.period = period;
-    this.bpm = (60 * this.frameRate) / period;
+    this.setPeriod(this.period / factor);
     // Beats keep their place relative to now.
     this.lastBeat = Math.round(newest - (newest - this.lastBeat) / factor);
     if (this.nextBeat >= 0) this.nextBeat = Math.round(newest + (this.nextBeat - newest) / factor);
@@ -397,15 +458,15 @@ export class BeatTracker {
     this.onsets.fill(0);
     this.accents.fill(0);
     this.cumulative.fill(0);
-    this.state.fill(1 / this.state.length);
+    this.state.fill(0);
     this.beatFrames.fill(-1);
     this.beatCount = 0;
     this.frame = 0;
     this.lastBeat = 0;
     this.nextBeat = -1;
     this.predicted = false;
-    this.period = (60 * this.frameRate) / PRIOR_BPM;
-    this.bpm = PRIOR_BPM;
+    this.period = (60 * this.frameRate) / this.range.prior;
+    this.setRange(this.range);
     this.confidence = 0;
     this.rawConfidence = 0;
     this.onBeatStrength = 0;
@@ -416,9 +477,10 @@ export class BeatTracker {
   }
 }
 
-function interpolate(values: Float64Array, position: number): number {
+/** The value at a fractional `position`, of the first `length` values. */
+function interpolate(values: Float64Array, position: number, length = values.length): number {
   const index = Math.floor(position);
-  if (index + 1 >= values.length) return 0;
+  if (index + 1 >= length) return 0;
   const t = position - index;
   return values[index]! * (1 - t) + values[index + 1]! * t;
 }

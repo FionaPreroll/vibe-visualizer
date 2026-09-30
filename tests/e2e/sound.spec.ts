@@ -5,7 +5,7 @@ import { createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('vibe-visualizer:photosensitivity-ack', '1');
+    localStorage.setItem('vibe-visualizer:welcome:v1', '1');
     // Headless browsers cannot show the save dialog: the video is downloaded at the end.
     delete (window as { showSaveFilePicker?: unknown }).showSaveFilePicker;
   });

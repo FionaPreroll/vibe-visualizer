@@ -6,40 +6,54 @@
   import { Player } from '../core/player/player';
   import { VisualAssets } from '../core/render/visual-assets';
   import AnalysisView from './AnalysisView.svelte';
+  import { renderDefaultLogo } from './default-logo';
   import DetailWaveform from './DetailWaveform.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import ExportDialog from './ExportDialog.svelte';
+  import HelpDialog from './HelpDialog.svelte';
   import LivePanel from './LivePanel.svelte';
   import { provideExporter } from './exporter-context';
   import Icon from './Icon.svelte';
-  import PhotosensitivityNotice from './PhotosensitivityNotice.svelte';
   import { providePlayer } from './player-context';
   import QueuePanel from './QueuePanel.svelte';
-  import ShortcutHelp from './ShortcutHelp.svelte';
   import { nextVisualMode, stepPreset } from './shortcuts';
   import SoundPanel from './SoundPanel.svelte';
   import TopBar from './TopBar.svelte';
   import TransportBar from './TransportBar.svelte';
   import VisualsPanel from './VisualsPanel.svelte';
   import VisualStage from './VisualStage.svelte';
+  import WelcomeIntro from './WelcomeIntro.svelte';
   import { provideAssets } from './visuals-context';
 
   const player = new Player();
   providePlayer(player);
-  provideAssets(new VisualAssets());
+  const assets = new VisualAssets();
+  provideAssets(assets);
   const exporter = new Exporter();
   provideExporter(exporter);
   const app = player.store;
   let exportOpen = $state(false);
   let helpOpen = $state(false);
+  /** The help's section: where it was left, or the shortcuts for "?". */
+  let helpSection = $state('getting-started');
+  let welcomeOpen = $state(false);
   let stage: HTMLElement;
   /** In fullscreen, the mouse cursor hides after a moment without movement (DS-01). */
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // The name the user gave the app shows in the window title too.
+  // The name the user gave the app shows in the window title too, and in the default logo.
   $effect(() => {
     document.title = $app.settings.appName;
+  });
+  $effect(() => {
+    let current = true;
+    void renderDefaultLogo($app.settings.appName).then((blob) => {
+      if (current) assets.setDefaultLogo(blob);
+    });
+    return () => {
+      current = false;
+    };
   });
 
   onDestroy(() => {
@@ -181,6 +195,7 @@
           stepPreset(player, 1);
           break;
         case '?':
+          helpSection = 'keyboard-shortcuts';
           helpOpen = true;
           break;
         // In/out markers of the export range (TR-09); with Shift they are cleared.
@@ -271,10 +286,12 @@
       />
     {/if}
     {#if $app.tracks.length === 0 && $app.live.status === 'off'}
-      <div class="welcome">
-        <h1>Drop your music here</h1>
-        <p>MP3, M4A, FLAC, Ogg, Opus or WAV. Several files make a queue.</p>
-        <p>Or visualise music from another app or device: see the Live tab.</p>
+      <div class="welcome" data-testid="empty-hint">
+        <div class="card">
+          <h1>Drop your music here</h1>
+          <p>MP3, M4A, FLAC, Ogg, Opus or WAV. Several files make a queue.</p>
+          <p>Or visualise music from another app or device: see the Live tab.</p>
+        </div>
       </div>
     {/if}
     <div class="notes">
@@ -363,9 +380,20 @@
   {/if}
   <TransportBar />
   <ExportDialog open={exportOpen} onclose={() => (exportOpen = false)} />
-  <ShortcutHelp open={helpOpen} onclose={() => (helpOpen = false)} />
+  <HelpDialog
+    open={helpOpen}
+    bind:section={helpSection}
+    onclose={() => (helpOpen = false)}
+    onwelcome={() => (welcomeOpen = true)}
+  />
   <DropOverlay />
-  <PhotosensitivityNotice />
+  <WelcomeIntro
+    bind:open={welcomeOpen}
+    onhelp={() => {
+      helpSection = 'getting-started';
+      helpOpen = true;
+    }}
+  />
 </div>
 
 <style>
@@ -441,19 +469,29 @@
     min-height: 0;
     overflow: auto;
   }
+  /* Below the logo, on a card of its own, so neither covers the other. */
   .welcome {
     position: absolute;
-    inset: 0;
+    left: 0;
+    right: 0;
+    bottom: max(7%, 64px);
     display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
-    text-align: center;
     pointer-events: none;
   }
+  .welcome .card {
+    max-width: min(560px, calc(100% - 32px));
+    padding: 14px 24px 16px;
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    border-radius: 14px;
+    background: rgb(11 11 18 / 0.72);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+    text-align: center;
+  }
   .welcome h1 {
-    margin: 0 0 8px;
-    font-size: 32px;
+    margin: 0 0 6px;
+    font-size: 26px;
   }
   .welcome p {
     margin: 0;

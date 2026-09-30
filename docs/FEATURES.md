@@ -1,6 +1,6 @@
 # Vibe Visualizer — Feature List
 
-> **Status:** v0.12 (2026-09-30). The answers to Q1–Q16 are applied (see [§8 Decision log](#8-decision-log)), and the P0 spikes passed on the main target machine. The tech stack is in [TECH-STACK.md](TECH-STACK.md); drum detection and beat tracking are described in [ANALYSIS.md](ANALYSIS.md).
+> **Status:** v0.13 (2026-09-30). The answers to Q1–Q17 are applied (see [§8 Decision log](#8-decision-log)), and the P0 spikes passed on the main target machine; Q18 (DJ controllers) is open. The tech stack is in [TECH-STACK.md](TECH-STACK.md); drum detection and beat tracking are described in [ANALYSIS.md](ANALYSIS.md); the controller proposal is in [CONTROLLERS.md](CONTROLLERS.md).
 
 ## How to use this document
 
@@ -99,8 +99,9 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | FX-06* | S | DJ filter: one knob from low-pass through neutral to high-pass, with resonance (Q8) |
 | FX-07* | C | Custom reverb impulse responses (upload a WAV) |
 | FX-08* | C | Loudness normalisation between tracks (ReplayGain-like) |
-| FX-09* | C | More FX: 3-band EQ with kills, flanger/phaser, bitcrusher |
+| FX-09* | C | More FX: flanger/phaser, bitcrusher (the 3-band EQ became FX-11) |
 | FX-10* | M | One-click presets for popular edits: "Slowed + Reverb", "Sped up", "Nightcore". They set tempo mode, rate and FX, and everything stays adjustable (Q15) |
+| FX-11* | L | 3-band EQ with kills (an isolator, as on a DJ mixer), live and in the export; for DJ controllers (CTL-02, Q18) |
 
 ### 3.6 Live input (IN)
 
@@ -110,7 +111,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | IN-02 | S | Audio from other apps: tab/system audio via the browser's screen-share dialog where supported; in-app help for virtual audio devices (e.g. BlackHole, VB-Cable, PipeWire) |
 | IN-03* | S | Input gain and level meter |
 | IN-04* | S | Monitoring (hearing the input through the app) is off by default to avoid feedback loops; it can be switched on |
-| IN-05* | C | Tap tempo / manual BPM for beat-synced effects |
+| IN-05* | S | Tempo of the live input: double, halve, hold, type or tap it, as for a track; the live beat tracking keeps within ±20 % of it until set back to automatic. The tempo range (AN-12) applies to live input too |
 | IN-06* | L | Record the input as a track, so it can be cued, played back and rendered offline |
 
 ### 3.7 Audio analysis (AN): what drives the visuals
@@ -191,7 +192,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 
 | ID | Prio | Feature |
 |---|---|---|
-| LS-12 | M | Logo upload (PNG/SVG/JPG/WebP) with a circular crop: pan and zoom inside the circle; neutral default logo |
+| LS-12 | M | Logo upload (PNG/SVG/JPG/WebP) with a circular crop: pan and zoom inside the circle. The default logo shows the app's name in a script font, drawn anew when the app is renamed |
 | LS-13 | M | Size, position, rim (width, colour), shadow/glow |
 | LS-14* | M | Bass pulse: the logo scales with the bass (amount, attack/release) |
 | LS-15* | S | Use the track's cover art as the logo (switches automatically per track) |
@@ -256,11 +257,13 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | UI-02 | M | Dark theme; UI language English |
 | UI-03* | M | Settings persist across reloads (mode, preset, FX, …) |
 | UI-04* | S | Keyboard shortcuts (space, arrows, 1–8 for cues, I/O for in/out, tempo, F for fullscreen, presets, …) with a help overlay |
-| UI-05* | L | MIDI controller support (knobs → parameters, pads → cues/FX) |
+| UI-05* | L | MIDI controller support: see [§3.16](#316-dj-controllers-ctl) (CTL) |
 | UI-06* | C | Project file: save/load everything (playlist, cues, presets, images) |
 | UI-07* | L | Installable app (PWA) that works offline |
 | UI-08* | S | Undo for removals and deletions (queue, cues, markers) |
 | UI-09* | S | The app's displayed name can be changed in the app (default "FibeStation") |
+| UI-10* | S | Welcome at the first start: what the app does in three steps, that it is a work in progress (with the address for bug reports), the advice for browser and graphics card, and the warning about flashing visuals; the help shows it again |
+| UI-11* | S | In-app help: the user guide by section (the same text as [USER-GUIDE.md](USER-GUIDE.md)), the keyboard shortcuts and a bug report; the ? in the top bar opens it, the ? key on the shortcuts |
 
 ### 3.15 Non-functional requirements (NF)
 
@@ -274,6 +277,20 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | NF-06 | M | Files up to 3 h (Q3): streamed decoding with bounded memory; waveform, analysis and beat grid are computed incrementally; stable over hours of use |
 | NF-07* | S | The UI is fully usable with the keyboard and has readable contrast |
 | NF-08* | M | Every state change is a timestamped action. This prepares recording and replaying live sessions later (EX-13, Q4) |
+
+### 3.16 DJ controllers (CTL)
+
+Proposed in [CONTROLLERS.md](CONTROLLERS.md); the priorities wait for Q18.
+
+| ID | Prio | Feature |
+|---|---|---|
+| CTL-01* | L | Controller library: Web MIDI, a profile per device, semantic controls and lights, pickup for knobs and faders; a separate package, free of the app |
+| CTL-02* | L | Pioneer DJ DDJ-FLX2: play/pause, cue, hot cues 1–8 with lights, HI/MID/LOW (FX-11), CFX → DJ filter, tempo slider, channel fader, jog wheel |
+| CTL-03* | L | Controllers section in the app (connect, show the controller) and a MIDI monitor in the Spike Lab (S6) for checking a device |
+| CTL-04* | L | MIDI learn for controllers without a profile; profiles saved, exported and imported |
+| CTL-05* | L | Visuals deck: the second deck controls the visuals (pads → presets, knobs → visual parameters, crossfader → a blend of two presets) |
+| CTL-06* | L | Sound through the controller's sound card; headphone pre-listening once there are two decks (PL-06) |
+| CTL-07* | L | HID controllers through WebHID |
 
 ## 4. Out of scope (for now)
 
@@ -293,7 +310,8 @@ Reordered after Q1: the export comes right after the core, because it is the mai
 | P1 Core | Play files and see both modes | SRC-01/02, PL-01–03, TR-01/02, AN-01–05, VE-01–05, KA-01/02, KA-05–08, LS-01, LS-05–09, LS-12–14, PR-01, DS-01, UI-01–03, NF-08. In three milestones: **M1** audio engine, queue, transport, analysis (done: SRC-01/02, PL-01–03, TR-01/02, AN-01–05, UI-01–03, NF-08; then analysis v2 with the live part of AN-07); **M2** Logo Spectrum (done: VE-01–03, VE-05, LS-01, LS-05–09, LS-12–14, PR-01, DS-01; ahead of plan: LS-10, most of LS-02 (blur, dimming), the bass zoom of LS-03, and LS-17); **M3** Kaleidoscope (done: KA-01, KA-02, KA-05–08, VE-04; ahead of plan: KA-03). **P1 is complete** |
 | P2 Export | Render a track or an in/out range to MP4 | EX-01–04, EX-05 (whole track, in/out), EX-06/07, EX-15, TR-09, VE-09. **Done**; since P3 M1, EX-02 includes tempo and effects |
 | P3 Player & FX | Cues, tempo, effects | TR-03–05, TR-08, TMP-01–04, FX-01–04, FX-06, FX-10, AN-06/07, PL-04/05, SRC-03–05, UI-04. In two milestones: **M1** tempo and effects (done: TMP-01–04, FX-01–04, FX-06, FX-10, and EX-02 with tempo and effects); **M2** cues and waveforms, queue and playlist, sync, beat grid and shortcut help (done: TR-03–05, TR-08, SRC-03–05, PL-04/05, AN-06/07, UI-04). **P3 is complete** |
-| UX (before P4) | Usability for making videos and for DJing | TR-06 (snapping), TR-09 (play range), UI-08/09, and for DJing downbeats, BPM correction, two waveform styles. In three parts: **A** play ranges, snapping, draggable markers, undo, soft jumps, the app's name (done); **B** downbeats and bar lines, BPM correction, fast genres, waveform styles (done: AN-11, TMP-06, TR-10); **C** one tempo per track, straight grids, tempo ranges, grid correction, tempo changes shown (done: AN-07 in part, AN-12, TMP-06 extended, TR-11; noted: AN-13, TMP-07) |
+| UX (before P4) | Usability for making videos and for DJing | TR-06 (snapping), TR-09 (play range), UI-08/09, and for DJing downbeats, BPM correction, two waveform styles. In four parts: **A** play ranges, snapping, draggable markers, undo, soft jumps, the app's name (done); **B** downbeats and bar lines, BPM correction, fast genres, waveform styles (done: AN-11, TMP-06, TR-10); **C** one tempo per track, straight grids, tempo ranges, grid correction, tempo changes shown (done: AN-07 in part, AN-12, TMP-06 extended, TR-11; noted: AN-13, TMP-07); **D** first look and help, the tempo of live input, a Firefox fix, README screenshots (done: IN-05, LS-12 default logo, UI-10, UI-11; proposed: CTL, Q18) |
+| Controllers (proposal) | The DDJ-FLX2 and a library for DJ controllers | CTL-01–03, FX-11; optional CTL-04/05. After Q18 |
 | P4 Visual depth & video polish | More scenes, presets, overlays, multi-track export | KA-03/04, LS-02/03, LS-10/11, LS-15, LS-17/18, PR-02–04, VE-06–08, EX-05 (multiple tracks, playlist), EX-09/10, EX-14 |
 | P5 Live input | Other apps / line-in | IN-01–04 (small, can be pulled forward). **Done**, pulled forward after P2 |
 | Afterwards | Picks from C/L | by agreement |
@@ -302,7 +320,7 @@ Frame-rate independence (VE-03), determinism (NF-05) and timestamped actions (NF
 
 ## 6. Open questions
 
-None right now. The next questions will come from the spike results on your machines.
+- **Q18 DJ controllers** ([CONTROLLERS.md](CONTROLLERS.md)): (a) When: next, before P4, or after P4? (b) Scope: the DDJ-FLX2 with the library (play/pause, cue, hot cues, EQ, CFX, tempo, volume, jog) and the 3-band EQ; MIDI learn (CTL-04) and the visuals deck (CTL-05) now or later? (c) Deck 2 of a one-deck app: the same as deck 1, or the visuals deck? (d) A Pro edition: basic support free with an open-source library (proposed), controllers only in Pro, or decide later?
 
 ## 7. Technical notes (constraints that shape features)
 
@@ -339,6 +357,7 @@ Details and library choices: [TECH-STACK.md](TECH-STACK.md).
 | 2026-09-29 | Q17 | A usability pass comes before P4. The in/out markers are the play range: the queue always moves on at the out marker. Both waveform styles (as now, and Rekordbox-style three bands) become selectable. An automatic beat-matched crossfade between queue tracks (PL-06, for DJ-style mixes) is postponed. The app shows the name "FibeStation" by default, and it can be renamed in the app; the project keeps its name |
 | 2026-09-25 | P0 | All spike criteria met on Chrome/macOS (Apple M3); the stack carries. Details in [TECH-STACK.md §5](TECH-STACK.md#5-spikes-p0) |
 | 2026-09-25 | P1 | Order: M1 engine and queue → M2 Logo Spectrum → M3 Kaleidoscope; one pull request into `main` per milestone. The engine runs at a fixed 48 kHz; files are converted in the media worker |
+| 2026-09-30 | UX D | First look, help, the tempo of live input and a Firefox fix done (IN-05, LS-12 default logo, UI-10, UI-11). The default logo shows the app's name in Pacifico (SIL Open Font License, bundled, so no font request leaves the app) with the app's gradient; it is drawn anew when the app is renamed and goes into exports like an uploaded logo. The default preset is Classic Rainbow with the Twitchy responsiveness (chosen over Twitchy Toxic). The photosensitivity notice became a welcome at the first start: three steps, a work in progress with the address for bug reports (kept in package.json), Chrome and a good graphics card recommended, and the warning about flashing visuals. The help shows the user guide by section from docs/USER-GUIDE.md, the same text as on GitHub, so it has one source. The BPM next to the LIVE badge corrects the tempo of live input like a track's: the live beat tracker keeps within ±20 % of the chosen tempo until set back to automatic, and the tempo range applies to it too. Its candidate tempos now span 50–250 BPM, of which a range uses a part; the default range is unchanged (live beat F1 on MDB Drums 79.0 % as before). Firefox: while one track played, another could not be read ("Error in input stream"); files are now read in slices there instead of through a stream reader (to be confirmed in Firefox). The README shows screenshots that a workflow takes anew when run by hand. For DJ controllers there is a proposal: the DDJ-FLX2 and a generic library ([CONTROLLERS.md](CONTROLLERS.md), Q18) |
 | 2026-09-30 | UX C | One tempo per track, straight grids, tempo ranges and grid correction done (AN-07 in part, AN-12, TMP-06 extended, TR-11). A single track (a file up to 15 minutes) keeps one tempo: stretches at half, 2/3, 3/4 of its main tempo or the inverse are brought to it (Pegasus 77 no longer switches between 178 and 119 BPM). A track with a fixed tempo gets a straight grid: the period and phase with the most sure beats within a tenth of a beat, if at least 70 % of them lie on it; stretches where the beats followed the offbeat no longer bend it. The analysis has a tempo range for all tracks, as in DJ software (automatic, 60–120, 90–150, 120–200 BPM). A new evaluation on electronic music, whose tracks stay local ([ANALYSIS.md](ANALYSIS.md#5-evaluation)): on four drum & bass tracks and one electronica track, the range 120–200 finds all five tempos with straight grids; the automatic range finds two, and reads the other three at 2/3 or half (their snares show no backbeat in the snare band). MDB Drums improves (beat grid F1 87.2 → 88.4 %, bars 342 → 358). The BPM menu can hold one of the tempos the grid has, take a tempo typed or tapped, and choose the tempo range. The detail waveform corrects the grid: beat 1 here, the bars a beat earlier or later, 5 ms (1 ms with Shift) earlier or later, Shift+drag; the correction is kept per file as a shift and a downbeat time, so it holds when the grid is computed anew. Where a grid changes tempo, the queue shows each tempo ("150 · 120") and the timeline marks the changes. The track "Hanomag (V2)" is listed at 86 BPM on Beatport, but its onsets repeat at 137.2 BPM (a sixteenth-note grid, no periodicity at 86); it is counted at 137 until checked by ear. Noted for later: a neural beat tracker (AN-13) and a tempo per section for mixes (TMP-07) |
 | 2026-09-30 | UX B | Bars, tempo correction, fast genres and waveform styles done (AN-11, TMP-06, TR-10). The beat grid checks its tempo against the snares: double or 3/2 of it wins where it puts them clearly on the second and fourth beat, so drum & bass and hardcore are no longer read at half (slower tempos are not tried: half-time and swing fool the check). Each beat gets its place in a bar of four, from the changes of harmony (a coarse spectrum kept every four frames) and from kick and snare, decoded over the whole track: right on all genre patterns, and on 342 of 493 downbeats of MDB Drums (16 of 23 tracks throughout; [ANALYSIS.md](ANALYSIS.md#4-beat-grid-for-files)). The BPM in the queue opens a menu to double, halve, × 1.5 or ÷ 1.5 the tempo, or to go back to the one found; the grid is computed anew around it from features the worker keeps in memory, and the tempo is kept per file. Waveforms in three bands (lows blue, mids orange, highs white, each band scaled to its own loud parts) are the new default; RGB stays selectable. The detail waveform draws bar lines. The bars are not yet in the export's analysis: visuals that follow the bars come with P4 |
 | 2026-09-29 | UX A | Play ranges, snapping, undo and the app's name done (TR-06 in part, TR-09, UI-08/09). The media worker decodes each file only from its in to its out marker and cuts there with a 10 ms equal-power crossfade into what follows (the next track from its in marker, or the same part again with repeat one); a start in the middle of the music without a cut before it fades in. File ends still join without any crossfade, so gapless albums stay intact. Moving the out marker while the track plays reaches the stream; if the stream has taken the audio beyond already, it restarts at the current position. Pause, resume and jumps no longer cut hard: the music fades out over 5 ms on pause and in on resume, and after a jump the old part plays on for 8 ms, fading out under the new one. Markers and cues snap to the nearest beat when set or dragged (only within half a beat, and only where the beat is clear; Q switches it off); the markers can be dragged on the timeline and in the detail waveform and moved by a beat with the arrow keys. Removing tracks, clearing the queue, deleting cues and clearing markers can be undone for 8 s. The Spike Lab link shows only on the development server |

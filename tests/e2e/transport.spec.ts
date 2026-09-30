@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createWav } from './wav';
 
-// The photosensitivity notice (tested in visuals.spec.ts) would cover the page.
+// The welcome (tested in visuals.spec.ts) would cover the page.
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('vibe-visualizer:photosensitivity-ack', '1'));
+  await page.addInitScript(() => localStorage.setItem('vibe-visualizer:welcome:v1', '1'));
 });
 
 function collectErrors(page: Page): string[] {

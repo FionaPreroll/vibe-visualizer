@@ -156,7 +156,7 @@
           : { mode: 'logoSpectrum', settings: $app.visuals },
       sound,
       grid: player.analysisOf(track)?.grid ?? null,
-      images: assets.current,
+      images: assets.shown,
       destination,
       fileName,
     });

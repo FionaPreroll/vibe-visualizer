@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { createPng } from './png';
 import { createWav } from './wav';
 
-const ACK = 'vibe-visualizer:photosensitivity-ack';
+const ACK = 'vibe-visualizer:welcome:v1';
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -14,11 +14,20 @@ async function acknowledge(page: Page) {
   await page.addInitScript((key) => localStorage.setItem(key, '1'), ACK);
 }
 
-test('first start warns about flashing visuals, once', async ({ page }) => {
+test('the first start shows the welcome, with the warning about flashing visuals, once', async ({
+  page,
+}) => {
   await page.goto('/');
-  const dialog = page.getByRole('dialog', { name: 'Flashing visuals' });
+  const dialog = page.getByTestId('welcome');
   await expect(dialog).toBeVisible();
-  await page.getByTestId('photosensitivity-ok').click();
+  await expect(dialog).toContainText('Flashing visuals');
+  await expect(dialog).toContainText('Work in progress');
+  // Bug reports go to the address in package.json.
+  await expect(page.getByTestId('welcome-bug-email')).toHaveAttribute(
+    'href',
+    /^mailto:fipreroll\+app@gmail\.com\?subject=/,
+  );
+  await page.getByTestId('welcome-start').click();
   await expect(dialog).toHaveCount(0);
   await page.reload();
   await expect(page.getByTestId('visual-stage')).toBeVisible();

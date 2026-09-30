@@ -76,7 +76,7 @@ export interface BeatGrid {
 }
 
 /** Tempos the grid looks for, and the preference among them. */
-interface TempoRange {
+export interface TempoRange {
   min: number;
   max: number;
   prior: number;
@@ -105,6 +105,11 @@ const HINT_SPREAD = 1.2;
 const HINT_OCTAVES = 0.1;
 /** Tempos the user can give, in BPM. */
 export const TEMPO_HINT_RANGE = { min: 40, max: 250 } as const;
+
+/** Where the grid, or the live beat tracking, looks for a tempo the user gave (TMP-06). */
+export function hintRange(bpm: number): TempoRange {
+  return { min: bpm / HINT_SPREAD, max: bpm * HINT_SPREAD, prior: bpm, octaves: HINT_OCTAVES };
+}
 const TEMPO_WINDOW_SECONDS = 10;
 const TEMPO_STEP_SECONDS = 0.5;
 /** Candidate periods are spaced this many frames apart. */
@@ -184,9 +189,7 @@ export function computeBeatGrid(features: OnsetFeatures, options: BeatGridOption
   const frameRate = features.frameRate;
   const hint = options.bpm ?? null;
   const rangeId = options.range ?? 'auto';
-  const range: TempoRange = hint
-    ? { min: hint / HINT_SPREAD, max: hint * HINT_SPREAD, prior: hint, octaves: HINT_OCTAVES }
-    : TEMPO_RANGES[rangeId];
+  const range: TempoRange = hint ? hintRange(hint) : TEMPO_RANGES[rangeId];
   let periods = tempoPath(onset, frameRate, range);
   // Only without a range or a tempo from the user: the snares may make the tempo faster.
   let confirmed: Uint8Array | null = null;

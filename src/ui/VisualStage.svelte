@@ -94,7 +94,8 @@
       background: undefined,
       logo: undefined,
     };
-    const unsubscribeAssets = assets.subscribe((images) => {
+    const unsubscribeAssets = assets.subscribe(() => {
+      const images = assets.shown;
       for (const kind of ['background', 'logo'] as const) {
         const image = images[kind];
         if (image === shown[kind]) continue;

@@ -3,30 +3,61 @@
     TEMPO_HINT_RANGE,
     TEMPO_RANGE_IDS,
     TEMPO_RANGES,
-    type BeatGrid,
     type TempoRangeId,
   } from '../core/analysis/beat-grid';
-  import { gridTempo } from '../core/analysis/grid-beats';
-  import { sectionTempos } from '../core/analysis/tempo-sections';
   import { sameTempo } from '../core/library/analysis-cache';
-  import type { Track } from '../core/state/app-state';
   import { usePlayer } from './player-context';
 
   /**
-   * The tempo of a queue entry, from its beat grid, with a menu to correct it (TMP-06): double,
-   * half, 3/2 or 2/3 of it for tracks the grid reads at a related tempo; one of the tempos the
-   * grid has for the whole track (a grid that changes tempo shows them all, as "178 · 119");
-   * a tempo typed or tapped; or back to the tempo the grid finds itself. At the bottom, the
-   * tempo range the grids of all tracks are found in (AN-12).
+   * A tempo badge with a menu to correct the tempo (TMP-06): double, half, 3/2 or 2/3 of it for
+   * music read at a related tempo; hold one of `tempos`; a tempo typed or tapped; or back to the
+   * tempo found. At the bottom, the tempo range the analysis looks in (AN-12). For a queue entry
+   * (TrackTempo) and for the live input (LiveTempo).
    */
-  let { track, grid, pending }: { track: Track; grid: BeatGrid; pending: boolean } = $props();
+  let {
+    tempo,
+    tempos,
+    manual,
+    pending = false,
+    warn = false,
+    label,
+    title,
+    name,
+    holdTitle,
+    testid,
+    onchoose,
+  }: {
+    /** The tempo found (0 while unknown). */
+    tempo: number;
+    /** Tempos to hold, the main one first. */
+    tempos: readonly number[];
+    /** The tempo set by hand, or null. */
+    manual: number | null;
+    /** The tempo is being found anew. */
+    pending?: boolean;
+    /** Something to look at (a grid that changes tempo). */
+    warn?: boolean;
+    label: string;
+    title: string;
+    /** What the tempo belongs to, for the menu's label. */
+    name: string;
+    /** What holding a tempo does. */
+    holdTitle: string;
+    testid: string;
+    onchoose: (bpm: number | null) => void;
+  } = $props();
 
   const player = usePlayer();
   const app = player.store;
   let open = $state(false);
   let button: HTMLButtonElement;
   let menu = $state<HTMLDivElement>();
-  let position = $state({ top: 0, right: 0 });
+  /** Where the menu opens: below the badge, or above it in the lower half of the window. */
+  let position = $state<{ top: number | null; bottom: number | null; right: number }>({
+    top: 0,
+    bottom: null,
+    right: 0,
+  });
   /** The tempo typed or tapped, as typed. */
   let typed = $state('');
   let taps: number[] = [];
@@ -51,20 +82,10 @@
     return `${TEMPO_RANGES[id].min}–${TEMPO_RANGES[id].max}`;
   }
 
-  const tempo = $derived(gridTempo(grid));
-  /** The grid's tempos, the main one first (more than one where the grid changes tempo). */
-  const tempos = $derived(tempo > 0 ? sectionTempos(grid).slice(0, 3) : []);
-  /** The tempo the choices start from: the one set, or the grid's. */
-  const base = $derived(track.tempo ?? tempo);
+  /** The tempo the choices start from: the one set, or the one found. */
+  const base = $derived(manual ?? tempo);
   const typedBpm = $derived(Number(typed.replace(',', '.')));
   const typedValid = $derived(typed.trim() !== '' && inRange(typedBpm));
-  const label = $derived(
-    tempo <= 0
-      ? '– BPM'
-      : tempos.length > 1
-        ? tempos.map((bpm) => bpm.toFixed(0)).join(' · ')
-        : `${tempo.toFixed(0)} BPM`,
-  );
 
   function inRange(bpm: number): boolean {
     return bpm >= TEMPO_HINT_RANGE.min && bpm <= TEMPO_HINT_RANGE.max;
@@ -73,7 +94,12 @@
   function toggle() {
     if (open) return close();
     const rect = button.getBoundingClientRect();
-    position = { top: rect.bottom + 4, right: window.innerWidth - rect.right };
+    const above = rect.top > window.innerHeight / 2;
+    position = {
+      top: above ? null : rect.bottom + 4,
+      bottom: above ? window.innerHeight - rect.top + 4 : null,
+      right: window.innerWidth - rect.right,
+    };
     typed = '';
     taps = [];
     open = true;
@@ -86,7 +112,7 @@
 
   /** Sets the tempo; from the keyboard (a click without a count), the badge keeps the focus. */
   function choose(bpm: number | null, event: MouseEvent | KeyboardEvent) {
-    player.setTempo(track.id, bpm);
+    onchoose(bpm);
     close();
     if (!(event instanceof MouseEvent) || event.detail === 0) button.focus();
   }
@@ -144,8 +170,8 @@
   <button
     bind:this={button}
     class="bpm"
-    class:manual={track.tempo !== null}
-    class:changes={tempos.length > 1}
+    class:manual={manual !== null}
+    class:changes={warn}
     class:pending
     onclick={(event) => {
       event.stopPropagation();
@@ -153,12 +179,8 @@
     }}
     aria-haspopup="menu"
     aria-expanded={open}
-    title={track.tempo !== null
-      ? 'Tempo set by hand: click to change'
-      : tempos.length > 1
-        ? `The beat grid changes tempo: ${tempos.map((bpm) => `${bpm.toFixed(0)} BPM`).join(', ')}. Click to correct`
-        : 'Correct the tempo'}
-    data-testid="queue-bpm"
+    {title}
+    data-testid={testid}
     data-pending={pending}
   >
     {label}
@@ -169,8 +191,9 @@
       class="menu"
       role="menu"
       tabindex="-1"
-      aria-label="Tempo of {track.title}"
-      style:top="{position.top}px"
+      aria-label="Tempo of {name}"
+      style:top={position.top === null ? null : `${position.top}px`}
+      style:bottom={position.bottom === null ? null : `${position.bottom}px`}
       style:right="{position.right}px"
       data-testid="tempo-menu"
     >
@@ -193,8 +216,8 @@
       {#each tempos as bpm, index (index)}
         <button
           role="menuitem"
-          disabled={!inRange(bpm) || sameTempo(track.tempo, Math.round(bpm * 100) / 100)}
-          title="The whole track at this tempo"
+          disabled={!inRange(bpm) || sameTempo(manual, Math.round(bpm * 100) / 100)}
+          title={holdTitle}
           onclick={(event) => {
             event.stopPropagation();
             choose(bpm, event);
@@ -237,7 +260,7 @@
       </div>
       <button
         role="menuitem"
-        disabled={track.tempo === null}
+        disabled={manual === null}
         onclick={(event) => {
           event.stopPropagation();
           choose(null, event);
@@ -251,10 +274,10 @@
       <div
         class="ranges"
         role="group"
-        aria-label="Tempo range of the analysis, for all tracks"
-        title="Where the analysis looks for the tempo of every track without one set by hand; 120–200 for drum & bass"
+        aria-label="Tempo range of the analysis"
+        title="Where the analysis looks for the tempo: of every track without one set by hand, and of the live input without one. 120–200 for drum & bass"
       >
-        <span class="caption">Range, all tracks</span>
+        <span class="caption">Tempo range, for all</span>
         <div class="range-buttons">
           {#each TEMPO_RANGE_IDS as id (id)}
             <button

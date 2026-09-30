@@ -7,25 +7,37 @@
   interface Props {
     label: string;
     image: StoredImage | null;
+    /** What shows without an image of the user's (the default logo), and its name. */
+    fallback?: StoredImage | null;
+    fallbackName?: string;
     round?: boolean;
     onpick: (file: File | null) => void;
     testid: string;
   }
-  let { label, image, round = false, onpick, testid }: Props = $props();
+  let {
+    label,
+    image,
+    fallback = null,
+    fallbackName = 'Neutral default',
+    round = false,
+    onpick,
+    testid,
+  }: Props = $props();
+  const shown = $derived(image ?? fallback);
   let input: HTMLInputElement;
 </script>
 
 <div class="picker">
   <div class="preview" class:round>
-    {#if image}
-      <img src={image.url} alt="" />
+    {#if shown}
+      <img src={shown.url} alt="" />
     {:else}
       <span>Default</span>
     {/if}
   </div>
   <div class="info">
     <span class="label">{label}</span>
-    <span class="name" title={image?.name}>{image?.name ?? 'Neutral default'}</span>
+    <span class="name" title={image?.name}>{image?.name ?? fallbackName}</span>
     <div class="buttons">
       <button onclick={() => input.click()} data-testid={`${testid}-pick`}>
         <Icon name="image" size={16} />

@@ -3,9 +3,9 @@ import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { createWav } from './wav';
 
-// The photosensitivity notice (tested in visuals.spec.ts) would cover the page.
+// The welcome (tested in visuals.spec.ts) would cover the page.
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('vibe-visualizer:photosensitivity-ack', '1'));
+  await page.addInitScript(() => localStorage.setItem('vibe-visualizer:welcome:v1', '1'));
 });
 
 function collectErrors(page: Page): string[] {
@@ -122,6 +122,31 @@ test('tracks follow each other without a gap, also at another sample rate (PL-05
   expect(errors).toEqual([]);
 });
 
+test('a track played before plays again while the next one plays', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles([
+    { name: 'One.wav', mimeType: 'audio/wav', buffer: createWav(6, 44100) },
+    { name: 'Two.wav', mimeType: 'audio/wav', buffer: createWav(6, 48000) },
+  ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items.nth(1)).toHaveAttribute('data-status', 'ready');
+  const title = page.getByTestId('now-title');
+  await items.nth(0).dblclick();
+  await expect(title).toHaveText('One');
+  await expect.poll(() => elapsed(page)).toBeGreaterThan(0.5);
+  await items.nth(1).dblclick();
+  await expect(title).toHaveText('Two');
+  await expect.poll(() => elapsed(page)).toBeGreaterThan(0.5);
+  // Back to the first file while the second plays (Firefox once failed to read it again).
+  await items.nth(0).dblclick();
+  await expect(title).toHaveText('One');
+  await expect.poll(() => elapsed(page)).toBeGreaterThan(0.5);
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await expect(page.locator('[role="alert"]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('shuffle plays every track once, then stops (PL-04)', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/');
@@ -168,17 +193,33 @@ test('a folder is read with its subfolders, in natural order (SRC-03)', async ({
   expect(errors).toEqual([]);
 });
 
-test('? shows the shortcuts, and the A/V sync offset is kept (UI-04, AN-06)', async ({ page }) => {
+test('? shows the shortcuts and the help, and the A/V sync offset is kept (UI-04, UI-11, AN-06)', async ({
+  page,
+}) => {
   const errors = collectErrors(page);
   await page.goto('/');
   await page.keyboard.press('Shift+Slash');
-  const help = page.getByTestId('shortcut-help');
+  const help = page.getByTestId('help');
   await expect(help).toBeVisible();
   await expect(help).toContainText('Jump to a hot cue');
   await page.keyboard.press('Escape');
   await expect(help).toBeHidden();
+
+  // The ? in the top bar opens the user guide; its sections come from docs/USER-GUIDE.md.
   await page.getByTestId('shortcuts-button').click();
   await expect(help).toBeVisible();
+  const content = page.getByTestId('help-content');
+  await expect(content).toHaveAttribute('data-section', 'keyboard-shortcuts');
+  await page.getByTestId('help-nav-beat-grid-and-tempo').click();
+  await expect(content).toContainText('For drum & bass choose 120–200');
+  await page.getByTestId('help-nav-about').click();
+  await expect(page.getByTestId('help-bug')).toHaveAttribute('href', /^mailto:fipreroll\+app@/);
+  await page.getByTestId('help-welcome').click();
+  await expect(help).toBeHidden();
+  await expect(page.getByTestId('welcome')).toBeVisible();
+  await page.getByTestId('welcome-help').click();
+  await expect(help).toBeVisible();
+  await expect(content).toHaveAttribute('data-section', 'getting-started');
   await page.keyboard.press('Escape');
 
   // V: the next visual mode.

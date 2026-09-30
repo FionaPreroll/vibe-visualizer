@@ -13,7 +13,7 @@
   import { errorMessage, formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
-  import TempoMenu from './TempoMenu.svelte';
+  import TrackTempo from './TrackTempo.svelte';
 
   const player = usePlayer();
   const app = player.store;
@@ -258,7 +258,7 @@
                   : ''}
             </span>
             {#if gridOf(track)}
-              <TempoMenu {track} grid={gridOf(track)!} pending={regridding(track)} />
+              <TrackTempo {track} grid={gridOf(track)!} pending={regridding(track)} />
             {/if}
           </span>
           <button

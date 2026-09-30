@@ -1,0 +1,14 @@
+// Cloudflare Workers Builds: the app is served as static assets, without Worker code.
+// Deploy command (main): npx wrangler deploy. Preview command (other branches): npx wrangler preview.
+{
+  // Must match the name of the Worker in the Cloudflare dashboard (Workers Builds checks it).
+  "name": "misty-smoke-80a8",
+  "compatibility_date": "2026-09-01",
+  // The output of `pnpm build`. Its _headers file (from public/) sends the cross-origin isolation
+  // headers that SharedArrayBuffer needs.
+  "assets": {
+    "directory": "./dist",
+  },
+  // Previews (one per branch) need no settings of their own.
+  "previews": {},
+}

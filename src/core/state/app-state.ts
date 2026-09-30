@@ -156,6 +156,11 @@ export interface LiveState {
   monitor: boolean;
   /** Why the last attempt failed or the input stopped. */
   error: string | null;
+  /**
+   * The tempo (BPM) the user gave for the live input (TMP-06): the beat tracking keeps close to
+   * it; null: it finds the tempo itself. Kept while the input runs, also for another source.
+   */
+  tempo: number | null;
 }
 
 export const LIVE_OFF: LiveState = {
@@ -164,6 +169,7 @@ export const LIVE_OFF: LiveState = {
   label: null,
   monitor: false,
   error: null,
+  tempo: null,
 };
 
 export interface AppState {
@@ -247,7 +253,9 @@ export type AppAction =
   | { type: 'live/failed'; message: string; running: boolean }
   /** Back to the queue; `reason` when the input ended by itself. */
   | { type: 'live/stopped'; reason: string | null }
-  | { type: 'live/monitor'; monitor: boolean };
+  | { type: 'live/monitor'; monitor: boolean }
+  /** The tempo of the live input (TMP-06); null: automatic. */
+  | { type: 'live/tempo'; tempo: number | null };
 
 export const DEFAULT_SETTINGS: Settings = {
   volume: 0.8,
@@ -533,7 +541,14 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         playing: false,
-        live: { status: 'on', kind: action.kind, label: action.label, monitor: false, error: null },
+        live: {
+          status: 'on',
+          kind: action.kind,
+          label: action.label,
+          monitor: false,
+          error: null,
+          tempo: state.live.tempo,
+        },
       };
     case 'live/failed':
       return {
@@ -546,5 +561,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, live: { ...LIVE_OFF, error: action.reason } };
     case 'live/monitor':
       return { ...state, live: { ...state.live, monitor: action.monitor } };
+    case 'live/tempo':
+      return { ...state, live: { ...state.live, tempo: action.tempo } };
   }
 }

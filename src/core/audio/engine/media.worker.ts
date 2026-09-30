@@ -1,7 +1,7 @@
-import { ALL_FORMATS, BlobSource, Input, type InputAudioTrack } from 'mediabunny';
+import type { Input, InputAudioTrack } from 'mediabunny';
 import { sleep } from '../../util/format';
 import { exposeWorker } from '../../util/worker-rpc';
-import { decodeAtRate } from '../decode-stream';
+import { decodeAtRate, openInput } from '../decode-stream';
 import { Resampler } from '../resampler';
 import { AudioRingProducer } from '../ring-buffer';
 
@@ -110,7 +110,7 @@ function open(file: File, token: number): Promise<Source> {
 }
 
 async function openSource(file: File, token: number): Promise<Source> {
-  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+  const input = openInput(file);
   try {
     const track = await input.getPrimaryAudioTrack();
     if (!track) throw new Error('The file contains no audio track');
