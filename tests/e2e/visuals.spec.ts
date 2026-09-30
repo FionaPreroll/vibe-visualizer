@@ -134,3 +134,45 @@ test('logo and background images survive a reload', async ({ page }) => {
   await expect(page.getByRole('alert')).toContainText('PNG, JPEG, WebP or SVG');
   expect(errors).toEqual([]);
 });
+
+test('the ring can be bars, lines or dots, with motion and a tint (LS-11, LS-03, LS-02)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const stored = () =>
+    page.evaluate(() => JSON.parse(localStorage.getItem('vibe-visualizer:visuals:v1') ?? '{}'));
+
+  const style = page.getByRole('radiogroup', { name: 'Ring style' });
+  await style.getByRole('radio', { name: 'Bars' }).click();
+  await expect.poll(async () => (await stored()).ringStyle).toBe('bars');
+  await expect(page.getByRole('slider', { name: 'Bars', exact: true })).toBeVisible();
+  await page
+    .getByRole('radiogroup', { name: 'Ring direction' })
+    .getByRole('radio', { name: 'Both' })
+    .click();
+  await expect.poll(async () => (await stored()).ringDirection).toBe('both');
+  // Lines have no bar count, but a thickness.
+  await style.getByRole('radio', { name: 'Lines' }).click();
+  await expect(page.getByRole('slider', { name: 'Bars', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('slider', { name: 'Thickness', exact: true })).toBeVisible();
+
+  await page.getByText('Motion', { exact: true }).click();
+  await page.getByRole('slider', { name: 'Camera shake', exact: true }).focus();
+  await page.keyboard.press('End');
+  await expect.poll(async () => (await stored()).shake).toBe(1);
+  await page.getByText('Background', { exact: true }).click();
+  await page.getByRole('slider', { name: 'Tint amount', exact: true }).focus();
+  await page.keyboard.press('End');
+  await expect.poll(async () => (await stored()).backgroundTintAmount).toBe(1);
+
+  // The new presets use the styles.
+  await page.getByTestId('preset-select').selectOption('Dot Matrix');
+  await expect.poll(async () => (await stored()).ringStyle).toBe('dots');
+  await expect(stage).toHaveAttribute('data-status', 'running');
+  expect(errors).toEqual([]);
+});

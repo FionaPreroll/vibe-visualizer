@@ -20,6 +20,13 @@ export const PALETTE_NAMES = [...Object.keys(PALETTES), 'custom'] as PaletteName
 
 export const MAX_LAYERS = 8;
 
+/** How the spectrum is drawn around the ring (LS-11). */
+export type RingStyle = 'blob' | 'bars' | 'lines' | 'dots';
+export const RING_STYLES: readonly RingStyle[] = ['blob', 'bars', 'lines', 'dots'];
+/** Which way the spectrum grows from the ring. */
+export type RingDirection = 'outward' | 'inward' | 'both';
+export const RING_DIRECTIONS: readonly RingDirection[] = ['outward', 'inward', 'both'];
+
 export interface LogoSpectrumSettings {
   // Background (LS-01…03)
   backgroundFit: 'cover' | 'contain';
@@ -32,8 +39,25 @@ export interface LogoSpectrumSettings {
   /** −1…1: which part of a cropped ("cover") image is shown. */
   backgroundX: number;
   backgroundY: number;
+  /** Colour the background is tinted towards, and how much (0…1). */
+  backgroundTint: string;
+  backgroundTintAmount: number;
 
-  // Spectrum ring (LS-05…10)
+  // Motion (LS-03; the bass zoom is backgroundPulse)
+  /** 0…1: the picture shakes on kicks. */
+  shake: number;
+  /** 0…1: the background drifts and zooms slowly (Ken Burns). */
+  drift: number;
+
+  // Spectrum ring (LS-05…11)
+  /** Filled shape, bars, lines or dots. */
+  ringStyle: RingStyle;
+  /** Out from the ring, in towards the logo, or both ways. */
+  ringDirection: RingDirection;
+  /** Number of bars around the ring (bars and dots). */
+  bars: number;
+  /** 0…1: width of the bars, dots and lines. */
+  thickness: number;
   palette: PaletteName;
   /**
    * Colours of the layers behind the top layer, from the one next to the top layer to the
@@ -119,6 +143,14 @@ const CLASSIC: LogoSpectrumSettings = {
   backgroundPulse: 0.3,
   backgroundX: 0,
   backgroundY: 0,
+  backgroundTint: '#8f3dff',
+  backgroundTintAmount: 0,
+  shake: 0,
+  drift: 0,
+  ringStyle: 'blob',
+  ringDirection: 'outward',
+  bars: 96,
+  thickness: 0.5,
   palette: 'rainbow',
   customColors: [...PALETTES.rainbow],
   topColor: '#ffffff',
@@ -231,6 +263,47 @@ export const BUILT_IN_PRESETS: readonly VisualPreset[] = [
     spin: 2,
   }),
   preset('Sunset Drive', { palette: 'sunset', layers: 7, mirror: true, tilt: 0.1, glow: 0.6 }),
+  preset('Neon Bars', {
+    palette: 'neon',
+    ringStyle: 'bars',
+    ringDirection: 'both',
+    bars: 72,
+    thickness: 0.55,
+    layers: 4,
+    amplitude: 0.5,
+    logoSize: 0.62,
+    glow: 0.7,
+    bloom: 0.4,
+    shake: 0.35,
+    ...RESPONSIVENESS.punchy,
+  }),
+  preset('Dot Matrix', {
+    palette: 'toxic',
+    ringStyle: 'dots',
+    bars: 64,
+    thickness: 0.6,
+    layers: 3,
+    amplitude: 0.8,
+    glow: 0.5,
+    backgroundDim: 0.5,
+    ...RESPONSIVENESS.punchy,
+  }),
+  preset('Laser Lines', {
+    palette: 'sunset',
+    ringStyle: 'lines',
+    ringDirection: 'both',
+    thickness: 0.35,
+    logoSize: 0.7,
+    layers: 6,
+    layerSpread: 0.03,
+    glow: 0.8,
+    bloom: 0.45,
+    hueCycle: 2,
+    drift: 0.5,
+    backgroundTint: '#ff5ca8',
+    backgroundTintAmount: 0.35,
+    ...RESPONSIVENESS.smooth,
+  }),
 ];
 
 /** The look of a first visit and of "Reset to defaults": the preset "Classic Rainbow". */
@@ -247,6 +320,11 @@ export const RANGES: Record<NumericKey, readonly [number, number]> = {
   backgroundPulse: [0, 1],
   backgroundX: [-1, 1],
   backgroundY: [-1, 1],
+  backgroundTintAmount: [0, 1],
+  shake: [0, 1],
+  drift: [0, 1],
+  bars: [16, 256],
+  thickness: [0.05, 1],
   layers: [0, MAX_LAYERS],
   layerDelay: [0, 0.4],
   layerSpread: [0, 0.05],
@@ -309,7 +387,14 @@ export function sanitizeSettings(value: unknown): LogoSpectrumSettings {
       if (typeof stored !== 'string') continue;
       if (key === 'palette' && !(PALETTE_NAMES as string[]).includes(stored)) continue;
       if (key === 'backgroundFit' && stored !== 'cover' && stored !== 'contain') continue;
-      if ((key === 'topColor' || key === 'rimColor') && !COLOR.test(stored)) continue;
+      if (key === 'ringStyle' && !(RING_STYLES as string[]).includes(stored)) continue;
+      if (key === 'ringDirection' && !(RING_DIRECTIONS as string[]).includes(stored)) continue;
+      if (
+        (key === 'topColor' || key === 'rimColor' || key === 'backgroundTint') &&
+        !COLOR.test(stored)
+      ) {
+        continue;
+      }
       target[key] = stored;
     } else if (Array.isArray(stored)) {
       const colors = stored.filter((color) => typeof color === 'string' && COLOR.test(color));
@@ -318,6 +403,7 @@ export function sanitizeSettings(value: unknown): LogoSpectrumSettings {
   }
   result.layers = Math.round(result.layers);
   result.particles = Math.round(result.particles);
+  result.bars = Math.round(result.bars);
   if (result.maxFrequency < result.minFrequency * 2) result.maxFrequency = result.minFrequency * 2;
   return result;
 }
