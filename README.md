@@ -69,7 +69,16 @@ Run the spikes, click **Copy report** and paste the report into the chat.
 
 ## Hosting
 
-The app is a static site. On Cloudflare Pages use the build command `pnpm build` and the output directory `dist`; `public/_headers` sets the cross-origin isolation headers. GitHub Pages cannot send these headers.
+The app is a static site, hosted on Cloudflare Workers as static assets (`wrangler.jsonc`). In the Worker's build settings (Workers Builds):
+
+| Setting | Value |
+|---|---|
+| Build command | `pnpm build` |
+| Deploy command (production branch) | `npx wrangler deploy` |
+| Preview command (other branches, with preview builds on) | `npx wrangler preview` |
+| Root directory | `/` |
+
+The Worker's name in the dashboard must match `name` in `wrangler.jsonc`. `public/_headers` sets the cross-origin isolation headers that the audio engine needs; GitHub Pages cannot send them.
 
 ## Project layout
 

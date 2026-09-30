@@ -26,7 +26,7 @@
 | Lint & format | ESLint with typescript-eslint and eslint-plugin-svelte; Prettier | Standard for Svelte + TypeScript |
 | Tooling | pnpm, Node 24 LTS (CI) | Fast, strict installs; locally Node 22.13 or newer works |
 | CI | GitHub Actions | Type check, lint, tests, build and an end-to-end smoke test on every push; the README screenshots when the Screenshots workflow is run by hand |
-| Hosting | Cloudflare Pages (static, free) | Preview deploy per branch; can send the COOP/COEP headers that SharedArrayBuffer requires (GitHub Pages can't) |
+| Hosting | Cloudflare Workers with static assets (free), built by Workers Builds | A Preview per branch; can send the COOP/COEP headers that SharedArrayBuffer requires (GitHub Pages can't) |
 
 **Licences:** all dependencies are MIT, ISC, Apache-2.0 or MPL-2.0 (Mediabunny). The optional AAC fallback contains FFmpeg's AAC encoder (LGPL) as a separate WebAssembly module. No GPL code.
 
@@ -93,7 +93,7 @@ The main thread only starts, pauses, resumes and cancels the worker, decodes the
 | Encoding | WebCodecs | ffmpeg.wasm is flexible, but software-only (slow for 4K or 3 h), a ~30 MB download, and GPL-licensed in common builds |
 | Reverb | Algorithmic reverb (feedback delay network) in the DSP core | The browser's ConvolverNode cannot be used inside our worker-based core. Convolution with your own impulse responses can follow later (FX-07) |
 | What the visuals react to | The music after the tempo and the filter, before the delay and the reverb | After all effects, echoes and reverb tails blur the onsets, and a synced delay would hear its own echoes when it looks for the tempo. Before the filter, a filter sweep would not show. AN-09 may make it a choice |
-| Hosting | Cloudflare Pages | GitHub Pages cannot set COOP/COEP headers (only via a service-worker workaround). Netlify would work equally well |
+| Hosting | Cloudflare Workers (static assets) | Cloudflare Pages works the same way (the same `_headers` file), but new projects go to Workers. GitHub Pages cannot set COOP/COEP headers (only via a service-worker workaround). Netlify would work equally well |
 
 ## 4. Project layout
 
@@ -170,7 +170,7 @@ The development container (headless Chromium, software GPU) and CI run all five 
 
 - Manual checks: the listening test (S2) passed with the test signal; loading files into the S2 player failed and is fixed. The S3 sample plays in sync in QuickTime; the YouTube/TikTok upload is still open.
 - Second-priority machines (Q14): Chrome on Windows and Firefox on Linux. A hosted preview makes this easiest.
-- Hosting needs a (free) Cloudflare account.
+- Hosting: the Worker is connected to the repository (Workers Builds); `wrangler.jsonc` configures it.
 - Listening test of tempo and effects on the main machine: vinyl and key lock at 0.5–1.5×, the reverb's character, the delay in time with the beat, no clicks when changing anything.
 - Firefox: reading a file while another one plays (fixed with reads in slices) is still to be checked in Firefox.
 - The Screenshots workflow can be started once it is on `main`: GitHub offers manual workflows from the default branch.
