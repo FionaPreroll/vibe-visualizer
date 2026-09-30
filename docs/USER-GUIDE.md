@@ -90,6 +90,22 @@ Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K
 - The format is MP4 (H.264 and AAC); a browser without H.264 encoding writes WebM instead.
 - You can pause or cancel the export, and close the dialog while it runs. Long exports are written in segments; if the tab crashes or you reload, the app offers to resume where it stopped.
 
+## DJ controller
+
+Play the app from a Pioneer DJ DDJ-FLX2 over USB. Click the controller button in the top bar (next to **Export**), then **Connect**; the browser asks once for access to MIDI devices. This works in Chrome and Edge, and in Firefox after it installs a small add-on for the permission; Safari has no MIDI. Next time the app connects by itself.
+
+- **PLAY/PAUSE:** play and pause. It lights while the music plays and blinks while paused.
+- **CUE:** back to the in marker (or the start), and stop.
+- **Pads in HOT CUE mode:** hot cues 1–8, like the keys 1–8: a dark pad sets its cue at the playhead, a lit pad jumps to it. **SHIFT** + pad deletes the cue.
+- **CFX:** the DJ filter, off in the middle.
+- **Tempo slider:** the tempo, within the range set in the Sound tab: slower at the top, faster at the bottom.
+- **Channel fader:** the volume.
+- **Jog wheel:** nudges the tempo while it turns.
+
+These are the controls of deck 1. Knobs and faders take over once they reach the value in the app, so nothing jumps. Deck 2, the EQ knobs and the crossfader do nothing yet.
+
+If a control does not do what it should, open **MIDI monitor** in the dialog, copy the messages and send them with a bug report. On Windows, close other DJ software first: only one program can use a MIDI device there.
+
 ## Keyboard shortcuts
 
 Press **?** for the full list. The main ones: Space play and pause, ← and → seek 5 s (30 s with Shift), N next, P previous, 1–8 hot cues, I and O the in and out markers, Q snap to the beat, W the detail waveform, − and + the tempo, V the next view, [ and ] the presets, F fullscreen, Ctrl+Z undo.

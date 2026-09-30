@@ -127,6 +127,8 @@ export interface Settings {
   waveformStyle: WaveformStyle;
   /** The tempo range the beat grids are found in, for tracks without a tempo given (AN-12). */
   bpmRange: TempoRangeId;
+  /** A DJ controller was connected (CTL-03): connect again at the start if MIDI is allowed. */
+  controller: boolean;
 }
 
 /**
@@ -275,6 +277,7 @@ export const DEFAULT_SETTINGS: Settings = {
   appName: DEFAULT_APP_NAME,
   waveformStyle: 'bands',
   bpmRange: 'auto',
+  controller: false,
 };
 
 export function initialState(

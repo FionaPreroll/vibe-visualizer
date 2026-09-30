@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ASPECT_RATIOS, isAspectRatio } from '../core/export/video-format';
   import { APP_NAME_LENGTH, DEFAULT_APP_NAME, type VisualMode } from '../core/state/app-state';
+  import { useControllers } from './controller-context';
   import { useExporter } from './exporter-context';
   import Icon, { type IconName } from './Icon.svelte';
   import { usePlayer } from './player-context';
@@ -9,12 +10,17 @@
     onFullscreen: () => void;
     onExport: () => void;
     onHelp: () => void;
+    onController: () => void;
   }
-  let { onFullscreen, onExport, onHelp }: Props = $props();
+  let { onFullscreen, onExport, onHelp, onController }: Props = $props();
 
   const player = usePlayer();
   const app = player.store;
   const exporter = useExporter();
+  const controllers = useControllers();
+  const controllerOn = $derived(
+    $controllers.status === 'on' && $controllers.devices.some((device) => device.profile),
+  );
 
   /** Renaming the app (a double-click on its name): the name being typed. */
   let renaming = $state(false);
@@ -135,6 +141,17 @@
     >
       <Icon name="panel" size={18} />
     </button>
+    <button
+      class="toggle controller"
+      class:on={controllerOn}
+      onclick={onController}
+      title={controllerOn ? 'DJ controller: connected' : 'DJ controller'}
+      aria-label="DJ controller"
+      data-testid="controller-button"
+    >
+      <Icon name="controller" size={18} />
+      {#if controllerOn}<span class="dot"></span>{/if}
+    </button>
     <button class="primary export" onclick={onExport} data-testid="export-button">
       <Icon name="export" size={18} />
       {#if $exporter.status === 'running'}
@@ -220,6 +237,18 @@
   }
   .toggle.on {
     background: var(--surface-2);
+  }
+  .controller {
+    position: relative;
+  }
+  .controller .dot {
+    position: absolute;
+    top: 4px;
+    right: 5px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #4ade80;
   }
   .help {
     width: 32px;

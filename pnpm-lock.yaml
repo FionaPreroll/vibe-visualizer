@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@fibestation/dj-controllers':
+        specifier: workspace:*
+        version: link:packages/dj-controllers
       '@fontsource/pacifico':
         specifier: ^5.3.0
         version: 5.3.0
@@ -72,6 +75,8 @@ importers:
       vitest:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.6.2)(vite@8.3.1(@types/node@26.6.2))
+
+  packages/dj-controllers: {}
 
 packages:
 

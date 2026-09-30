@@ -1,6 +1,6 @@
 # Vibe Visualizer — DJ Controllers
 
-> **Status:** proposal (2026-09-30), nothing built yet. The decision is open as Q18 in [FEATURES.md](FEATURES.md#6-open-questions); the planned features are CTL-01–07 and FX-11 there.
+> **Status:** Controllers M1 built (2026-09-30): the library ([packages/dj-controllers](../packages/dj-controllers/README.md)) and deck 1 of the DDJ-FLX2, without the EQ. Decided with Q18 ([FEATURES.md](FEATURES.md#8-decision-log)): now, the easy parts first, the EQ (FX-11) later; deck 2 does nothing; a Pro edition later. Still to be checked on a real DDJ-FLX2: the profile follows the MIDI message list.
 
 ## 1. In short
 
@@ -54,87 +54,16 @@ A separate package, working title `@fibestation/dj-controllers`: first a workspa
 | `browse` | relative | no | steps |
 | `browsePress` | button | no | pressed or released |
 
-### 3.3 API sketch
+### 3.3 API
 
-```ts
-type ControlKind = 'button' | 'absolute' | 'relative';
-type PadMode = 'hotcue' | 'loop' | 'sampler' | 'fx' | 'beatjump';
+The API is described in the [package's README](../packages/dj-controllers/README.md). In short:
 
-interface ControlEvent {
-  /** The profile of the device, e.g. "pioneer-ddj-flx2". */
-  device: string;
-  /** 1-based; null for the mixer's own controls (crossfader, master, browse). */
-  deck: number | null;
-  control: ControlId;
-  kind: ControlKind;
-  /** Pads: 1–8, and the mode the controller is in. */
-  index?: number;
-  padMode?: PadMode;
-  /** Whether SHIFT was held. */
-  shift: boolean;
-  /** Buttons. */
-  pressed?: boolean;
-  /** Absolute controls: 0–1. */
-  value?: number;
-  /** Relative controls: turns (jog) or steps (browse). */
-  delta?: number;
-  /** When the message arrived (MIDIMessageEvent.timeStamp, the performance.now() clock). */
-  time: number;
-}
-
-type LightTarget = { deck: number | null; control: ControlId; index?: number; padMode?: PadMode };
-type LightState = 'off' | 'on' | 'dim' | 'blink';
-
-interface ControllerHub {
-  /** Asks for MIDI access (the browser's permission prompt) and starts listening. */
-  start(options?: { sysex?: boolean }): Promise<void>;
-  stop(): void;
-  readonly devices: readonly ConnectedController[];
-  onDevices(listener: (devices: readonly ConnectedController[]) => void): () => void;
-  onControl(listener: (event: ControlEvent) => void): () => void;
-  setLight(target: LightTarget, state: LightState): void;
-  /** Resolves with the binding of the next message, for a profile made by hand (CTL-04). */
-  learn(target: LightTarget, signal?: AbortSignal): Promise<ControlBinding>;
-}
-
-function createControllerHub(options: {
-  profiles: readonly ControllerProfile[];
-  /** For tests and other transports; navigator.requestMIDIAccess otherwise. */
-  access?: () => Promise<MIDIAccess>;
-}): ControllerHub;
-
-/** Ignores an absolute control until it reaches the app's value ("pickup"). */
-class SoftTakeover {
-  accept(event: ControlEvent, appValue: number): boolean;
-}
-```
-
-A profile, in short:
-
-```ts
-const DDJ_FLX2: ControllerProfile = {
-  id: 'pioneer-ddj-flx2',
-  name: 'Pioneer DJ DDJ-FLX2',
-  /** Found in the names of the MIDI ports the browser reports. */
-  ports: { input: 'DDJ-FLX2', output: 'DDJ-FLX2' },
-  decks: 2,
-  controls: [
-    { kind: 'button', control: 'play', deck: 1, status: 0x90, data: 0x0b },
-    { kind: 'button', control: 'pad', deck: 1, padMode: 'hotcue', status: 0x97, data: [0x00, 0x07], shiftStatus: 0x98 },
-    { kind: 'absolute', control: 'eqLow', deck: 1, status: 0xb0, msb: 0x0f, lsb: 0x2f },
-    { kind: 'absolute', control: 'filter', deck: 1, status: 0xb6, msb: 0x17, lsb: 0x37, centre: 0.5 },
-    { kind: 'relative', control: 'jog', deck: 1, status: 0xb0, data: 0x21, encoding: 'offset64', perTurn: 1024 },
-    // …
-  ],
-  lights: [
-    { control: 'play', deck: 1, status: 0x90, data: 0x0b, on: 0x7f, off: 0x00 },
-    { control: 'pad', deck: 1, padMode: 'hotcue', status: 0x97, data: [0x00, 0x07], on: 0x7f, off: 0x00 },
-    // …
-  ],
-};
-```
-
-(The jog's encoding and resolution are to be read off the device with the MIDI monitor.)
+- `new ControllerHub({ profiles })`, then `start()` from a click (the permission prompt). `devices` and `onDevices()` list the MIDI inputs with their profile, or `null` for an unknown device; controllers can be plugged in and out at any time.
+- `onControl()` delivers the events: `button` (`pressed`; pads with `index` and `padMode`), `absolute` (`value` 0–1) and `relative` (`delta`), each with `device`, `deck`, `shift` and `time`.
+- `setLight(target, 'off' | 'on' | 'dim' | 'blink')` sets a light on every controller that has it, also on one plugged in later.
+- `onMessage()` delivers the raw messages, with whether the profile knows them, for a MIDI monitor.
+- `SoftTakeover` is the pickup: `accept(key, position, value)` says whether a knob's position should set the app's value.
+- `stop()` turns the lights off and lets the controllers go.
 
 ### 3.4 Timing
 
@@ -149,26 +78,26 @@ The app gets a small controller service that maps the events to what the keyboar
 | PLAY/PAUSE | Play and pause (TR-01); its light shows whether the music plays |
 | CUE | Back to the in marker or the start, and stop |
 | Pads in hot cue mode | Hot cues 1–8, as the keys 1–8: set where empty, jump where set; SHIFT + pad deletes. The pads of the cues that are set light up |
-| HI / MID / LOW | A new 3-band EQ with kills (FX-11), live and in the export |
+| HI / MID / LOW | Later: a new 3-band EQ with kills (FX-11), live and in the export |
 | CFX | The DJ filter (FX-06): left low-pass, right high-pass, off in the middle |
 | Channel fader, tempo slider | Volume; the tempo fader within its range (TMP-01). Both with pickup, so a fader that stands elsewhere does not make the value jump |
-| Jog wheel | Outer ring: nudge (TMP-03); top: scrub |
+| Jog wheel | Nudge (TMP-03) while it turns, the ring and the top alike; scrubbing later |
 | Other pad modes | Free at first. Ideas: sampler mode → visual presets 1–8, pad FX → the sound presets, beat loop → loops once they exist (TR-07) |
-| Deck 2, crossfader | FibeStation has one deck: deck 2 either does the same as deck 1, or becomes the visuals deck (CTL-05) |
+| Deck 2, crossfader | Nothing for now (Q18). Later perhaps the visuals deck (CTL-05) |
 
-A "Controllers" section (in the Live tab or its own dialog) connects a controller (the permission prompt comes from a click), shows which one is connected, and later offers MIDI learn for unknown ones.
+The DJ controller button in the top bar opens a dialog: it connects a controller (the permission prompt comes from a click), shows the MIDI devices and what the controls do, and has a MIDI monitor that names what each message did. A controller that was connected before is connected again at the start, as long as MIDI stays allowed.
 
-Tests: the library against a fake `MIDIAccess`; the profile against the message list; an end-to-end test with a fake controller (Playwright replaces `navigator.requestMIDIAccess`) that presses pads and turns knobs and checks the app and the lights sent back. The real device is checked with a MIDI monitor in the Spike Lab (S6: lists the ports and the messages, with **Copy report** like the other spikes), since there is no DDJ-FLX2 in CI.
+Tests: the library against a fake `MIDIAccess`; the profile against the message list; an end-to-end test with a fake controller (Playwright replaces `navigator.requestMIDIAccess`) that presses pads and turns knobs and checks the app and the lights sent back. The real device is checked with the MIDI monitor in the dialog (with **Copy**), since there is no DDJ-FLX2 in CI.
 
 ## 5. Effort
 
 | Part | Size | Contents |
 |---|---|---|
-| Library core | M | Web MIDI hub, profile format, decoding (14-bit, relative, shift, pad modes), lights with blinking, pickup, fake MIDI for tests |
-| DDJ-FLX2 profile | S | From the message list, and the MIDI monitor (S6) for your check with the device |
-| App bindings | M | Play/pause, cue, hot cues with lights, CFX → filter, tempo slider, channel fader, jog; the Controllers section; end-to-end test |
-| 3-band EQ (FX-11) | M | Isolator EQ with kills in the sound chain (live and export), sound settings, knobs in the Sound tab |
-| Own package | S | Workspace package, README and API docs, versions; npm once stable |
+| Library core (built) | M | Web MIDI hub, profile format, decoding (14-bit, relative, shift, pad modes), lights with blinking, pickup, fake MIDI for tests |
+| DDJ-FLX2 profile (built) | S | From the message list, and the MIDI monitor for your check with the device |
+| App bindings (built) | M | Play/pause, cue, hot cues with lights, CFX → filter, tempo slider, channel fader, jog; the dialog; end-to-end test |
+| 3-band EQ (FX-11), later | M | Isolator EQ with kills in the sound chain (live and export), sound settings, knobs in the Sound tab |
+| Own package (built, not published) | S | Workspace package, README and API docs, versions; npm once stable |
 | MIDI learn (CTL-04), optional | M | Learning, saving, exporting and importing profiles |
 | Visuals deck (CTL-05), optional | M | Deck 2 for the visuals: presets on the pads, knobs on visual parameters, crossfader blends two presets |
 

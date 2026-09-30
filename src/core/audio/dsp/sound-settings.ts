@@ -110,11 +110,12 @@ export const SOUND_PRESETS: readonly SoundPreset[] = [
       tempoRange: 16,
       reverbOn: true,
       reverbSize: 0.85,
-      // Short: the first version's long hall (5 s) was too much in the listening test.
+      // Short and quiet: the first version's long hall (5 s) was too much in the listening
+      // test, and so was a mix of 35 %.
       reverbDecay: 0.7,
       reverbPreDelay: 30,
       reverbDamping: 0.45,
-      reverbMix: 0.35,
+      reverbMix: 0.07,
     },
   },
   {
