@@ -1,4 +1,4 @@
-import { ALL_FORMATS, BlobSource, Input } from 'mediabunny';
+import { openInput } from '../audio/decode-stream';
 import { exposeWorker, withTransfer } from '../util/worker-rpc';
 import { fingerprint } from './fingerprint';
 
@@ -25,7 +25,7 @@ export type ProbeResult =
   | { status: 'unsupported'; reason: string };
 
 async function probe(args: { file: File }) {
-  const input = new Input({ source: new BlobSource(args.file), formats: ALL_FORMATS });
+  const input = openInput(args.file);
   try {
     if (!(await input.canRead())) return { status: 'unsupported', reason: 'unknown file format' };
     const track = await input.getPrimaryAudioTrack();

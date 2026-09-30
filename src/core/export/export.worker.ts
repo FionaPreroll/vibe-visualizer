@@ -1,15 +1,12 @@
 import {
-  ALL_FORMATS,
   AudioSample,
   AudioSampleSource,
-  BlobSource,
   CanvasSource,
   canEncodeAudio,
   canEncodeVideo,
   EncodedAudioPacketSource,
   EncodedPacketSink,
   EncodedVideoPacketSource,
-  Input,
   Mp4OutputFormat,
   Output,
   Quality,
@@ -24,7 +21,7 @@ import { FeatureSampler } from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
 import { GridBeats } from '../analysis/grid-beats';
 import { decodeGrid, encodeGrid } from '../library/analysis-cache';
-import { decodeAtRate } from '../audio/decode-stream';
+import { decodeAtRate, openInput } from '../audio/decode-stream';
 import { DspCore } from '../audio/dsp/dsp-core';
 import type { SoundSettings } from '../audio/dsp/sound-settings';
 import { Resampler } from '../audio/resampler';
@@ -349,7 +346,7 @@ async function audioPass(
   // With the file's beat grid, the beats come from it, as during playback.
   const gridBeats = new GridBeats();
   gridBeats.set(grid);
-  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+  const input = openInput(file);
   const records = new RecordWriter(await store.open('features.bin'), FEATURE_FIELDS);
   let output: Output | null = null;
   let decoded: DecodedSource | null = null;
@@ -673,10 +670,7 @@ async function join(
   output.addAudioTrack(audioSource);
   await output.start();
 
-  const audioInput = new Input({
-    source: new BlobSource(await store.file('audio.mp4')),
-    formats: ALL_FORMATS,
-  });
+  const audioInput = openInput(await store.file('audio.mp4'));
   try {
     const audioTrack = await audioInput.getPrimaryAudioTrack();
     if (!audioTrack) throw new Error('The encoded audio is missing.');
@@ -686,10 +680,7 @@ async function join(
     async function* videoPackets(): AsyncGenerator<EncodedPacket> {
       let sequence = 0;
       for (let segment = 0; segment < timing.segments; segment++) {
-        const input = new Input({
-          source: new BlobSource(await store.file(`video-${segment}.mp4`)),
-          formats: ALL_FORMATS,
-        });
+        const input = openInput(await store.file(`video-${segment}.mp4`));
         try {
           const track = await input.getPrimaryVideoTrack();
           if (!track) throw new Error(`Video segment ${segment + 1} is damaged.`);

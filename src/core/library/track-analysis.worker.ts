@@ -1,9 +1,8 @@
-import { ALL_FORMATS, BlobSource, Input } from 'mediabunny';
 import { Analyzer } from '../analysis/analyzer';
 import { computeBeatGrid, type OnsetFeatures } from '../analysis/beat-grid';
 import { GridFeatureCollector } from '../analysis/grid-features';
 import { WAVEFORM_STRIDE, WaveformBuilder, type Waveform } from '../analysis/waveform';
-import { decodeAtRate } from '../audio/decode-stream';
+import { decodeAtRate, openInput } from '../audio/decode-stream';
 import { exposeWorker, withTransfer } from '../util/worker-rpc';
 import {
   readCachedAnalysis,
@@ -110,7 +109,7 @@ async function analyse(
     await writeCachedAnalysis(result);
     return transferable(result);
   }
-  const input = new Input({ source: new BlobSource(args.file), formats: ALL_FORMATS });
+  const input = openInput(args.file);
   try {
     const track = await input.getPrimaryAudioTrack();
     if (!track) throw new Error('The file contains no audio track.');

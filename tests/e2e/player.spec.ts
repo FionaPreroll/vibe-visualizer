@@ -122,6 +122,31 @@ test('tracks follow each other without a gap, also at another sample rate (PL-05
   expect(errors).toEqual([]);
 });
 
+test('a track played before plays again while the next one plays', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles([
+    { name: 'One.wav', mimeType: 'audio/wav', buffer: createWav(6, 44100) },
+    { name: 'Two.wav', mimeType: 'audio/wav', buffer: createWav(6, 48000) },
+  ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items.nth(1)).toHaveAttribute('data-status', 'ready');
+  const title = page.getByTestId('now-title');
+  await items.nth(0).dblclick();
+  await expect(title).toHaveText('One');
+  await expect.poll(() => elapsed(page)).toBeGreaterThan(0.5);
+  await items.nth(1).dblclick();
+  await expect(title).toHaveText('Two');
+  await expect.poll(() => elapsed(page)).toBeGreaterThan(0.5);
+  // Back to the first file while the second plays (Firefox once failed to read it again).
+  await items.nth(0).dblclick();
+  await expect(title).toHaveText('One');
+  await expect.poll(() => elapsed(page)).toBeGreaterThan(0.5);
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await expect(page.locator('[role="alert"]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('shuffle plays every track once, then stops (PL-04)', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/');

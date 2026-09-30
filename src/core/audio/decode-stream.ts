@@ -1,5 +1,28 @@
-import { AudioSampleSink, type AudioSample, type InputAudioTrack } from 'mediabunny';
+import {
+  ALL_FORMATS,
+  AudioSampleSink,
+  BlobSource,
+  Input,
+  type AudioSample,
+  type InputAudioTrack,
+} from 'mediabunny';
 import { Resampler } from './resampler';
+
+/**
+ * Firefox can fail to read a file again through a stream reader ("Error in input stream": the
+ * first track of the queue could not be loaded again while the second played). There Mediabunny
+ * reads slices of the file instead, its slower but more stable way.
+ */
+const STREAM_READS =
+  typeof navigator === 'undefined' || !/\bFirefox\//.test(navigator.userAgent ?? '');
+
+/** A Mediabunny input for a file (or any blob), read the way that works in this browser. */
+export function openInput(file: Blob): Input {
+  return new Input({
+    source: new BlobSource(file, { useStreamReader: STREAM_READS }),
+    formats: ALL_FORMATS,
+  });
+}
 
 /**
  * The decoded audio of `track` from `startFrame` on (frames at the output rate), as blocks of
