@@ -67,7 +67,12 @@ export class GridBeats {
 
 const tempos = new WeakMap<BeatGrid, number>();
 
-/** The tempo of a track: the median beat interval of its grid, in BPM (0 without beats). */
+/**
+ * The tempo of a track, in BPM (0 without beats): the median over its grid of the mean beat
+ * interval across sixteen beats. The span evens out beats that land a frame early or late (at
+ * fast tempos, beats between the onsets alternate by a frame); the median follows the tempo most
+ * of the track has.
+ */
 export function gridTempo(grid: BeatGrid): number {
   let tempo = tempos.get(grid);
   if (tempo === undefined) {
@@ -77,12 +82,18 @@ export function gridTempo(grid: BeatGrid): number {
   return tempo;
 }
 
+/** Beats across which the tempo is averaged. */
+const TEMPO_SPAN = 16;
+
 function medianTempo(grid: BeatGrid): number {
   const beats = grid.beats;
   if (beats.length < 3) return 0;
+  const span = Math.min(TEMPO_SPAN, beats.length - 1);
   const intervals: number[] = [];
-  for (let i = 1; i < beats.length; i++) {
-    if (grid.confidence[i]! >= MIN_CONFIDENCE) intervals.push(beats[i]! - beats[i - 1]!);
+  for (let i = span; i < beats.length; i++) {
+    const sure =
+      grid.confidence[i]! >= MIN_CONFIDENCE && grid.confidence[i - span]! >= MIN_CONFIDENCE;
+    if (sure) intervals.push((beats[i]! - beats[i - span]!) / span);
   }
   if (intervals.length === 0) return 0;
   intervals.sort((a, b) => a - b);

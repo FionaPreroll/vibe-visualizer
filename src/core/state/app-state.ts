@@ -55,6 +55,15 @@ export interface Track {
   marks: Marks;
   /** Hot cues in seconds (TR-04), {@link CUE_COUNT} slots, null where none is set. */
   cues: Cues;
+  /** The tempo (BPM) the user gave for the beat grid (TMP-06); null: the grid finds it. */
+  tempo: number | null;
+}
+
+/** What is kept per file (TR-05): cues, markers and a corrected tempo. */
+export interface TrackData {
+  cues: Cues;
+  marks: Marks;
+  tempo: number | null;
 }
 
 export interface Marks {
@@ -109,7 +118,16 @@ export interface Settings {
   quantize: boolean;
   /** The name the app shows (top bar, window title); the user can change it. */
   appName: string;
+  /** How the waveforms are drawn (TR-10). */
+  waveformStyle: WaveformStyle;
 }
+
+/**
+ * Waveform styles (TR-10): the three bands as layers, lows blue, mids orange and highs white
+ * (as Rekordbox's "3Band"), or one shape as high as the peak, coloured by the bands.
+ */
+export type WaveformStyle = 'bands' | 'rgb';
+export const WAVEFORM_STYLES: readonly WaveformStyle[] = ['bands', 'rgb'];
 
 /** The app's name until the user gives it another one. */
 export const DEFAULT_APP_NAME = 'FibeStation';
@@ -172,8 +190,8 @@ export type ProbedInfo = Pick<
   | 'fingerprint'
 > & {
   title: string | null;
-  /** Cues and markers stored for this file earlier (TR-05). */
-  stored?: { cues: Cues; marks: Marks };
+  /** Cues, markers and tempo stored for this file earlier (TR-05). */
+  stored?: TrackData;
 };
 
 export type AppAction =
@@ -194,6 +212,8 @@ export type AppAction =
   | { type: 'tracks/marked'; id: string; mark: 'in' | 'out'; seconds: number | null }
   /** Sets (or clears, with null) hot cue `index` of a track. */
   | { type: 'tracks/cue'; id: string; index: number; seconds: number | null }
+  /** The tempo of a file's beat grid (TMP-06), for every entry of that file; null: automatic. */
+  | { type: 'tracks/tempo'; fingerprint: string; tempo: number | null }
   | { type: 'player/current'; id: string | null }
   | { type: 'player/playing'; playing: boolean }
   | { type: 'player/seeked'; seconds: number }
@@ -236,6 +256,7 @@ export const DEFAULT_SETTINGS: Settings = {
   syncOffset: 0,
   quantize: true,
   appName: DEFAULT_APP_NAME,
+  waveformStyle: 'bands',
 };
 
 export function initialState(
@@ -277,6 +298,7 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
     fingerprint: null,
     marks: { in: null, out: null },
     cues: NO_CUES,
+    tempo: null,
   };
 }
 
@@ -300,13 +322,13 @@ export function restoredTrack(
     | 'fingerprint'
   >,
   status: 'probing' | 'locked' | 'missing',
-  stored: { cues: Cues; marks: Marks } | null = null,
+  stored: TrackData | null = null,
 ): Track {
   return {
     ...newTrack(id, { name: info.fileName, size: info.size }),
     ...info,
     status,
-    ...(stored ? { cues: stored.cues, marks: stored.marks } : {}),
+    ...stored,
   };
 }
 
@@ -382,12 +404,7 @@ export function reducer(state: AppState, action: AppAction): AppState {
         tracks: state.tracks.map((track) => {
           if (track.id !== action.id) return track;
           const { stored, ...info } = action.info;
-          return {
-            ...track,
-            ...info,
-            title: info.title ?? track.title,
-            ...(stored ? { cues: stored.cues, marks: stored.marks } : {}),
-          };
+          return { ...track, ...info, title: info.title ?? track.title, ...stored };
         }),
       };
     case 'tracks/removed':
@@ -430,6 +447,13 @@ export function reducer(state: AppState, action: AppAction): AppState {
           track.id === action.id
             ? { ...track, cues: setCue(track, action.index, action.seconds) }
             : track,
+        ),
+      };
+    case 'tracks/tempo':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.fingerprint === action.fingerprint ? { ...track, tempo: action.tempo } : track,
         ),
       };
     case 'player/current':

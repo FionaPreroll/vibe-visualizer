@@ -181,3 +181,59 @@ test('the app can be renamed, and keeps its name', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Spike Lab' })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('Space plays and pauses also after a click on a button, a slider or a track', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'A.wav',
+    mimeType: 'audio/wav',
+    buffer: createWav(20),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  const play = page.getByTestId('play-button');
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Pause');
+  const toggles = async (label: 'Play' | 'Pause') => {
+    await page.keyboard.press('Space');
+    await expect(play).toHaveAttribute('aria-label', label);
+  };
+
+  // A button clicked with the mouse lets go of the focus: Space does not press it again.
+  const shuffle = page.getByTestId('shuffle');
+  await shuffle.click();
+  await expect(shuffle).toHaveAttribute('aria-pressed', 'true');
+  await expect(shuffle).not.toBeFocused();
+  await toggles('Play');
+  await expect(shuffle).toHaveAttribute('aria-pressed', 'true');
+  await toggles('Pause');
+
+  // A slider keeps the arrows, not Space.
+  const volume = page.getByLabel('Volume');
+  await volume.click();
+  await expect(volume).toBeFocused();
+  await toggles('Play');
+  const level = await volume.inputValue();
+  await page.keyboard.press('ArrowLeft');
+  await expect(volume).not.toHaveValue(level);
+
+  // A track in the queue, and a checkbox in a panel.
+  await page.getByTestId('queue-item').click();
+  await toggles('Pause');
+  await page.getByRole('tab', { name: /Sound/ }).click();
+  const delay = page.getByTestId('delay-on');
+  await delay.click();
+  await expect(delay).toBeChecked();
+  await toggles('Play');
+  await expect(delay).toBeChecked();
+
+  // Reached with Tab, a button still takes Enter; Space stays play and pause.
+  await shuffle.focus();
+  await page.keyboard.press('Enter');
+  await expect(shuffle).toHaveAttribute('aria-pressed', 'false');
+  await toggles('Pause');
+  await expect(shuffle).toHaveAttribute('aria-pressed', 'false');
+  expect(errors).toEqual([]);
+});

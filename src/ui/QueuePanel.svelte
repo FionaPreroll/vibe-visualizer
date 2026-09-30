@@ -7,10 +7,12 @@
     pickFiles,
     pickFolder,
   } from '../core/library/folder-reader';
+  import { sameTempo } from '../core/library/analysis-cache';
   import type { Track } from '../core/state/app-state';
   import { errorMessage, formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
+  import TempoMenu from './TempoMenu.svelte';
 
   const player = usePlayer();
   const app = player.store;
@@ -21,6 +23,12 @@
     const grid = fingerprint ? $analyses.get(fingerprint)?.grid : null;
     const tempo = grid ? gridTempo(grid) : 0;
     return tempo > 0 ? tempo : null;
+  }
+
+  /** True while the grid is being computed anew for a corrected tempo (TMP-06). */
+  function regridding(track: Track): boolean {
+    const state = track.fingerprint ? $analyses.get(track.fingerprint) : undefined;
+    return state !== undefined && !sameTempo(state.tempo, track.tempo);
   }
 
   let fileInput: HTMLInputElement;
@@ -243,9 +251,7 @@
                   : ''}
             </span>
             {#if tempoOf(track.fingerprint) !== null}
-              <span class="bpm" data-testid="queue-bpm">
-                {tempoOf(track.fingerprint)!.toFixed(0)} BPM
-              </span>
+              <TempoMenu {track} tempo={tempoOf(track.fingerprint)!} pending={regridding(track)} />
             {/if}
           </span>
           <button
@@ -412,14 +418,10 @@
     flex-direction: column;
     align-items: flex-end;
   }
-  .duration,
-  .bpm {
+  .duration {
     font-family: var(--mono);
     font-size: 12px;
     color: var(--muted);
-  }
-  .bpm {
-    font-size: 10px;
   }
   .remove {
     display: grid;

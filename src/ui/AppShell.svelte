@@ -59,10 +59,24 @@
     else void stage.requestFullscreen();
   }
 
+  /** Keys a focused slider takes for itself. */
+  const SLIDER_KEYS = new Set([
+    'ArrowLeft',
+    'ArrowRight',
+    'ArrowUp',
+    'ArrowDown',
+    'Home',
+    'End',
+    'PageUp',
+    'PageDown',
+  ]);
+
   /**
-   * Whether the focused element needs `key` itself: text fields take every key; buttons,
-   * sliders and list items take Space and the arrow keys, but not letters (so I and O work
-   * right after clicking Play).
+   * Whether the focused element needs `key` itself. Text fields and selects take every key,
+   * sliders the arrows, Home, End and Page Up/Down, and checkboxes and radio buttons Space (radio
+   * buttons the arrows too). Everything else leaves the keys to the app: Space plays and pauses
+   * also while a button has the focus (Enter still presses it), and letters work right after a
+   * click.
    */
   function ownsKey(target: EventTarget | null, key: string): boolean {
     if (!(target instanceof HTMLElement)) return false;
@@ -72,8 +86,24 @@
         'textarea, select, input:not([type="range"], [type="checkbox"], [type="radio"], [type="color"], [type="file"])',
       ) !== null;
     if (typing) return true;
-    if (key.length === 1 && key !== ' ') return false;
-    return target.closest('input, button, [role="slider"], li') !== null;
+    if (target.closest('input[type="range"], [role="slider"]')) return SLIDER_KEYS.has(key);
+    if (target.matches('input[type="checkbox"]')) return key === ' ';
+    if (target.matches('input[type="radio"]')) return key === ' ' || key.startsWith('Arrow');
+    return false;
+  }
+
+  /** Controls that keep the focus after a click, although a mouse user needs none. */
+  const CLICKED = 'button, summary, input[type="checkbox"], input[type="radio"]';
+
+  /**
+   * A control used with the mouse lets go of the focus, so no focus ring shows up on it at the
+   * next key and the keys go on to the app. Controls reached with Tab keep it, and so does
+   * whatever is in a dialog.
+   */
+  function releaseFocus(control: Element | null | undefined): void {
+    if (!(control instanceof HTMLElement) || control !== document.activeElement) return;
+    if (control.closest('dialog')) return;
+    control.blur();
   }
 
   onMount(() => {
@@ -185,13 +215,32 @@
       if (event.key === ',' || event.key === '.') player.nudge(0);
     };
     const release = () => player.nudge(0);
+    // Whether the last input came from a pointer (a select chosen with the mouse lets go too).
+    let pointing = false;
+    const onPointerDown = () => (pointing = true);
+    const onAnyKey = () => (pointing = false);
+    // A click from the keyboard has no count (detail 0).
+    const onClick = (event: MouseEvent) => {
+      if (event.detail > 0) releaseFocus((event.target as Element | null)?.closest(CLICKED));
+    };
+    const onChange = (event: Event) => {
+      if (pointing && event.target instanceof HTMLSelectElement) releaseFocus(event.target);
+    };
+    window.addEventListener('keydown', onAnyKey, true);
+    window.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', release);
+    window.addEventListener('click', onClick);
+    window.addEventListener('change', onChange);
     return () => {
+      window.removeEventListener('keydown', onAnyKey, true);
+      window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', release);
+      window.removeEventListener('click', onClick);
+      window.removeEventListener('change', onChange);
       document.removeEventListener('fullscreenchange', onFullscreen);
     };
   });

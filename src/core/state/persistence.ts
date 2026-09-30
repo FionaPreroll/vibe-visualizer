@@ -1,3 +1,4 @@
+import { TEMPO_HINT_RANGE } from '../analysis/beat-grid';
 import { sanitizeSound, type SoundSettings } from '../audio/dsp/sound-settings';
 import {
   sanitizeKaleido,
@@ -19,9 +20,9 @@ import {
   REPEAT_MODES,
   SYNC_OFFSET_RANGE,
   VISUAL_MODES,
-  type Cues,
-  type Marks,
+  WAVEFORM_STYLES,
   type Settings,
+  type TrackData,
 } from './app-state';
 
 const SETTINGS_KEY = 'vibe-visualizer:settings:v1';
@@ -31,13 +32,8 @@ const KALEIDO_KEY = 'vibe-visualizer:kaleido:v1';
 const KALEIDO_PRESETS_KEY = 'vibe-visualizer:kaleido-presets:v1';
 const EXPORT_KEY = 'vibe-visualizer:export:v1';
 const SOUND_KEY = 'vibe-visualizer:sound:v1';
-/** Per file (by fingerprint): its cues and markers. */
+/** Per file (by fingerprint): its cues, markers and corrected tempo. */
 const TRACK_PREFIX = 'vibe-visualizer:track:v1:';
-
-export interface StoredTrack {
-  cues: Cues;
-  marks: Marks;
-}
 
 /** A time within the track, or null. */
 function time(value: unknown, duration: number): number | null {
@@ -46,11 +42,19 @@ function time(value: unknown, duration: number): number | null {
     : null;
 }
 
-/** The cues and markers stored for a file (TR-05), validated against its duration. */
-export function loadTrackData(fingerprint: string, duration: number): StoredTrack | null {
+/** A tempo the user can give (TMP-06), or null. */
+function tempo(value: unknown): number | null {
+  return typeof value === 'number' && value >= TEMPO_HINT_RANGE.min && value <= TEMPO_HINT_RANGE.max
+    ? value
+    : null;
+}
+
+/** The cues, markers and tempo stored for a file (TR-05), validated against its duration. */
+export function loadTrackData(fingerprint: string, duration: number): TrackData | null {
   const stored = read(TRACK_PREFIX + fingerprint) as {
     cues?: unknown;
     marks?: { in?: unknown; out?: unknown };
+    tempo?: unknown;
   } | null;
   if (!stored || typeof stored !== 'object') return null;
   const cues = Array.isArray(stored.cues) ? stored.cues : [];
@@ -59,13 +63,17 @@ export function loadTrackData(fingerprint: string, duration: number): StoredTrac
   return {
     cues: Array.from({ length: CUE_COUNT }, (_, index) => time(cues[index], duration)),
     marks,
+    tempo: tempo(stored.tempo),
   };
 }
 
-/** Stores the cues and markers of a file; nothing to store removes the entry. */
-export function saveTrackData(fingerprint: string, data: StoredTrack): void {
+/** Stores the cues, markers and tempo of a file; nothing to store removes the entry. */
+export function saveTrackData(fingerprint: string, data: TrackData): void {
   const empty =
-    data.cues.every((cue) => cue === null) && data.marks.in === null && data.marks.out === null;
+    data.cues.every((cue) => cue === null) &&
+    data.marks.in === null &&
+    data.marks.out === null &&
+    data.tempo === null;
   if (empty) {
     try {
       localStorage.removeItem(TRACK_PREFIX + fingerprint);
@@ -74,7 +82,7 @@ export function saveTrackData(fingerprint: string, data: StoredTrack): void {
     }
     return;
   }
-  write(TRACK_PREFIX + fingerprint, { cues: data.cues, marks: data.marks });
+  write(TRACK_PREFIX + fingerprint, { cues: data.cues, marks: data.marks, tempo: data.tempo });
 }
 
 function read(key: string): unknown {
@@ -113,6 +121,9 @@ export function loadSettings(): Settings {
     settings.volume = Math.max(0, Math.min(1, settings.volume));
     if (!isAspectRatio(settings.aspect)) settings.aspect = DEFAULT_SETTINGS.aspect;
     if (!REPEAT_MODES.includes(settings.repeat)) settings.repeat = DEFAULT_SETTINGS.repeat;
+    if (!WAVEFORM_STYLES.includes(settings.waveformStyle)) {
+      settings.waveformStyle = DEFAULT_SETTINGS.waveformStyle;
+    }
     settings.inputGain = Number.isFinite(settings.inputGain)
       ? Math.max(INPUT_GAIN_RANGE.min, Math.min(INPUT_GAIN_RANGE.max, settings.inputGain))
       : DEFAULT_SETTINGS.inputGain;

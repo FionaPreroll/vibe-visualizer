@@ -8,10 +8,11 @@
 
   /**
    * The detail view around the playhead (TR-08): the waveform of the seconds before and after,
-   * zoomable, with the beat grid, the cues and the in/out markers; drag it to move, click to
-   * jump, drag a marker to move it (it snaps to the beat while quantizing). On the left the
-   * eight hot cues (TR-04): click to jump to one, or to set an empty one at the playhead;
-   * Shift+click or the right button deletes it. The keys 1–8 do the same.
+   * zoomable, with the beat grid (the first beat of each bar stronger), the cues and the in/out
+   * markers; drag it to move, click to jump, drag a marker to move it (it snaps to the beat
+   * while quantizing). A button switches the waveform style (TR-10). On the left the eight hot
+   * cues (TR-04): click to jump to one, or to set an empty one at the playhead; Shift+click or
+   * the right button deletes it. The keys 1–8 do the same.
    */
   const player = usePlayer();
   const app = player.store;
@@ -74,15 +75,24 @@
       { from, to, played: at, available: analysis?.seconds ?? 0 },
       width,
       height,
+      $app.settings.waveformStyle,
     );
-    // Beat grid: a line on every beat, stronger where the beat is clear.
+    // Beat grid: a line on every beat, stronger where the beat is clear; bar lines (on the
+    // first beat of each bar, AN-11) wider and brighter, with a mark at the top.
     const grid = analysis?.grid;
     if (grid) {
       let index = Math.max(0, beatBefore(grid, from));
       for (; index < grid.beats.length && grid.beats[index]! <= to; index++) {
         const confidence = grid.confidence[index]!;
-        context.fillStyle = `rgba(255,255,255,${0.08 + 0.22 * confidence})`;
-        context.fillRect(Math.round(x(grid.beats[index]!)), 0, Math.max(1, ratio), height);
+        const position = Math.round(x(grid.beats[index]!));
+        if (grid.beatInBar?.[index] === 0) {
+          context.fillStyle = `rgba(255,255,255,${0.3 + 0.5 * confidence})`;
+          context.fillRect(position - Math.round(ratio / 2), 0, 2 * ratio, height);
+          context.fillRect(position - 3 * ratio, 0, 6 * ratio, 3 * ratio);
+        } else {
+          context.fillStyle = `rgba(255,255,255,${0.06 + 0.18 * confidence})`;
+          context.fillRect(position, 0, Math.max(1, ratio), height);
+        }
       }
     }
     // The play and export range and its markers (as dragged, while a marker is dragged).
@@ -236,18 +246,34 @@
       </button>
     {/each}
   </div>
-  <canvas
-    bind:this={canvas}
-    onpointerdown={onPointerDown}
-    onpointermove={onPointerMove}
-    onpointerup={onPointerUp}
-    onpointercancel={() => {
-      drag = null;
-      dragOffset = 0;
-      markDrag = null;
-    }}
-    onwheel={onWheel}
-  ></canvas>
+  <div class="view">
+    <canvas
+      bind:this={canvas}
+      onpointerdown={onPointerDown}
+      onpointermove={onPointerMove}
+      onpointerup={onPointerUp}
+      onpointercancel={() => {
+        drag = null;
+        dragOffset = 0;
+        markDrag = null;
+      }}
+      onwheel={onWheel}
+    ></canvas>
+    <button
+      class="style"
+      onclick={() =>
+        player.updateSettings({
+          waveformStyle: $app.settings.waveformStyle === 'bands' ? 'rgb' : 'bands',
+        })}
+      title={$app.settings.waveformStyle === 'bands'
+        ? 'Three bands: lows blue, mids orange, highs white. Click for RGB'
+        : 'RGB: coloured by the bands. Click for three bands'}
+      data-testid="waveform-style"
+      data-style={$app.settings.waveformStyle}
+    >
+      {$app.settings.waveformStyle === 'bands' ? '3 bands' : 'RGB'}
+    </button>
+  </div>
   <div class="zoom" role="group" aria-label="Zoom">
     <button
       onclick={() => (zoom = Math.max(0, zoom - 1))}
@@ -294,14 +320,35 @@
     border-color: var(--cue);
     color: #000;
   }
-  canvas {
+  .view {
+    position: relative;
     flex: 1;
     min-width: 0;
+  }
+  canvas {
+    display: block;
+    width: 100%;
     height: 100%;
     border-radius: 6px;
     background: #0b0b14;
     cursor: grab;
     touch-action: none;
+  }
+  .style {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    padding: 0 5px;
+    border-color: transparent;
+    border-radius: 4px;
+    background: rgb(11 11 20 / 0.7);
+    font: 10px/16px var(--mono);
+    color: var(--muted);
+    opacity: 0.6;
+  }
+  .view:hover .style,
+  .style:focus-visible {
+    opacity: 1;
   }
   canvas:active {
     cursor: grabbing;

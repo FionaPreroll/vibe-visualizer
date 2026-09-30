@@ -64,7 +64,6 @@ export class Analyzer {
   private readonly bandHigh = new Float64Array(SPECTRUM_BANDS);
   private readonly bandTilt = new Float64Array(SPECTRUM_BANDS);
   private readonly energyBins: Int32Array[];
-  private readonly spectrumDb = new Float64Array(SPECTRUM_BANDS);
   private spectrumReference = -40;
   private readonly bandReference = new Float64Array(BAND_NAMES.length).fill(-40);
   private energyReference = -40;
@@ -82,6 +81,9 @@ export class Analyzer {
   private readonly hopHits = new Uint8Array(3);
   /** Largest rise of the kick and drum-body bands within the current hop (the beat accent). */
   private hopAccent = 0;
+  /** Largest rise of the kick band and of the snare band within the current hop. */
+  private hopKick = 0;
+  private hopSnare = 0;
   /** Frames since the last reported beat. */
   private sinceBeat = 1e9;
   /**
@@ -92,6 +94,11 @@ export class Analyzer {
   flux = 0;
   accent = 0;
   active = false;
+  /** The kick and snare rises of the last frame (dB), for the tempo and bars of a beat grid. */
+  kick = 0;
+  snare = 0;
+  /** The spectrum of the last frame in dB (tilted as in the frame, but not auto-gained). */
+  readonly spectrumDb = new Float64Array(SPECTRUM_BANDS);
 
   constructor(sampleRate: number, options: AnalyzerOptions = {}) {
     this.sampleRate = sampleRate;
@@ -168,6 +175,8 @@ export class Analyzer {
     this.lastOnset.fill(-1);
     this.hopHits.fill(0);
     this.hopAccent = 0;
+    this.hopKick = 0;
+    this.hopSnare = 0;
     this.sinceBeat = 1e9;
   }
 
@@ -196,6 +205,8 @@ export class Analyzer {
         this.sinceTick = 0;
         this.drums.endTick();
         this.hopAccent = Math.max(this.hopAccent, this.drums.accent);
+        this.hopKick = Math.max(this.hopKick, this.drums.kickRise);
+        this.hopSnare = Math.max(this.hopSnare, this.drums.snareRise);
         const ages = this.drums.hitAge;
         for (let d = 0; d < 3; d++) {
           if (ages[d]! < 0) continue;
@@ -287,6 +298,10 @@ export class Analyzer {
     flux *= 10 / Math.LN10 / (this.fluxLastBin - this.fluxFirstBin + 1);
     this.flux = flux;
     this.accent = this.hopAccent;
+    this.kick = this.hopKick;
+    this.snare = this.hopSnare;
+    this.hopKick = 0;
+    this.hopSnare = 0;
     this.active = frame[F.rms]! > SILENCE_RMS;
     const beat = this.beats.process(flux, this.hopAccent, this.active);
     this.hopAccent = 0;

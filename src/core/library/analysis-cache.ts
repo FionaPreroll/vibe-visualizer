@@ -13,35 +13,56 @@ export interface TrackAnalysisResult {
   duration: number;
   waveform: Waveform;
   grid: BeatGrid;
+  /** The tempo the user gave for the grid (TMP-06), or null: the grid found the tempo itself. */
+  tempo: number | null;
+}
+
+/**
+ * Tempos (BPM) that give the same grid: both null, or equal within a hundredth of a BPM (the
+ * cache stores them as float32).
+ */
+export function sameTempo(a: number | null, b: number | null): boolean {
+  return a === null || b === null ? a === b : Math.abs(a - b) < 0.01;
 }
 
 const DIRECTORY = 'track-analysis';
 const MAGIC = 0x56564741; // "VVGA"
-const VERSION = 1;
+const VERSION = 2;
 /** Cached tracks kept; the least recently written go first. */
 const MAX_ENTRIES = 60;
 const HEADER_BYTES = 32;
 
-/** Serialises a result: a header, the waveform, then the beats and their confidence. */
+/**
+ * Serialises a result: a header, the waveform, then the beats, their confidence and their
+ * positions in the bar.
+ */
 export function encodeAnalysis(result: TrackAnalysisResult): ArrayBuffer {
   const waveformBytes = result.waveform.length * WAVEFORM_STRIDE;
   const beats = result.grid.beats.length;
   const beatsOffset = align(HEADER_BYTES + waveformBytes, 8);
   const confidenceOffset = beatsOffset + beats * 8;
-  const buffer = new ArrayBuffer(confidenceOffset + beats * 4);
+  const barOffset = confidenceOffset + beats * 4;
+  const buffer = new ArrayBuffer(barOffset + beats);
   const view = new DataView(buffer);
   view.setUint32(0, MAGIC, true);
   view.setUint32(4, VERSION, true);
   view.setUint32(8, result.waveform.rate, true);
   view.setUint32(12, result.waveform.length, true);
   view.setUint32(16, beats, true);
+  view.setFloat32(20, result.tempo ?? 0, true);
   view.setFloat64(24, result.duration, true);
   new Uint8Array(buffer, HEADER_BYTES, waveformBytes).set(
     result.waveform.data.subarray(0, waveformBytes),
   );
   new Float64Array(buffer, beatsOffset, beats).set(result.grid.beats);
   new Float32Array(buffer, confidenceOffset, beats).set(result.grid.confidence);
+  new Uint8Array(buffer, barOffset, beats).set(result.grid.beatInBar ?? countBars(beats));
   return buffer;
+}
+
+/** Positions in bars of four from the first beat on, for a grid without bars. */
+function countBars(beats: number): Uint8Array {
+  return Uint8Array.from({ length: beats }, (_, k) => k % 4);
 }
 
 /** The result stored in `buffer`, or null if it is not a (current) analysis. */
@@ -55,11 +76,13 @@ export function decodeAnalysis(
   const rate = view.getUint32(8, true);
   const length = view.getUint32(12, true);
   const beats = view.getUint32(16, true);
+  const tempo = view.getFloat32(20, true);
   const duration = view.getFloat64(24, true);
   const waveformBytes = length * WAVEFORM_STRIDE;
   const beatsOffset = align(HEADER_BYTES + waveformBytes, 8);
   const confidenceOffset = beatsOffset + beats * 8;
-  if (buffer.byteLength < confidenceOffset + beats * 4) return null;
+  const barOffset = confidenceOffset + beats * 4;
+  if (buffer.byteLength < barOffset + beats) return null;
   return {
     fingerprint,
     duration,
@@ -70,8 +93,10 @@ export function decodeAnalysis(
     },
     grid: {
       beats: new Float64Array(buffer.slice(beatsOffset, beatsOffset + beats * 8)),
-      confidence: new Float32Array(buffer.slice(confidenceOffset, confidenceOffset + beats * 4)),
+      confidence: new Float32Array(buffer.slice(confidenceOffset, barOffset)),
+      beatInBar: new Uint8Array(buffer.slice(barOffset, barOffset + beats)),
     },
+    tempo: tempo > 0 ? tempo : null,
   };
 }
 
