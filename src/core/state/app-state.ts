@@ -118,7 +118,16 @@ export interface Settings {
   quantize: boolean;
   /** The name the app shows (top bar, window title); the user can change it. */
   appName: string;
+  /** How the waveforms are drawn (TR-10). */
+  waveformStyle: WaveformStyle;
 }
+
+/**
+ * Waveform styles (TR-10): the three bands as layers, lows blue, mids orange and highs white
+ * (as Rekordbox's "3Band"), or one shape as high as the peak, coloured by the bands.
+ */
+export type WaveformStyle = 'bands' | 'rgb';
+export const WAVEFORM_STYLES: readonly WaveformStyle[] = ['bands', 'rgb'];
 
 /** The app's name until the user gives it another one. */
 export const DEFAULT_APP_NAME = 'FibeStation';
@@ -247,6 +256,7 @@ export const DEFAULT_SETTINGS: Settings = {
   syncOffset: 0,
   quantize: true,
   appName: DEFAULT_APP_NAME,
+  waveformStyle: 'bands',
 };
 
 export function initialState(

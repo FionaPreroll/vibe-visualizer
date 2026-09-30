@@ -54,3 +54,26 @@ test('the tempo of a track can be corrected, and is kept for its file (TMP-06)',
   await expect(menu).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('the waveforms have two styles, and the choice is kept (TR-10)', async ({ page }) => {
+  const errors = collectErrors(page);
+  const file = { name: 'Beat.wav', mimeType: 'audio/wav', buffer: createWav(8) };
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles(file);
+  await expect(page.getByTestId('queue-bpm')).toHaveText('120 BPM', { timeout: 15_000 });
+  await page.getByTestId('play-button').click();
+  // Three bands by default; the button switches to RGB.
+  const style = page.getByTestId('waveform-style');
+  await expect(style).toHaveAttribute('data-style', 'bands');
+  await expect(style).toHaveText('3 bands');
+  await style.click();
+  await expect(style).toHaveAttribute('data-style', 'rgb');
+  await expect(style).toHaveText('RGB');
+
+  await page.reload();
+  await page.getByTestId('file-input').setInputFiles(file);
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('play-button').click();
+  await expect(style).toHaveAttribute('data-style', 'rgb');
+  expect(errors).toEqual([]);
+});

@@ -20,6 +20,7 @@ import {
   REPEAT_MODES,
   SYNC_OFFSET_RANGE,
   VISUAL_MODES,
+  WAVEFORM_STYLES,
   type Settings,
   type TrackData,
 } from './app-state';
@@ -120,6 +121,9 @@ export function loadSettings(): Settings {
     settings.volume = Math.max(0, Math.min(1, settings.volume));
     if (!isAspectRatio(settings.aspect)) settings.aspect = DEFAULT_SETTINGS.aspect;
     if (!REPEAT_MODES.includes(settings.repeat)) settings.repeat = DEFAULT_SETTINGS.repeat;
+    if (!WAVEFORM_STYLES.includes(settings.waveformStyle)) {
+      settings.waveformStyle = DEFAULT_SETTINGS.waveformStyle;
+    }
     settings.inputGain = Number.isFinite(settings.inputGain)
       ? Math.max(INPUT_GAIN_RANGE.min, Math.min(INPUT_GAIN_RANGE.max, settings.inputGain))
       : DEFAULT_SETTINGS.inputGain;

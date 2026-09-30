@@ -75,7 +75,7 @@
     const context = canvas.getContext('2d');
     if (!context) return;
     const view = { from: 0, to: duration, played: Infinity, available: analysis?.seconds ?? 0 };
-    drawWaveform(context, waveform, view, width, height);
+    drawWaveform(context, waveform, view, width, height, $app.settings.waveformStyle);
   });
 
   function fractionAt(event: PointerEvent): number {
