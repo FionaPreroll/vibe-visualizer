@@ -9,9 +9,13 @@
     PALETTES,
     RANGES,
     RESPONSIVENESS,
+    RING_DIRECTIONS,
+    RING_STYLES,
     type LogoSpectrumSettings,
     type PaletteName,
     type ResponsivenessName,
+    type RingDirection,
+    type RingStyle,
   } from '../core/render/visual-settings';
   import { loadPresets, savePresets } from '../core/state/persistence';
   import { errorMessage } from '../core/util/format';
@@ -37,7 +41,7 @@
 
   function slider(key: NumberKey, label: string, format?: (value: number) => string) {
     const [min, max] = RANGES[key];
-    const integer = key === 'layers' || key === 'particles';
+    const integer = key === 'layers' || key === 'particles' || key === 'bars';
     return {
       label,
       min,
@@ -79,6 +83,17 @@
       ),
     ),
   );
+  const STYLE_NAMES: Record<RingStyle, string> = {
+    blob: 'Filled',
+    bars: 'Bars',
+    lines: 'Lines',
+    dots: 'Dots',
+  };
+  const DIRECTION_NAMES: Record<RingDirection, string> = {
+    outward: 'Outward',
+    inward: 'Inward',
+    both: 'Both',
+  };
   const swatch = (name: PaletteName) =>
     `linear-gradient(90deg, ${(name === 'custom' ? v.customColors : PALETTES[name]).join(', ')})`;
 </script>
@@ -97,6 +112,42 @@
   {/if}
 
   <Section title="Spectrum ring" open>
+    <div class="choice">
+      <span class="label">Style</span>
+      <div class="quick" role="radiogroup" aria-label="Ring style">
+        {#each RING_STYLES as style (style)}
+          <button
+            role="radio"
+            aria-checked={v.ringStyle === style}
+            class:on={v.ringStyle === style}
+            onclick={() => set({ ringStyle: style })}
+          >
+            {STYLE_NAMES[style]}
+          </button>
+        {/each}
+      </div>
+    </div>
+    <div class="choice">
+      <span class="label">Direction</span>
+      <div class="quick" role="radiogroup" aria-label="Ring direction">
+        {#each RING_DIRECTIONS as direction (direction)}
+          <button
+            role="radio"
+            aria-checked={v.ringDirection === direction}
+            class:on={v.ringDirection === direction}
+            onclick={() => set({ ringDirection: direction })}
+          >
+            {DIRECTION_NAMES[direction]}
+          </button>
+        {/each}
+      </div>
+    </div>
+    {#if v.ringStyle === 'bars' || v.ringStyle === 'dots'}
+      <Slider {...slider('bars', 'Bars')} />
+    {/if}
+    {#if v.ringStyle !== 'blob'}
+      <Slider {...slider('thickness', 'Thickness', percent)} />
+    {/if}
     <div class="palettes" role="radiogroup" aria-label="Palette">
       {#each PALETTE_NAMES as name (name)}
         <button
@@ -229,9 +280,24 @@
     </div>
     <Slider {...slider('backgroundBlur', 'Blur', percent)} />
     <Slider {...slider('backgroundDim', 'Darken', percent)} />
-    <Slider {...slider('backgroundPulse', 'Bass zoom', percent)} />
+    <div class="color-row">
+      <label for="background-tint">Tint</label>
+      <input
+        id="background-tint"
+        type="color"
+        value={v.backgroundTint}
+        oninput={(event) => set({ backgroundTint: event.currentTarget.value })}
+      />
+    </div>
+    <Slider {...slider('backgroundTintAmount', 'Tint amount', percent)} />
     <Slider {...slider('backgroundX', 'Position X')} />
     <Slider {...slider('backgroundY', 'Position Y')} />
+  </Section>
+
+  <Section title="Motion">
+    <Slider {...slider('backgroundPulse', 'Bass zoom', percent)} />
+    <Slider {...slider('shake', 'Camera shake', percent)} />
+    <Slider {...slider('drift', 'Drift', percent)} />
   </Section>
 
   <Section title="Particles">
@@ -315,6 +381,20 @@
   }
   .color-row .quick {
     grid-column: 2 / 4;
+  }
+  .choice {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+  }
+  .choice .label {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .choice .quick {
+    margin-bottom: 0;
   }
   .check {
     display: flex;

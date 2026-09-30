@@ -13,7 +13,7 @@ import {
   supportsFloatTargets,
   type Target,
 } from './gl';
-import { PostProcessing } from './post';
+import { NO_CAMERA, PostProcessing, type Camera } from './post';
 import type { Scene, SceneInput, SceneSnapshot } from './scene';
 import { CURVE_POINTS, SpectrumShaper } from './spectrum-shaper';
 import {
@@ -21,6 +21,8 @@ import {
   layerColors,
   MAX_LAYERS,
   parseColor,
+  RING_DIRECTIONS,
+  RING_STYLES,
   type LogoSpectrumSettings,
 } from './visual-settings';
 
@@ -41,6 +43,8 @@ uniform vec2 pan;
 uniform float dim;
 uniform float time;
 uniform vec2 resolution;
+uniform vec3 tint;
+uniform float tintAmount;
 
 void main() {
   vec3 col;
@@ -60,6 +64,10 @@ void main() {
     col += vec3(0.05, 0.02, 0.09) * (0.5 + 0.5 * sin(time * 0.15 + q.x * 2.5 + q.y * 1.5));
     col += vec3(0.0, 0.03, 0.05) * (0.5 + 0.5 * sin(time * 0.11 - q.y * 3.0));
   }
+  // Tinted towards a colour, keeping the brightness of each part (LS-02).
+  const vec3 luma = vec3(0.2126, 0.7152, 0.0722);
+  vec3 tinted = dot(col, luma) * tint / max(dot(tint, luma), 0.2);
+  col = mix(col, tinted, tintAmount);
   color = vec4(col * (1.0 - dim), 1.0);
 }`;
 
@@ -125,6 +133,12 @@ uniform float rotation;
 uniform float glow;
 uniform float glowRadius;
 uniform float hue;
+/** 0 filled shape, 1 bars, 2 lines, 3 dots (LS-11). */
+uniform int style;
+/** 0 outward, 1 inward, 2 both ways. */
+uniform int direction;
+uniform float bars;
+uniform float thickness;
 
 const float TAU = 6.28318530718;
 
@@ -134,21 +148,74 @@ vec3 hueRotate(vec3 c, float angle) {
   return c * cosine + cross(k, c) * sin(angle) + k * dot(k, c) * (1.0 - cosine);
 }
 
+/** Coverage of a shape from its signed distance (positive inside), smoothed over a pixel. */
+float cover(float d) {
+  return clamp(0.5 + d / max(fwidth(d), 1e-3), 0.0, 1.0);
+}
+
+/**
+ * Signed distance (pixels, positive inside) to the dots of a bar that starts at the radius
+ * \`from\` and is \`to - from\` long: round dots of radius w, one every 2.6 w, going out (way 1)
+ * or in (way -1).
+ */
+float dots(float rho, float across, float from, float to, float w, float way) {
+  float pitch = 2.6 * w;
+  float count = max(floor((to - from - w) / pitch), 0.0);
+  float j = clamp(floor((way * (rho - from) - w) / pitch + 0.5), 0.0, count);
+  float centre = from + way * (w + j * pitch);
+  return w - length(vec2(across, rho - centre));
+}
+
 void main() {
   vec2 p = gl_FragCoord.xy - center;
   float rho = length(p);
   // Angle clockwise from the top, in turns.
   float turn = fract((atan(p.x, p.y) - rotation) / TAU);
+  // Bars and dots take the value at the middle of their bar; across is the distance from it.
+  float sampled = turn;
+  float across = 0.0;
+  if (style == 1 || style == 3) {
+    sampled = (floor(turn * bars) + 0.5) / bars;
+    across = (turn - sampled) * TAU * rho;
+  }
+  float halfWidth = 0.5 * thickness * TAU * radius / bars;
+  float lineHalf = max(0.75, 0.012 * thickness * radius);
+  // Bars and dots stay visible in silence.
+  float least = style == 1 || style == 3 ? max(2.0 * halfWidth, 0.02 * radius) : 0.0;
   float halo = radius * glowRadius;
   vec4 acc = vec4(0.0);
   for (int i = ${MAX_LAYERS}; i >= 0; i--) {
     if (i > layers) continue;
-    float value = texture(curves, vec2(turn, (float(i) + 0.5) / ${MAX_LAYERS + 1}.0)).r;
+    float value = texture(curves, vec2(sampled, (float(i) + 0.5) / ${MAX_LAYERS + 1}.0)).r;
     // Layers further back are a little bigger, more so at the peaks.
     float depth = float(i);
-    float edge = radius + spread * radius * 0.25 * depth + amplitude * value * (1.0 + 5.0 * spread * depth);
-    float d = edge - rho;
-    float inside = clamp(0.5 + d / max(fwidth(d), 1e-3), 0.0, 1.0);
+    float height = max(least, spread * radius * 0.25 * depth + amplitude * value * (1.0 + 5.0 * spread * depth));
+    float outer = direction == 1 ? radius : radius + height;
+    float inner = direction == 0 ? radius : radius - height;
+    float d;
+    float inside;
+    if (style == 0) {
+      // The filled shape reaches in to the logo when it grows outward.
+      d = direction == 0 ? outer - rho : min(outer - rho, rho - inner);
+      inside = cover(d);
+    } else if (style == 2) {
+      float toOuter = rho - outer;
+      float toInner = rho - inner;
+      float line = lineHalf - abs(toOuter) / max(length(vec2(dFdx(toOuter), dFdy(toOuter))), 1e-3);
+      if (direction == 1) line = lineHalf - abs(toInner) / max(length(vec2(dFdx(toInner), dFdy(toInner))), 1e-3);
+      if (direction == 2) line = max(line, lineHalf - abs(toInner) / max(length(vec2(dFdx(toInner), dFdy(toInner))), 1e-3));
+      d = line;
+      inside = clamp(0.5 + d, 0.0, 1.0);
+    } else if (style == 1) {
+      // A bar with round ends, in pixels.
+      d = halfWidth - length(vec2(across, rho - clamp(rho, inner, outer)));
+      inside = clamp(0.5 + d, 0.0, 1.0);
+    } else {
+      float w = halfWidth;
+      d = direction == 1 ? dots(rho, across, radius, radius + height, w, -1.0) : dots(rho, across, radius, radius + height, w, 1.0);
+      if (direction == 2) d = max(d, dots(rho, across, radius, radius + height, w, -1.0));
+      inside = clamp(0.5 + d, 0.0, 1.0);
+    }
     vec3 c = i == 0 ? topColor : max(hueRotate(colors[i - 1], hue), 0.0);
     vec4 layer = vec4(c * inside, inside);
     acc = layer + acc * (1.0 - layer.a);
@@ -203,6 +270,42 @@ void main() {
 }`;
 
 const MAX_PARTICLES = 600;
+
+/**
+ * The slow drift of the background (LS-03, Ken Burns): a gentle zoom, and a pan within what
+ * the zoom crops away, on periods of about half a minute that never line up.
+ */
+export function backgroundDrift(
+  amount: number,
+  time: number,
+): { zoom: number; x: number; y: number } {
+  if (amount <= 0) return { zoom: 1, x: 0, y: 0 };
+  const turn = Math.PI * 2;
+  return {
+    zoom: 1 + amount * (0.06 + 0.06 * Math.sin((time * turn) / 37)),
+    x: amount * 0.8 * Math.sin((time * turn) / 53),
+    y: amount * 0.8 * Math.cos((time * turn) / 41),
+  };
+}
+
+/**
+ * The camera shake on kicks (LS-03): an offset of the whole picture that follows the kick's
+ * envelope, in a direction that wanders quickly (the same for the same time, so exports match),
+ * and the zoom that keeps the edges out of sight.
+ */
+export function cameraShake(amount: number, kick: number, time: number, aspect: number): Camera {
+  if (amount <= 0) return NO_CAMERA;
+  const reach = 0.012 * amount;
+  const size = reach * Math.min(1, kick);
+  const x = Math.sin(time * 71.3 + Math.sin(time * 23.1) * 2) * size;
+  const y = Math.sin(time * 59.7 + Math.cos(time * 17.9) * 2 + 1.3) * size;
+  // Offsets in parts of the shorter side, as UV offsets.
+  return {
+    x: aspect >= 1 ? x / aspect : x,
+    y: aspect >= 1 ? y : y * aspect,
+    zoom: 1 + 2.5 * reach,
+  };
+}
 
 class Follower {
   value = 0;
@@ -356,19 +459,27 @@ export class LogoSpectrumScene implements Scene {
     gl.disable(gl.BLEND);
     this.ensureBlurredBackground();
 
-    // Background.
+    // Background, with the bass zoom and the slow drift (LS-03).
     bindTarget(gl, scene, this.width, this.height);
-    const zoom = 1 + 0.05 * s.backgroundPulse * bass;
+    const drift = backgroundDrift(s.drift, input.time);
+    const zoom = (1 + 0.05 * s.backgroundPulse * bass) * drift.zoom;
     const [sx, sy] = this.backgroundScale();
+    const [tintR, tintG, tintB] = parseColor(s.backgroundTint);
     this.programs.background
       .use()
       .texture('image', this.backgroundTexture(), 0)
       .int('hasImage', this.background ? 1 : 0)
       .vec2('scale', sx / zoom, sy / zoom)
-      .vec2('pan', s.backgroundX, s.backgroundY)
+      .vec2(
+        'pan',
+        Math.max(-1, Math.min(1, s.backgroundX + drift.x)),
+        Math.max(-1, Math.min(1, s.backgroundY + drift.y)),
+      )
       .float('dim', s.backgroundDim)
       .float('time', input.time)
-      .vec2('resolution', this.width, this.height);
+      .vec2('resolution', this.width, this.height)
+      .vec3('tint', tintR, tintG, tintB)
+      .float('tintAmount', s.backgroundTintAmount);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     // Particles (additive).
@@ -424,7 +535,11 @@ export class LogoSpectrumScene implements Scene {
       .float('rotation', rotation)
       .float('glow', s.glow)
       .float('glowRadius', s.glowRadius)
-      .float('hue', ((s.hueCycle * input.time) / 60) * Math.PI * 2);
+      .float('hue', ((s.hueCycle * input.time) / 60) * Math.PI * 2)
+      .int('style', RING_STYLES.indexOf(s.ringStyle))
+      .int('direction', RING_DIRECTIONS.indexOf(s.ringDirection))
+      .float('bars', s.bars)
+      .float('thickness', s.thickness);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     // Logo.
@@ -445,7 +560,14 @@ export class LogoSpectrumScene implements Scene {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disable(gl.BLEND);
 
-    this.post.present(scene, s.bloom, this.width, this.height, this.frameCount);
+    this.post.present(
+      scene,
+      s.bloom,
+      this.width,
+      this.height,
+      this.frameCount,
+      cameraShake(s.shake, features[F.kick]!, input.time, this.width / this.height),
+    );
     gl.bindVertexArray(null);
   }
 

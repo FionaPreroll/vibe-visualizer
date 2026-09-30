@@ -45,6 +45,30 @@ describe('visual settings', () => {
     expect(settings.maxFrequency).toBe(2000);
   });
 
+  it('keeps valid ring styles, directions and tints, and falls back for others', () => {
+    const settings = sanitizeSettings({
+      ringStyle: 'dots',
+      ringDirection: 'both',
+      backgroundTint: '#00ff88',
+      bars: 99.6,
+      thickness: 3,
+    });
+    expect(settings).toMatchObject({
+      ringStyle: 'dots',
+      ringDirection: 'both',
+      backgroundTint: '#00ff88',
+      bars: 100,
+      thickness: RANGES.thickness[1],
+    });
+    expect(
+      sanitizeSettings({ ringStyle: 'zigzag', ringDirection: 'up', backgroundTint: 'pink' }),
+    ).toMatchObject({
+      ringStyle: DEFAULT_LOGO_SPECTRUM.ringStyle,
+      ringDirection: DEFAULT_LOGO_SPECTRUM.ringDirection,
+      backgroundTint: DEFAULT_LOGO_SPECTRUM.backgroundTint,
+    });
+  });
+
   it('has valid built-in presets and palettes', () => {
     for (const preset of BUILT_IN_PRESETS) {
       expect(sanitizeSettings(preset.settings)).toEqual(preset.settings);

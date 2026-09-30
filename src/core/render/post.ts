@@ -48,6 +48,9 @@ uniform sampler2D scene;
 uniform sampler2D bloom;
 uniform float bloomStrength;
 uniform float seed;
+/** A camera over the picture: offset (UV) and zoom, for the camera shake. */
+uniform vec2 offset;
+uniform float zoom;
 
 // Keeps colours up to 0.8 as they are and rolls off brighter values towards 1.
 vec3 rolloff(vec3 c) {
@@ -56,12 +59,22 @@ vec3 rolloff(vec3 c) {
 }
 
 void main() {
-  vec3 c = texture(scene, uv).rgb + texture(bloom, uv).rgb * bloomStrength;
+  vec2 at = (uv - 0.5) / zoom + 0.5 + offset;
+  vec3 c = texture(scene, at).rgb + texture(bloom, at).rgb * bloomStrength;
   float noise = fract(sin(dot(gl_FragCoord.xy + seed, vec2(12.9898, 78.233))) * 43758.5453);
   color = vec4(rolloff(c) + (noise - 0.5) / 255.0, 1.0);
 }`;
 
 const LEVELS = 6;
+
+/** Where the final pass looks at the picture: an offset (UV) and a zoom. */
+export interface Camera {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export const NO_CAMERA: Camera = { x: 0, y: 0, zoom: 1 };
 
 export class PostProcessing {
   private readonly gl: WebGL2RenderingContext;
@@ -95,7 +108,14 @@ export class PostProcessing {
    * Adds bloom to `scene` and draws the result to the canvas (`width` × `height`). Expects the
    * full-screen triangle's vertex array to be bound.
    */
-  present(scene: Target, bloom: number, width: number, height: number, frame: number): void {
+  present(
+    scene: Target,
+    bloom: number,
+    width: number,
+    height: number,
+    frame: number,
+    camera: Camera = NO_CAMERA,
+  ): void {
     const gl = this.gl;
     const chain = this.chain;
     gl.disable(gl.BLEND);
@@ -131,7 +151,9 @@ export class PostProcessing {
       .texture('scene', scene.texture, 0)
       .texture('bloom', chain[0]!.texture, 1)
       .float('bloomStrength', bloom * 0.8)
-      .float('seed', (frame % 1024) * 1.618);
+      .float('seed', (frame % 1024) * 1.618)
+      .vec2('offset', camera.x, camera.y)
+      .float('zoom', camera.zoom);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
