@@ -1,6 +1,29 @@
 /** Builds a 16-bit stereo WAV file with a tone and a click every half second. */
 export function createWav(seconds: number, sampleRate = 44100): Buffer {
+  return createBeatWav([{ seconds, bpm: 120 }], sampleRate);
+}
+
+/**
+ * Builds a 16-bit stereo WAV file with a tone and a click on every beat: `sections` one after
+ * the other, each so many seconds at its tempo.
+ */
+export function createBeatWav(
+  sections: readonly { seconds: number; bpm: number }[],
+  sampleRate = 44100,
+): Buffer {
+  const seconds = sections.reduce((sum, section) => sum + section.seconds, 0);
   const frames = Math.round(seconds * sampleRate);
+  // The click of each frame: 5 ms from each beat on.
+  const clicks = new Uint8Array(frames);
+  let start = 0;
+  for (const section of sections) {
+    const end = start + section.seconds;
+    for (let beat = start; beat < end - 1e-9; beat += 60 / section.bpm) {
+      const from = Math.round(beat * sampleRate);
+      clicks.fill(1, from, Math.min(frames, from + Math.round(0.005 * sampleRate)));
+    }
+    start = end;
+  }
   const dataBytes = frames * 4;
   const buffer = Buffer.alloc(44 + dataBytes);
   buffer.write('RIFF', 0);
@@ -18,7 +41,7 @@ export function createWav(seconds: number, sampleRate = 44100): Buffer {
   buffer.writeUInt32LE(dataBytes, 40);
   for (let i = 0; i < frames; i++) {
     const t = i / sampleRate;
-    const click = t % 0.5 < 0.005 ? 0.5 : 0;
+    const click = clicks[i] ? 0.5 : 0;
     const value = Math.round((Math.sin(2 * Math.PI * 440 * t) * 0.25 + click) * 32767);
     buffer.writeInt16LE(value, 44 + i * 4);
     buffer.writeInt16LE(value, 46 + i * 4);

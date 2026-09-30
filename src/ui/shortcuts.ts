@@ -27,6 +27,7 @@ export const SHORTCUTS: readonly { title: string; keys: readonly [string[], stri
       [['I', 'O'], 'Set the in or out marker (with Shift: clear it)'],
       [['Q'], 'Snap markers and cues to the beat, or not'],
       [['W'], 'Detail waveform on or off'],
+      [['Shift + drag'], 'Move the beat grid, in the detail waveform'],
     ],
   },
   {

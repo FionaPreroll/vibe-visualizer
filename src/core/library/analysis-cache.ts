@@ -1,4 +1,4 @@
-import type { BeatGrid } from '../analysis/beat-grid';
+import { TEMPO_RANGE_IDS, type BeatGrid, type TempoRangeId } from '../analysis/beat-grid';
 import { WAVEFORM_STRIDE, type Waveform } from '../analysis/waveform';
 
 /**
@@ -15,6 +15,14 @@ export interface TrackAnalysisResult {
   grid: BeatGrid;
   /** The tempo the user gave for the grid (TMP-06), or null: the grid found the tempo itself. */
   tempo: number | null;
+  /** The tempo range the grid was found in (AN-12). */
+  range: TempoRangeId;
+}
+
+/** What a beat grid is computed with: a tempo from the user (TMP-06), or else the range. */
+export interface GridRequest {
+  tempo: number | null;
+  range: TempoRangeId;
 }
 
 /**
@@ -25,12 +33,17 @@ export function sameTempo(a: number | null, b: number | null): boolean {
   return a === null || b === null ? a === b : Math.abs(a - b) < 0.01;
 }
 
+/** Requests that give the same grid: the same tempo, and without one the same range. */
+export function sameGrid(a: GridRequest, b: GridRequest): boolean {
+  return sameTempo(a.tempo, b.tempo) && (a.tempo !== null || a.range === b.range);
+}
+
 const DIRECTORY = 'track-analysis';
 const MAGIC = 0x56564741; // "VVGA"
-const VERSION = 2;
+const VERSION = 3;
 /** Cached tracks kept; the least recently written go first. */
 const MAX_ENTRIES = 60;
-const HEADER_BYTES = 32;
+const HEADER_BYTES = 40;
 
 /**
  * Serialises a result: a header, the waveform, then the beats, their confidence and their
@@ -51,6 +64,7 @@ export function encodeAnalysis(result: TrackAnalysisResult): ArrayBuffer {
   view.setUint32(16, beats, true);
   view.setFloat32(20, result.tempo ?? 0, true);
   view.setFloat64(24, result.duration, true);
+  view.setUint32(32, TEMPO_RANGE_IDS.indexOf(result.range), true);
   new Uint8Array(buffer, HEADER_BYTES, waveformBytes).set(
     result.waveform.data.subarray(0, waveformBytes),
   );
@@ -78,6 +92,8 @@ export function decodeAnalysis(
   const beats = view.getUint32(16, true);
   const tempo = view.getFloat32(20, true);
   const duration = view.getFloat64(24, true);
+  const range = TEMPO_RANGE_IDS[view.getUint32(32, true)];
+  if (!range) return null;
   const waveformBytes = length * WAVEFORM_STRIDE;
   const beatsOffset = align(HEADER_BYTES + waveformBytes, 8);
   const confidenceOffset = beatsOffset + beats * 8;
@@ -97,6 +113,7 @@ export function decodeAnalysis(
       beatInBar: new Uint8Array(buffer.slice(barOffset, barOffset + beats)),
     },
     tempo: tempo > 0 ? tempo : null,
+    range,
   };
 }
 

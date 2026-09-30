@@ -1,4 +1,5 @@
-import { TEMPO_HINT_RANGE } from '../analysis/beat-grid';
+import { TEMPO_HINT_RANGE, TEMPO_RANGE_IDS } from '../analysis/beat-grid';
+import { clampShift, isGridEdited, NO_GRID_EDIT, type GridEdit } from '../analysis/grid-edit';
 import { sanitizeSound, type SoundSettings } from '../audio/dsp/sound-settings';
 import {
   sanitizeKaleido,
@@ -32,7 +33,7 @@ const KALEIDO_KEY = 'vibe-visualizer:kaleido:v1';
 const KALEIDO_PRESETS_KEY = 'vibe-visualizer:kaleido-presets:v1';
 const EXPORT_KEY = 'vibe-visualizer:export:v1';
 const SOUND_KEY = 'vibe-visualizer:sound:v1';
-/** Per file (by fingerprint): its cues, markers and corrected tempo. */
+/** Per file (by fingerprint): its cues, markers, corrected tempo and beat grid. */
 const TRACK_PREFIX = 'vibe-visualizer:track:v1:';
 
 /** A time within the track, or null. */
@@ -49,12 +50,29 @@ function tempo(value: unknown): number | null {
     : null;
 }
 
-/** The cues, markers and tempo stored for a file (TR-05), validated against its duration. */
+/** A correction of the beat grid (TR-11), or none. */
+function gridEdit(value: unknown, duration: number): GridEdit {
+  if (!value || typeof value !== 'object') return NO_GRID_EDIT;
+  const { shift, downbeat } = value as { shift?: unknown; downbeat?: unknown };
+  // The first beat of a grid can lie just before the start of the file.
+  const anchor =
+    typeof downbeat === 'number' && downbeat >= -1 && downbeat <= duration + 1 ? downbeat : null;
+  return {
+    shift: typeof shift === 'number' && Number.isFinite(shift) ? clampShift(shift) : 0,
+    downbeat: anchor,
+  };
+}
+
+/**
+ * The cues, markers, tempo and grid correction stored for a file (TR-05), validated against its
+ * duration.
+ */
 export function loadTrackData(fingerprint: string, duration: number): TrackData | null {
   const stored = read(TRACK_PREFIX + fingerprint) as {
     cues?: unknown;
     marks?: { in?: unknown; out?: unknown };
     tempo?: unknown;
+    grid?: unknown;
   } | null;
   if (!stored || typeof stored !== 'object') return null;
   const cues = Array.isArray(stored.cues) ? stored.cues : [];
@@ -64,16 +82,18 @@ export function loadTrackData(fingerprint: string, duration: number): TrackData 
     cues: Array.from({ length: CUE_COUNT }, (_, index) => time(cues[index], duration)),
     marks,
     tempo: tempo(stored.tempo),
+    gridEdit: gridEdit(stored.grid, duration),
   };
 }
 
-/** Stores the cues, markers and tempo of a file; nothing to store removes the entry. */
+/** Stores the cues, markers, tempo and grid correction of a file; nothing to store removes it. */
 export function saveTrackData(fingerprint: string, data: TrackData): void {
   const empty =
     data.cues.every((cue) => cue === null) &&
     data.marks.in === null &&
     data.marks.out === null &&
-    data.tempo === null;
+    data.tempo === null &&
+    !isGridEdited(data.gridEdit);
   if (empty) {
     try {
       localStorage.removeItem(TRACK_PREFIX + fingerprint);
@@ -82,7 +102,12 @@ export function saveTrackData(fingerprint: string, data: TrackData): void {
     }
     return;
   }
-  write(TRACK_PREFIX + fingerprint, { cues: data.cues, marks: data.marks, tempo: data.tempo });
+  write(TRACK_PREFIX + fingerprint, {
+    cues: data.cues,
+    marks: data.marks,
+    tempo: data.tempo,
+    ...(isGridEdited(data.gridEdit) ? { grid: data.gridEdit } : {}),
+  });
 }
 
 function read(key: string): unknown {
@@ -124,6 +149,7 @@ export function loadSettings(): Settings {
     if (!WAVEFORM_STYLES.includes(settings.waveformStyle)) {
       settings.waveformStyle = DEFAULT_SETTINGS.waveformStyle;
     }
+    if (!TEMPO_RANGE_IDS.includes(settings.bpmRange)) settings.bpmRange = DEFAULT_SETTINGS.bpmRange;
     settings.inputGain = Number.isFinite(settings.inputGain)
       ? Math.max(INPUT_GAIN_RANGE.min, Math.min(INPUT_GAIN_RANGE.max, settings.inputGain))
       : DEFAULT_SETTINGS.inputGain;
