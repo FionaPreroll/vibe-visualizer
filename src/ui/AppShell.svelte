@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { isClean } from '../core/audio/dsp/sound-settings';
+  import { ControllerService } from '../core/control/controller-service';
   import { REPEAT_MODES } from '../core/state/app-state';
   import { Exporter } from '../core/export/exporter';
   import { Player } from '../core/player/player';
   import { VisualAssets } from '../core/render/visual-assets';
   import AnalysisView from './AnalysisView.svelte';
+  import { provideControllers } from './controller-context';
+  import ControllerDialog from './ControllerDialog.svelte';
   import { renderDefaultLogo } from './default-logo';
   import DetailWaveform from './DetailWaveform.svelte';
   import DropOverlay from './DropOverlay.svelte';
@@ -31,9 +34,12 @@
   provideAssets(assets);
   const exporter = new Exporter();
   provideExporter(exporter);
+  const controllers = new ControllerService(player);
+  provideControllers(controllers);
   const app = player.store;
   let exportOpen = $state(false);
   let helpOpen = $state(false);
+  let controllerOpen = $state(false);
   /** The help's section: where it was left, or the shortcuts for "?". */
   let helpSection = $state('getting-started');
   let welcomeOpen = $state(false);
@@ -58,6 +64,7 @@
 
   onDestroy(() => {
     clearTimeout(idleTimer);
+    controllers.dispose();
     exporter.dispose();
     player.dispose();
   });
@@ -121,6 +128,8 @@
   }
 
   onMount(() => {
+    // A DJ controller connected before comes back by itself, where MIDI is still allowed.
+    void controllers.resume();
     // Entering fullscreen starts the countdown for hiding the cursor, even without movement.
     const onFullscreen = () => onPointerMove();
     document.addEventListener('fullscreenchange', onFullscreen);
@@ -266,6 +275,7 @@
     onFullscreen={toggleFullscreen}
     onExport={() => (exportOpen = true)}
     onHelp={() => (helpOpen = true)}
+    onController={() => (controllerOpen = true)}
   />
 
   <main
@@ -380,6 +390,7 @@
   {/if}
   <TransportBar />
   <ExportDialog open={exportOpen} onclose={() => (exportOpen = false)} />
+  <ControllerDialog open={controllerOpen} onclose={() => (controllerOpen = false)} />
   <HelpDialog
     open={helpOpen}
     bind:section={helpSection}

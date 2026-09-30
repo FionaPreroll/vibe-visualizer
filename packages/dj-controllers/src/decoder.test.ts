@@ -58,7 +58,9 @@ describe('Decoder', () => {
 
   it('joins the coarse and the fine part of 14-bit values', () => {
     const flx2 = decoder();
+    expect(flx2.knows([0xb0, 0x0f, 0x40])).toBe(true);
     expect(flx2.decode([0xb0, 0x0f, 0x40], 0)).toBeNull();
+    expect(flx2.knows([0xb0, 0x7f, 0x40])).toBe(false);
     const low = flx2.decode([0xb0, 0x2f, 0x00], 0);
     expect(low).toMatchObject({ kind: 'absolute', control: 'eqLow', deck: 1 });
     expect(low?.kind === 'absolute' && low.value).toBeCloseTo(8192 / 16383, 6);

@@ -33,6 +33,8 @@
     folder: 'M3 6h6l2 2h10v11H3z',
     lock: 'M8 11V8a4 4 0 018 0v3M5 11h14v10H5z',
     magnet: 'M6 4v8a6 6 0 0012 0V4M10 4v8a2 2 0 004 0V4M6 8h4M14 8h4',
+    controller:
+      'M3 7h18v10H3zM10.5 12a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0zM18.5 12a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z',
   } as const;
   /** Icons drawn as lines instead of filled shapes. */
   const STROKED: readonly string[] = [
@@ -48,6 +50,7 @@
     'folder',
     'lock',
     'magnet',
+    'controller',
   ];
   export type IconName = keyof typeof ICONS;
 </script>

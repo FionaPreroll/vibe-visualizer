@@ -57,6 +57,17 @@ export class Decoder {
     return [...this.shifted.values()].includes(true);
   }
 
+  /** Whether the profile knows the message (also the coarse part of a value, without event). */
+  knows(message: ArrayLike<number>): boolean {
+    const status = message[0] ?? 0;
+    const data = message[1] ?? 0;
+    const type = status & 0xf0;
+    if (type === NOTE_ON || type === NOTE_OFF) {
+      return this.notes.has(key(NOTE_ON | (status & 0x0f), data));
+    }
+    return type === CONTROL_CHANGE && this.changes.has(key(status, data));
+  }
+
   /** The event of one message, or null: not in the profile, or the coarse part of a value. */
   decode(message: ArrayLike<number>, time: number): ControlEvent | null {
     const status = message[0] ?? 0;

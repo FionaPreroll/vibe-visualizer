@@ -18,6 +18,8 @@ export interface MidiMessage {
   device: ConnectedController;
   data: Uint8Array;
   time: number;
+  /** Whether the device's profile knows the message. */
+  known: boolean;
 }
 
 export interface ControllerHubOptions {
@@ -198,8 +200,9 @@ export class ControllerHub {
     const data = event.data;
     if (!data) return;
     const time = event.timeStamp;
+    const known = connection.decoder?.knows(data) ?? false;
     for (const listener of this.messageListeners) {
-      listener({ device: connection.device, data, time });
+      listener({ device: connection.device, data, time, known });
     }
     const control = connection.decoder?.decode(data, time);
     if (!control) return;
