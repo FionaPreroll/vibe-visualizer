@@ -187,25 +187,27 @@ void main() {
   float r = length(p);
   float a = atan(p.y, p.x);
 
-  // Pushed outward (flow > 0) with a slight twist: shards stretch into streaks.
-  float flow = p_flow * (1.0 + 1.2 * kick);
+  // Pushed outward (flow > 0) with a slight twist: shards stretch into streaks. Kicks push
+  // the tunnel on.
+  float flow = p_flow * (1.0 + 3.0 * kick);
   vec2 q = rotation(p_twist * 0.8 * dt) * p * exp(-flow * 0.9 * dt);
   vec4 state = fetch(q, aspect);
 
-  // A pulsing star outline in the centre; the outward flow turns it into a tunnel of stars.
-  float size = p_starSize;
+  // A pulsing star outline in the centre, swelling with the kick and the bass; the outward flow
+  // turns it into a tunnel of stars.
+  float size = p_starSize * (1.0 + 0.35 * kick + 0.15 * bass);
   float spikes = pow(0.5 + 0.5 * cos(p_points * a), 3.0);
   float edge = size * mix(0.5, 1.0, spikes);
   float outline = exp(-pow((r - edge) / 0.014, 2.0));
   // One star per kick and per beat: separate glowing stars travel outward.
-  float light = outline * (0.03 + 0.08 * energy + 18.0 * kickPulse + 8.0 * beatPulse) * p_intensity;
+  float light = outline * (0.02 + 0.15 * energy + 2.0 * kick + 18.0 * kickPulse + 8.0 * beatPulse) * p_intensity;
   float index = 0.62;
 
   // Crystal shards: sharp angular ridges just outside the star.
   vec2 around = vec2(cos(a), sin(a));
   float ridge = 1.0 - abs(2.0 * gnoise(around * (6.0 + 18.0 * p_shards) + vec2(time * 0.3, r * 3.0)) - 1.0);
   float shardBand = smoothstep(size * 1.1, size * 1.4, r) * (1.0 - smoothstep(size * 1.6, size * 2.4, r));
-  float shard = pow(ridge, 12.0) * shardBand * p_shards * (0.12 + 0.45 * energy + 2.5 * snare) * p_intensity;
+  float shard = pow(ridge, 12.0) * shardBand * p_shards * (0.12 + 0.4 * energy + 3.5 * snare + 0.8 * kick) * p_intensity;
   light += shard;
   index = mix(index, 0.4 + 0.35 * noise(around * 3.0 + time * 0.1), shard / max(light, 1e-4));
   light *= dt * 4.0;
@@ -214,8 +216,8 @@ void main() {
   vec2 grid = p * 40.0;
   vec2 local = fract(grid) - 0.5;
   float cell = hash(floor(grid) + floor(time * 20.0) * 1.37);
-  float spark = hat * p_sparks * step(0.99, cell) * exp(-dot(local, local) * 40.0);
-  spark *= smoothstep(size * 2.5, size, r) * 1.5;
+  float spark = hat * p_sparks * step(0.985, cell) * exp(-dot(local, local) * 40.0);
+  spark *= smoothstep(size * 3.0, size, r) * 2.0;
   float sparkIndex = 0.93;
   float total = light + spark * 0.5;
   float mixedIndex = fract((light * index + spark * 0.5 * sparkIndex) / max(total, 1e-4) + paletteOffset);

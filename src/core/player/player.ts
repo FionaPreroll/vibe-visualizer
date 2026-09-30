@@ -72,6 +72,8 @@ import { WorkerClient } from '../util/worker-rpc';
 export const NUDGE = 0.04;
 /** How long a removal or deletion can be undone (seconds). */
 const UNDO_SECONDS = 8;
+/** How often scrubbing (the jog wheel) seeks, at most, in ms; the moves in between add up. */
+const SCRUB_SEEK_MS = 60;
 
 /** Where a track starts when it plays from the queue: its in marker (TR-09), or its start. */
 function startOf(track: Track | null | undefined): number {
@@ -123,6 +125,16 @@ export class Player {
   } | null = null;
   /** Position of the loaded track when last read (shown while the engine counts in another). */
   private lastPosition = 0;
+  /**
+   * While the playhead is scrubbed (the jog wheel): where it was put, and when
+   * (performance.now()). The position shows it at once, moving on with the music while playing;
+   * the engine follows at most every SCRUB_SEEK_MS.
+   */
+  private scrubbed: { seconds: number; at: number } | null = null;
+  private scrubTimer: ReturnType<typeof setTimeout> | undefined;
+  private scrubMoved = false;
+  /** The newest seek of the scrubbing: once it is done, the engine is where the playhead is. */
+  private scrubSeek: Promise<void> = Promise.resolve();
   /** The last removal or deletion, while it can be undone; `release` lets it go for good. */
   private undoEntry: {
     restore: () => void;
@@ -329,6 +341,7 @@ export class Player {
     if (token === this.loadedToken) return;
     const id = this.tokenTracks.get(token);
     if (!id || !this.files.has(id)) return;
+    this.endScrub();
     this.loadedId = id;
     this.loadedToken = token;
     this.dispatch({ type: 'player/current', id });
@@ -361,6 +374,8 @@ export class Player {
   /** Playback position of the current track in seconds. */
   get position(): number {
     if (this.loadedId === null) return 0;
+    const scrubbed = this.scrubPosition();
+    if (scrubbed !== null) return scrubbed;
     // Just after a gapless transition the engine counts in the next file already; until the
     // player follows (within one check), the current track stays where it was last.
     if (this.engine.heardToken !== this.loadedToken) return this.lastPosition;
@@ -810,6 +825,7 @@ export class Player {
     if (!file) return;
     // Choosing a track explicitly switches back from live input.
     if (this.live) this.stopLive();
+    this.endScrub();
     const request = ++this.request;
     this.busy = true;
     try {
@@ -863,6 +879,7 @@ export class Player {
         await this.playTrack(current);
         return;
       }
+      this.anchorScrub();
       this.engine.paused = false;
       this.dispatch({ type: 'player/playing', playing: true });
       return;
@@ -875,6 +892,7 @@ export class Player {
   }
 
   pause(): void {
+    this.anchorScrub();
     this.engine.paused = true;
     this.dispatch({ type: 'player/playing', playing: false });
   }
@@ -891,6 +909,72 @@ export class Player {
   }
 
   async seek(seconds: number): Promise<void> {
+    this.endScrub();
+    await this.seekTo(seconds);
+  }
+
+  /**
+   * Scrubs the playhead to `seconds` (the jog wheel): the position is there at once, and the
+   * engine follows at most every SCRUB_SEEK_MS, so the playhead moves smoothly while seeks
+   * start new streams. A seek ends it.
+   */
+  scrub(seconds: number): void {
+    if (this.loadedId === null || this.live) return;
+    const duration = this.currentTrack?.duration ?? Infinity;
+    this.scrubbed = {
+      seconds: Math.max(0, Math.min(seconds, duration - 0.05)),
+      at: performance.now(),
+    };
+    if (this.scrubTimer !== undefined) {
+      this.scrubMoved = true;
+      return;
+    }
+    this.seekScrubbed();
+  }
+
+  /** Seeks to where the playhead is scrubbed; then again after SCRUB_SEEK_MS if it moved on. */
+  private seekScrubbed(): void {
+    const target = this.scrubPosition();
+    if (target === null) return;
+    const seek = this.seekTo(target);
+    this.scrubSeek = seek;
+    this.scrubTimer = setTimeout(() => {
+      this.scrubTimer = undefined;
+      if (this.scrubMoved) {
+        this.scrubMoved = false;
+        this.seekScrubbed();
+        return;
+      }
+      // At rest: once the last seek is done, the engine's position takes over again.
+      void seek.then(() => {
+        if (this.scrubSeek === seek && this.scrubTimer === undefined) this.scrubbed = null;
+      });
+    }, SCRUB_SEEK_MS);
+  }
+
+  /** Where the playhead is scrubbed to, moving on with the music; null when not scrubbing. */
+  private scrubPosition(): number | null {
+    if (!this.scrubbed) return null;
+    const { seconds, at } = this.scrubbed;
+    if (!this.state.playing) return seconds;
+    const duration = this.currentTrack?.duration ?? Infinity;
+    return Math.min(duration, seconds + ((performance.now() - at) / 1000) * this.state.sound.rate);
+  }
+
+  /** Before playing or pausing: the scrubbed position counts from now. */
+  private anchorScrub(): void {
+    const seconds = this.scrubPosition();
+    if (seconds !== null) this.scrubbed = { seconds, at: performance.now() };
+  }
+
+  private endScrub(): void {
+    clearTimeout(this.scrubTimer);
+    this.scrubTimer = undefined;
+    this.scrubMoved = false;
+    this.scrubbed = null;
+  }
+
+  private async seekTo(seconds: number): Promise<void> {
     const id = this.loadedId;
     const file = id !== null ? this.files.get(id) : undefined;
     if (id === null || !file || this.live) return;
@@ -1172,6 +1256,7 @@ export class Player {
 
   dispose(): void {
     clearInterval(this.endCheck);
+    this.endScrub();
     this.dropUndo();
     window.removeEventListener('pagehide', this.flushSave);
     this.flushSave();
@@ -1206,6 +1291,7 @@ export class Player {
   /** Stops playing the loaded track and empties the engine (a newer load or seek is dropped). */
   private async unload(): Promise<void> {
     this.pause();
+    this.endScrub();
     this.request++;
     this.busy = false;
     this.loadedId = null;

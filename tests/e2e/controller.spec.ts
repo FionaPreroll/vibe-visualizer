@@ -232,6 +232,55 @@ test('the jog wheel stays in the track, step by step', async ({ page, context })
   await expect(items.first()).toHaveAttribute('aria-selected', 'true');
 });
 
+test('the playhead follows the jog wheel smoothly', async ({ page, context }) => {
+  await context.grantPermissions(['midi']);
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'Clicks.wav',
+    mimeType: 'audio/wav',
+    buffer: createWav(60, 44100),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('controller-button').click();
+  const dialog = page.getByTestId('controller-dialog');
+  await dialog.getByTestId('controller-connect').click();
+  await expect(dialog.getByTestId('controller-status')).toHaveText('Connected');
+  await page.keyboard.press('Escape');
+  const play = () => receive(page, [0x90, 0x0b, 0x7f], [0x90, 0x0b, 0x00]);
+  await play();
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await play();
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Play');
+
+  // Paused, 4 steps every 8 ms for 1.5 s, with the time shown read at every frame. The music
+  // follows at most every 60 ms; the playhead used to wait for it, so it moved in one frame
+  // out of nine.
+  const shown = await page.evaluate(async () => {
+    const midi = (window as unknown as { midi: { receive: (...m: number[][]) => void } }).midi;
+    const elapsed = document.querySelector<HTMLElement>('[data-testid="elapsed"]')!;
+    const seconds: number[] = [];
+    let jogging = true;
+    const frame = () => {
+      seconds.push(Number(elapsed.dataset['seconds']));
+      if (jogging) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+    const start = performance.now();
+    await new Promise<void>((resolve) => {
+      const timer = setInterval(() => {
+        midi.receive([0xb0, 0x22, 0x44]);
+        if (performance.now() - start < 1500) return;
+        clearInterval(timer);
+        jogging = false;
+        resolve();
+      }, 8);
+    });
+    return seconds;
+  });
+  const moves = shown.slice(1).filter((seconds, i) => seconds > shown[i]!).length;
+  expect(moves / (shown.length - 1)).toBeGreaterThan(0.6);
+});
+
 test('the MIDI monitor shows what a controller sends', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('controller-button').click();
