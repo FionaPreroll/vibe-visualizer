@@ -224,7 +224,170 @@ void main() {
   color = state + vec4(total, total * mixedIndex, spark * 0.6, 0.0);
 }`;
 
-const STEP_SHADERS: Record<KaleidoSceneId, string> = { vortex: VORTEX, crystal: CRYSTAL };
+const RIBBONS = `${STEP_HEADER}
+uniform float p_ribbons;
+uniform float p_lobes;
+uniform float p_weave;
+uniform float p_thickness;
+uniform float p_depth;
+uniform float p_blossoms;
+uniform float p_flowers;
+
+const float TAU = 6.28318530718;
+const int MAX_RIBBONS = 4;
+const int FLOWERS = 24;
+
+/**
+ * A fractal blossom around 0 (radius about 1), 0…1: folded five ways, each petal an outline
+ * with a smaller blossom at its tip, three levels deep.
+ */
+float blossomAt(vec2 u) {
+  float petals = 0.0;
+  float level = 1.0;
+  for (int i = 0; i < 3; i++) {
+    float fold = TAU / 5.0;
+    float angle = abs(mod(atan(u.y, u.x) + fold * 0.5, fold) - fold * 0.5);
+    u = vec2(cos(angle), sin(angle)) * length(u);
+    vec2 petal = (u - vec2(0.5, 0.0)) * vec2(1.0, 2.4);
+    petals += exp(-pow((length(petal) - 0.34) / (0.06 * level), 2.0)) / level;
+    // The next, smaller blossom sits at the tip of this petal.
+    u = (u - vec2(0.78, 0.0)) * 2.6;
+    level *= 2.6;
+  }
+  return min(1.0, petals);
+}
+
+/**
+ * A palette position in the bright part (0.25…1: pink, yellow, green, cyan in the Ribbons
+ * palette), moved on by the colour step per bar and wrapping within that part.
+ */
+float bright(float index) {
+  return 0.25 + mod(index - 0.25 + paletteOffset, 0.7501);
+}
+
+void main() {
+  vec2 aspect = vec2(resolution.x / resolution.y, 1.0);
+  vec2 screen = centred(uv, aspect);
+
+  // What was here flows on (outward in the look) and twists: the tubes leave neon trails and
+  // the flowers float away. Kicks push it on.
+  float flow = p_flow * (1.0 + 2.0 * kick);
+  vec2 q = rotation(p_twist * 0.8 * dt) * screen * exp(-flow * 0.6 * dt);
+  vec4 state = fetch(q, aspect);
+
+  // The wreath fits a narrow frame too (9:16): everything is drawn a little smaller there.
+  vec2 p = screen / min(1.0, aspect.x / 0.9);
+  float r = length(p);
+  float a = atan(p.y, p.x);
+
+  float lobes = p_lobes;
+  float count = p_ribbons;
+  float lobeAngle = TAU / lobes;
+  float turn = time * 0.12;
+  float radius = 0.5 * (1.0 + 0.08 * kick + 0.04 * bass);
+  float swing = (0.04 + 0.22 * p_weave) * (1.0 + 0.25 * bass);
+  float glow = (0.9 + 0.2 * energy + 0.15 * kick) * p_intensity;
+  float pixel = 2.0 / resolution.y;
+
+  // Blossoms in the lobes, and a larger one in the centre: small fractals, glowing orange on
+  // the snare. Light behind the tubes.
+  float slot = floor((a - turn) / lobeAngle + 0.5);
+  float centreAngle = turn + slot * lobeAngle;
+  vec2 centre = vec2(cos(centreAngle), sin(centreAngle)) * (radius + swing * 0.5);
+  float pulse = 1.0 + 0.3 * snare;
+  float size = (0.06 + 0.3 * swing) * pulse;
+  float inner = (radius - swing) * 0.55 * pulse;
+  float blossom = max(
+    blossomAt(rotation(time * 0.25 - centreAngle) * (p - centre) / size),
+    blossomAt(rotation(-time * 0.15) * p / inner) * 0.8
+  ) * p_blossoms;
+  float blossomLight = (0.55 + 0.3 * energy + 0.6 * snare) * p_intensity;
+  state = mix(state, vec4(blossomLight, blossomLight * bright(0.4), 0.1 * snare, 0.0), blossom);
+
+  // Flowers: small five-petal flowers float outward from the ribbons, each for a few seconds,
+  // turning slowly; they light up on the hi-hats. Each owns a sector of the circle and stays
+  // inside it, so a pixel looks at one flower only.
+  float sectorAngle = TAU / float(FLOWERS);
+  float sector = floor(a / sectorAngle);
+  float seed = mod(sector, float(FLOWERS)) * 7.13;
+  float life = 4.0 + 3.0 * hash(vec2(seed, 1.0));
+  float cycle = time / life + hash(vec2(seed, 2.0));
+  float age = fract(cycle);
+  float born = floor(cycle);
+  // The flower count: some sectors stay empty.
+  if (hash(vec2(seed, born + 7.0)) < p_flowers) {
+    float angle = (sector + 0.25 + 0.5 * hash(vec2(seed, born))) * sectorAngle;
+    vec2 at = vec2(cos(angle), sin(angle)) * (radius + swing + age * 0.8);
+    float flowerSize = 0.028 * (0.7 + 0.6 * hash(vec2(seed, born + 3.0))) * (1.0 + 0.4 * hat);
+    vec2 d = p - at;
+    if (dot(d, d) < flowerSize * flowerSize * 1.5) {
+      d = rotation(time * (hash(vec2(seed, 4.0)) - 0.5) * 3.0) * d;
+      float outline = flowerSize * (0.55 + 0.45 * pow(abs(cos(atan(d.y, d.x) * 2.5)), 0.8));
+      float fade = smoothstep(0.0, 0.1, age) * (1.0 - smoothstep(0.6, 1.0, age));
+      float flower = smoothstep(pixel, -pixel, length(d) - outline) * fade;
+      float light = (0.5 + 0.6 * hat) * p_intensity;
+      float flowerIndex = bright(0.25 + fract(hash(vec2(seed, born + 5.0)) * 4.0) * 0.75);
+      state = mix(state, vec4(light, light * flowerIndex, 0.3 * hat, 0.0), flower);
+    }
+  }
+
+  // The ribbons: closed tubes around the centre, each with the same lobes, set off from each
+  // other so that they cross, over and under in turn (their depth is cos of the lobe phase).
+  float depths[MAX_RIBBONS];
+  float cover[MAX_RIBBONS];
+  vec4 tube[MAX_RIBBONS];
+  for (int i = 0; i < MAX_RIBBONS; i++) {
+    depths[i] = 10.0;
+    cover[i] = 0.0;
+    tube[i] = vec4(0.0);
+    if (float(i) >= count) continue;
+    float x = lobes * (a - turn - float(i) * lobeAngle / count);
+    // On a kick, every other ribbon swings further out and the others less: they breathe.
+    float amplitude = swing * (1.0 + 0.3 * kick * (mod(float(i), 2.0) * 2.0 - 1.0));
+    float f = radius + amplitude * sin(x);
+    // The distance across the curve (its slope measured on the curve, so it holds up near the
+    // centre too).
+    float slope = amplitude * lobes * cos(x) / f;
+    float d = (r - f) / sqrt(1.0 + slope * slope);
+    float z = cos(x);
+    float near = 0.5 + 0.5 * z;
+    float width = (0.012 + 0.045 * p_thickness) * (1.0 + 0.15 * kick) * mix(1.0, 0.7 + 0.3 * near, p_depth);
+    float s = d / width;
+    float edge = min(1.0, pixel / width);
+    cover[i] = 1.0 - smoothstep(1.0 - edge, 1.0, abs(s));
+    // A tube: bright along the middle, darker to its sides and further away; a highlight on
+    // the side towards the light.
+    float facing = sqrt(max(0.0, 1.0 - s * s));
+    float dim = mix(1.0, 0.35 + 0.65 * near, p_depth);
+    float shade = (0.22 + 0.78 * facing) * dim * glow;
+    float highlight = exp(-pow((s + 0.4) / 0.22, 2.0)) * dim * 0.9 * glow;
+    // Spread over the bright part: pink, yellow, green and cyan for four; pink and cyan for two.
+    float index = bright(0.25 + 0.75 * float(i) / max(1.0, count - 1.0));
+    tube[i] = vec4(shade, shade * index, highlight, 0.0);
+    depths[i] = z;
+  }
+  // From the farthest tube to the nearest: each covers what is behind it.
+  for (int pass = 0; pass < MAX_RIBBONS; pass++) {
+    int far = -1;
+    float farthest = 9.0;
+    for (int i = 0; i < MAX_RIBBONS; i++) {
+      if (depths[i] < farthest) {
+        far = i;
+        farthest = depths[i];
+      }
+    }
+    if (far < 0) break;
+    state = mix(state, tube[far], cover[far]);
+    depths[far] = 10.0;
+  }
+  color = state;
+}`;
+
+const STEP_SHADERS: Record<KaleidoSceneId, string> = {
+  vortex: VORTEX,
+  crystal: CRYSTAL,
+  ribbons: RIBBONS,
+};
 
 const COMPOSITE = `${FRAGMENT_HEADER}
 uniform sampler2D previousState;
@@ -334,10 +497,12 @@ export class KaleidoscopeScene implements Scene {
     this.gl = gl;
     this.floatTargets = supportsFloatTargets(gl);
     this.triangle = createFullscreenTriangle(gl);
-    this.steps = {
-      vortex: new Program(gl, FULLSCREEN_VERTEX, STEP_SHADERS.vortex),
-      crystal: new Program(gl, FULLSCREEN_VERTEX, STEP_SHADERS.crystal),
-    };
+    this.steps = Object.fromEntries(
+      Object.entries(STEP_SHADERS).map(([id, source]) => [
+        id,
+        new Program(gl, FULLSCREEN_VERTEX, source),
+      ]),
+    ) as Record<KaleidoSceneId, Program>;
     this.composite = new Program(gl, FULLSCREEN_VERTEX, COMPOSITE);
     this.post = new PostProcessing(gl, this.floatTargets);
     this.paletteTexture = gl.createTexture()!;
