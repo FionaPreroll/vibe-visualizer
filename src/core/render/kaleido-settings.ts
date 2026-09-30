@@ -348,7 +348,7 @@ export const KALEIDO_SCENES: readonly KaleidoScene[] = [
       mirror: true,
       flow: 0.8,
       twist: 0.05,
-      trails: 0.55,
+      trails: 0.45,
       palette: 'magenta',
       spin: -0.4,
     },
