@@ -8,7 +8,7 @@ Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and 
 
 ![FibeStation playing a track: the Logo Spectrum, the queue with the tempo, the detail waveform with the beat grid, and the hot cues](docs/screenshots/logo-spectrum.jpg)
 
-> **Status:** P1, P2, P3 and P5 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, the video export (whole tracks or clips, in segments that survive a crash), live input from audio devices and other apps, tempo (vinyl and key lock) and effects (DJ filter, delay, reverb, one-click "Slowed + Reverb", "Sped up" and "Nightcore"), waveforms and hot cues, a beat grid for files, gapless playback with shuffle and repeat, folders, a queue that survives reloads, A/V sync calibration and a shortcut overview, and a usability pass (play ranges, snapping to the beat, undo, bars and tempo correction in the beat grid, two waveform styles, one tempo and a straight grid per track, tempo ranges, grid correction by hand, the tempo of live input, a welcome and in-app help). Next: P4 (more scenes and video polish); proposed: DJ controllers such as the DDJ-FLX2.
+> **Status:** P1, P2, P3 and P5 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, the video export (whole tracks or clips, in segments that survive a crash), live input from audio devices and other apps, tempo (vinyl and key lock) and effects (DJ filter, delay, reverb, one-click "Slowed + Reverb", "Sped up" and "Nightcore"), waveforms and hot cues, a beat grid for files, gapless playback with shuffle and repeat, folders, a queue that survives reloads, A/V sync calibration and a shortcut overview, and a usability pass (play ranges, snapping to the beat, undo, bars and tempo correction in the beat grid, two waveform styles, one tempo and a straight grid per track, tempo ranges, grid correction by hand, the tempo of live input, a welcome and in-app help), and DJ controllers (the DDJ-FLX2's deck 1). Next: P4 (more scenes and video polish).
 > Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md) · [audio analysis](docs/ANALYSIS.md) · [DJ controllers](docs/CONTROLLERS.md)
 
 ## What it does
@@ -17,6 +17,7 @@ Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and 
 - **Videos for YouTube and TikTok:** MP4 in 1080p60, 4K30 or 1080×1920, of a whole track or a clip between two markers, rendered frame by frame (smooth on any machine) and resumable after a crash.
 - **A player made for DJs:** a gapless queue, waveforms and eight hot cues per track, a beat grid with bars that you can correct (tempo, downbeat, phase), tempo with vinyl or key lock, a DJ filter, delay, reverb and one-click "Slowed + Reverb".
 - **Live input:** visualises music from a DJ mixer, an audio interface, another app or a browser tab.
+- **DJ controller:** play, cue, set hot cues, filter and change the tempo from a Pioneer DJ DDJ-FLX2 (Web MIDI), with its lights.
 - **Private:** everything runs in the browser; no server, no uploads.
 
 **How to use it:** see the [user guide](docs/USER-GUIDE.md). The same guide opens in the app: click **?** in the top bar (or press ? for the keyboard shortcuts).
@@ -94,6 +95,7 @@ src/core/       framework-free core: audio engine (media worker, AudioWorklet, r
 src/ui/         Svelte app: top bar, stage, queue, sound, visuals and live panels, transport
                 with waveforms and cues, export, sync, welcome and help dialogs
 src/spikes/     Spike Lab and the P0 prototypes
+packages/       dj-controllers: library for DJ controllers (Web MIDI, profiles, lights)
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core
 tests/e2e/      Playwright tests
 tests/eval/     analysis evaluation on real recordings

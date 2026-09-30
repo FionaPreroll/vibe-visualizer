@@ -20,6 +20,7 @@
 | Storage | localStorage for settings, presets, and each file's cues, markers, tempo and grid correction; IndexedDB (a thin wrapper, no library needed) for the queue and its file handles; Origin Private File System for the analysis cache, images and render segments | Persistent, large, usable from workers; file handles can only be kept in IndexedDB |
 | Default logo font | Pacifico (SIL Open Font License 1.1) from `@fontsource/pacifico` | Bundled with the app, so no request goes to a font service (NF-01); the logo is drawn on a canvas from the app's name |
 | In-app help | The user guide (`docs/USER-GUIDE.md`) imported as text, with a small Markdown renderer of our own | One text for GitHub and the app; it knows the few constructs the guide uses and escapes everything else |
+| DJ controllers | Web MIDI, with our own library (`packages/dj-controllers`, a pnpm workspace package without dependencies) | A profile per controller as plain data; semantic events and lights, pickup. The mappings of Mixxx are GPL-licensed and serve only as a check |
 | Validation | Zod 4 | Checks imported preset and project files; TypeScript types come from the schemas |
 | FFT | fft.js (MIT) | Fast radix-4 FFT in plain JS; easy to replace |
 | Tests | Vitest 5 (unit and DSP golden tests; browser mode for WebGL and WebCodecs), Playwright (end-to-end) | Shares Vite's config; GPU and codec tests run in real Chromium |
@@ -117,6 +118,7 @@ src/
     export/      export worker (audio pass, video pass, join), formats and presets, job plan,
                  stored analysis replay, job storage in the Origin Private File System, Exporter
                  facade
+    control/     DJ controllers in the app: deck 1 of the DDJ-FLX2 on the player, its lights
     player/      Player: connects the state with the engine; the play order (shuffle, repeat)
     state/       store with timestamped actions, app state, persistence
     env/, util/, video/
@@ -125,6 +127,8 @@ src/
                  welcome and help dialogs, default logo
   spikes/        Spike Lab and the P0 prototypes (throwaway)
 vite-plugins/    extraction of the Signalsmith Stretch WASM core
+packages/
+  dj-controllers/  library for DJ controllers: Web MIDI, profiles (DDJ-FLX2), events, lights
 tests/e2e/       Playwright tests
 tests/eval/      evaluation on real recordings (optional dataset, see docs/ANALYSIS.md)
 tests/screenshots/
@@ -172,6 +176,6 @@ The development container (headless Chromium, software GPU) and CI run all five 
 - Second-priority machines (Q14): Chrome on Windows and Firefox on Linux. A hosted preview makes this easiest.
 - Hosting: the Worker is connected to the repository (Workers Builds); `wrangler.jsonc` configures it.
 - Listening test of tempo and effects on the main machine: vinyl and key lock at 0.5–1.5×, the reverb's character, the delay in time with the beat, no clicks when changing anything.
-- Firefox: reading a file while another one plays (fixed with reads in slices) is still to be checked in Firefox.
+- A real DDJ-FLX2: its profile follows the MIDI message list; the MIDI monitor in the DJ controller dialog shows what does not match.
 - The Screenshots workflow can be started once it is on `main`: GitHub offers manual workflows from the default branch.
 - Export on the main machine: the tests cover both paths, VP9 + Opus (WebM) in the development container, which has no H.264 encoder, and H.264 + AAC (MP4) in CI. The render speed on Chrome/macOS and a YouTube/TikTok upload of an export are still to be checked.
