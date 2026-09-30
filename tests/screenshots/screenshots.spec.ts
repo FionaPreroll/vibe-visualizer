@@ -40,16 +40,21 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `${OUT}/${name}.jpg`, type: 'jpeg', quality: 85 });
 }
 
-/** Jumps to `fraction` of the track, by a click on the timeline. */
-async function seek(page: Page, fraction: number): Promise<void> {
+/** Jumps to `fraction` of the track (`duration` seconds long) by a click on the timeline. */
+async function seek(page: Page, fraction: number, duration: number): Promise<void> {
   const box = (await page.getByTestId('timeline').boundingBox())!;
   await page.mouse.click(box.x + box.width * fraction, box.y + box.height / 2);
+  // Until the playhead is there (within a second, as the music plays on).
+  const offset = async () =>
+    Number(await page.getByTestId('elapsed').getAttribute('data-seconds')) - fraction * duration;
+  await expect.poll(async () => Math.abs(await offset()), { timeout: 10_000 }).toBeLessThan(1);
 }
 
 test('screenshots for the README', async ({ page }) => {
   test.setTimeout(300_000);
   mkdirSync(OUT, { recursive: true });
   const mix = createDrumMix(48000);
+  const duration = mix.left.length / mix.sampleRate;
   const file = {
     name: 'FibeStation Demo.wav',
     mimeType: 'audio/wav',
@@ -68,7 +73,11 @@ test('screenshots for the README', async ({ page }) => {
   await page.getByTestId('file-input').setInputFiles(file);
   await expect(page.getByTestId('queue-bpm')).toBeVisible({ timeout: 60_000 });
   await page.getByTestId('play-button').click();
-  await seek(page, 0.8);
+  // The timeline takes clicks once the track is loaded.
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause', {
+    timeout: 20_000,
+  });
+  await seek(page, 0.8, duration);
   await page.waitForTimeout(2500);
   await shot(page, 'logo-spectrum');
 
@@ -79,7 +88,7 @@ test('screenshots for the README', async ({ page }) => {
   await page.keyboard.press('Escape');
 
   // The Kaleidoscope.
-  await seek(page, 0.8);
+  await seek(page, 0.8, duration);
   await page.getByRole('button', { name: 'Kaleidoscope' }).click();
   await page.waitForTimeout(4000);
   await shot(page, 'kaleidoscope');
@@ -89,7 +98,7 @@ test('screenshots for the README', async ({ page }) => {
   await page.getByTestId('aspect-select').selectOption('9:16');
   await page.getByTitle('Safe areas').click();
   await page.getByRole('tab', { name: 'Visuals' }).click();
-  await seek(page, 0.8);
+  await seek(page, 0.8, duration);
   await page.waitForTimeout(2500);
   await shot(page, 'tiktok');
 
