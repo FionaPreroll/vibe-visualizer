@@ -158,6 +158,30 @@ test('a DDJ-FLX2 plays, sets hot cues, filters and changes the tempo (CTL-02, CT
   const label = (await pads.nth(1).getAttribute('aria-label')) ?? '';
   expect(Number(/^Cue 2 at 0:(\d\d)$/.exec(label)?.[1])).toBeCloseTo(jogged, -0.5);
 
+  // CUE as on a CDJ, with the in marker as the cue point. Paused away from it, CUE moves it
+  // to the playhead (on the beat), and its light goes on.
+  const cue = (pressed: boolean) => [0x90, 0x0c, pressed ? 0x7f : 0x00];
+  await receive(page, cue(true), cue(false));
+  const inMark = page.getByTestId('mark-in');
+  await expect(inMark).toBeVisible();
+  expect(Number(await inMark.getAttribute('aria-valuenow'))).toBeCloseTo(jogged, -0.5);
+  await expect.poll(() => light(page, 0x90, 0x0c)).toBe(0x7f);
+  const cuePoint = await elapsed();
+  // Held at the cue point, it plays until let go, then goes back.
+  await receive(page, cue(true));
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await page.waitForTimeout(400);
+  await receive(page, cue(false));
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Play');
+  await expect.poll(elapsed).toBeCloseTo(cuePoint, 1);
+  // PLAY while CUE is held plays on; CUE while playing goes back and pauses.
+  await receive(page, cue(true), [0x90, 0x0b, 0x7f], [0x90, 0x0b, 0x00], cue(false));
+  await page.waitForTimeout(400);
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await receive(page, cue(true), cue(false));
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Play');
+  await expect.poll(elapsed).toBeCloseTo(cuePoint, 1);
+
   // After a reload the controller comes back by itself, as MIDI is allowed.
   await page.reload();
   await page.getByTestId('controller-button').click();

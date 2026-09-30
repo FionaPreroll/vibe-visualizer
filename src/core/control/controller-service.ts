@@ -15,9 +15,10 @@ import { CUE_COUNT, type AppState } from '../state/app-state';
 /**
  * DJ controllers in the app (CTL-02, CTL-03): deck 1 plays, cues and sets hot cues, its CFX
  * knob is the DJ filter, the tempo slider the tempo fader, the channel fader the volume, and the
- * jog wheel seeks (faster with SHIFT). Deck 2 and the mixer's own controls do nothing yet, nor
- * do the EQ knobs (Q18). The lights follow the app: PLAY lit while playing and blinking while
- * paused, a pad lit for every hot cue that is set.
+ * jog wheel seeks (faster with SHIFT). CUE works as on a CDJ, with the in marker as the cue
+ * point (TR-09). Deck 2 and the mixer's own controls do nothing yet, nor do the EQ knobs (Q18).
+ * The lights follow the app: PLAY lit while playing and blinking while paused, CUE lit at the
+ * cue point and blinking while paused elsewhere, a pad lit for every hot cue that is set.
  *
  * A fader moved fast sends a hundred values a second, more than the app needs: knobs and faders
  * are passed on once per frame, with their newest value, and so is the MIDI monitor.
@@ -61,6 +62,10 @@ const JOG_SEEK_MS = 60;
 const JOG_IDLE_MS = 300;
 /** Around the centre of the CFX knob and the tempo slider: the filter off, the tempo at 0 %. */
 const CENTRE = 0.01;
+/** How close the playhead must be to the cue point to be at it, in seconds. */
+const AT_CUE = 0.05;
+/** How often the lights that follow the playhead (CUE) are checked, in ms. */
+const LIGHTS_MS = 250;
 
 export class ControllerService {
   private readonly hub: ControllerHub;
@@ -79,6 +84,9 @@ export class ControllerService {
   private jogSeek: ReturnType<typeof setTimeout> | undefined;
   private jogMoved = false;
   private jogIdle: ReturnType<typeof setTimeout> | undefined;
+  /** CUE is held at the cue point: the music plays until it is let go. */
+  private previewing = false;
+  private lightTimer: ReturnType<typeof setInterval> | undefined;
   private nextId = 0;
 
   constructor(
@@ -120,6 +128,8 @@ export class ControllerService {
     try {
       await this.hub.start();
       this.takeover.reset();
+      clearInterval(this.lightTimer);
+      this.lightTimer = setInterval(() => this.showLights(this.player.state), LIGHTS_MS);
       this.update({ status: 'on' });
       this.player.updateSettings({ controller: true });
     } catch {
@@ -128,6 +138,7 @@ export class ControllerService {
   }
 
   disconnect(): void {
+    clearInterval(this.lightTimer);
     this.hub.stop();
     this.update({ status: this.current.status === 'unsupported' ? 'unsupported' : 'off' });
     this.player.updateSettings({ controller: false });
@@ -153,6 +164,7 @@ export class ControllerService {
     clearTimeout(this.frame);
     clearTimeout(this.jogSeek);
     clearTimeout(this.jogIdle);
+    clearInterval(this.lightTimer);
     for (const cleanup of this.cleanups) cleanup();
     this.hub.stop();
   }
@@ -170,13 +182,55 @@ export class ControllerService {
       this.schedule();
     } else if (event.kind === 'relative') {
       if (event.control === 'jog') this.jog(event.delta, event.shift);
+    } else if (event.control === 'cue') {
+      this.cue(event.pressed);
     } else if (event.pressed) {
-      if (event.control === 'play') void this.player.toggle();
-      else if (event.control === 'cue') void this.player.stop();
+      if (event.control === 'play') this.play();
       else if (event.control === 'pad' && event.padMode === 'hotcue' && event.index) {
         this.pad(event.index - 1, event.shift);
       }
     }
+  }
+
+  private play(): void {
+    // PLAY while CUE is held: the music plays on when CUE is let go, as on a CDJ.
+    if (this.previewing) {
+      this.previewing = false;
+      return;
+    }
+    void this.player.toggle();
+  }
+
+  /**
+   * CUE as on a CDJ, with the in marker as the cue point: while playing, back to it and pause;
+   * paused elsewhere, the cue point moves to the playhead (the in marker, on the beat with Q);
+   * paused at it, the music plays while CUE is held and goes back to it when CUE is let go.
+   */
+  private cue(pressed: boolean): void {
+    if (!pressed) {
+      if (!this.previewing) return;
+      this.previewing = false;
+      void this.player.stop();
+      return;
+    }
+    const track = this.player.currentTrack;
+    if (!track || this.player.live) return;
+    if (this.player.state.playing) {
+      void this.player.stop();
+      return;
+    }
+    const position = this.jogPosition() ?? this.player.position;
+    if (Math.abs(position - (track.marks.in ?? 0)) < AT_CUE) {
+      this.previewing = true;
+      void this.player.play();
+      return;
+    }
+    this.player.mark('in', position);
+    // The playhead goes to the marker, which may have snapped to the beat.
+    this.jogTarget = null;
+    const marked = this.player.currentTrack?.marks.in ?? null;
+    if (marked !== null && Math.abs(marked - position) > 1e-3) void this.player.seek(marked);
+    this.showLights(this.player.state);
   }
 
   /** Like the keys 1–8: set where empty, jump where set; with SHIFT, delete. */
@@ -271,8 +325,16 @@ export class ControllerService {
 
   private showLights(state: AppState): void {
     const track = state.tracks.find((entry) => entry.id === state.currentId);
-    const play = state.playing ? 'on' : track && state.live.status !== 'on' ? 'blink' : 'off';
+    const live = state.live.status === 'on';
+    const play = state.playing ? 'on' : track && !live ? 'blink' : 'off';
     this.hub.setLight({ control: 'play', deck: 1 }, play);
+    let cue: 'on' | 'off' | 'blink' = 'off';
+    if (this.previewing) cue = 'on';
+    else if (track && !live && !state.playing) {
+      const position = this.jogPosition() ?? this.player.position;
+      cue = Math.abs(position - (track.marks.in ?? 0)) < AT_CUE ? 'on' : 'blink';
+    }
+    this.hub.setLight({ control: 'cue', deck: 1 }, cue);
     for (let index = 1; index <= CUE_COUNT; index++) {
       const set = (track?.cues[index - 1] ?? null) !== null ? 'on' : 'off';
       for (const shift of [false, true]) {

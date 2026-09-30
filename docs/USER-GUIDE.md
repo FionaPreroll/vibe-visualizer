@@ -95,7 +95,7 @@ Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K
 Play the app from a Pioneer DJ DDJ-FLX2 over USB. Click the controller button in the top bar (next to **Export**), then **Connect**; the browser asks once for access to MIDI devices. This works in Chrome and Edge, and in Firefox after it installs a small add-on for the permission; Safari has no MIDI. Next time the app connects by itself.
 
 - **PLAY/PAUSE:** play and pause. It lights while the music plays and blinks while paused.
-- **CUE:** back to the in marker (or the start), and stop.
+- **CUE:** as on a CDJ, with the in marker as the cue point. Paused, it sets the in marker at the playhead (on the beat when snapping is on). Held at the cue point, the music plays until you let go, then goes back to it; press **PLAY** while holding **CUE** to play on. While playing, **CUE** goes back to the cue point and pauses. It lights at the cue point and blinks while paused elsewhere. So a clip starts where you want: pause, turn the jog wheel to the spot, press **CUE**.
 - **Pads in HOT CUE mode:** hot cues 1–8, like the keys 1–8: a dark pad sets its cue at the playhead, a lit pad jumps to it. **SHIFT** + pad deletes the cue.
 - **CFX:** the DJ filter, off in the middle.
 - **Tempo slider:** the tempo, within the range set in the Sound tab: slower at the top, faster at the bottom.

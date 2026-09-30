@@ -76,7 +76,7 @@ The app gets a small controller service that maps the events to what the keyboar
 | DDJ-FLX2 | FibeStation |
 |---|---|
 | PLAY/PAUSE | Play and pause (TR-01); its light shows whether the music plays |
-| CUE | Back to the in marker or the start, and stop |
+| CUE | As on a CDJ, with the in marker (TR-09) as the cue point: paused elsewhere, it sets the in marker at the playhead (on the beat with Q) and the playhead goes there; held at the cue point, the music plays until it is let go (PLAY meanwhile plays on); while playing, back to the cue point and pause. Lit at the cue point, blinking while paused elsewhere |
 | Pads in hot cue mode | Hot cues 1–8, as the keys 1–8: set where empty, jump where set; SHIFT + pad deletes. The pads of the cues that are set light up |
 | HI / MID / LOW | Later: a new 3-band EQ with kills (FX-11), live and in the export |
 | CFX | The DJ filter (FX-06): left low-pass, right high-pass, off in the middle |
