@@ -2,7 +2,7 @@
 // Deploy command (main): npx wrangler deploy. Preview command (other branches): npx wrangler preview.
 {
   // Must match the name of the Worker in the Cloudflare dashboard (Workers Builds checks it).
-  "name": "misty-smoke-80a8",
+  "name": "fibestation",
   "compatibility_date": "2026-09-01",
   // The output of `pnpm build`. Its _headers file (from public/) sends the cross-origin isolation
   // headers that SharedArrayBuffer needs.
