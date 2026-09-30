@@ -116,12 +116,18 @@
     const onVisibility = () => (visible = document.visibilityState === 'visible');
     document.addEventListener('visibilitychange', onVisibility);
     onVisibility();
+    // Leaving the page: the render worker stops before the page is torn down (see AppShell).
+    const onPageHide = (event: PageTransitionEvent) => {
+      if (!event.persisted) instance.dispose(true);
+    };
+    window.addEventListener('pagehide', onPageHide);
     // The effects above send mode changes and pauses from now on (and the current ones now).
     renderer = instance;
 
     return () => {
       renderer = null;
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
       unsubscribeSettings();
       unsubscribeAssets();
       observer.disconnect();

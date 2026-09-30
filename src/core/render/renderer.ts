@@ -68,11 +68,16 @@ export class Renderer {
     this.send({ type: 'running', running });
   }
 
-  dispose(): void {
+  /** Stops the worker; `now` when the page goes away and there is no moment left to wait. */
+  dispose(now = false): void {
     if (this.disposed) return;
     clearInterval(this.clockTimer);
     this.send({ type: 'dispose' });
     this.disposed = true;
+    if (now) {
+      this.worker.terminate();
+      return;
+    }
     // Give the worker a moment to release the GPU context, then stop it for sure.
     setTimeout(() => this.worker.terminate(), 1000);
   }

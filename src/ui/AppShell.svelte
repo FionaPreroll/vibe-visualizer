@@ -65,12 +65,29 @@
     };
   });
 
-  onDestroy(() => {
+  /** Stops the controllers, the export, the audio and the workers. */
+  function teardown() {
     clearTimeout(idleTimer);
     controllers.dispose();
     exporter.dispose();
     player.dispose();
+  }
+
+  /**
+   * Leaving the page (a reload, another page): everything stops first, as when the app goes.
+   * Chromium sometimes hung when it tore the render worker (WebGL in a worker) down with the page
+   * itself, after the audio had started: the next page never loaded.
+   */
+  function onPageHide(event: PageTransitionEvent) {
+    if (!event.persisted) teardown();
+  }
+
+  onMount(() => {
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
   });
+
+  onDestroy(teardown);
 
   function onPointerMove() {
     idle = false;
