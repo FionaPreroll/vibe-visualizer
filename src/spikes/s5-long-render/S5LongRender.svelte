@@ -83,7 +83,7 @@
       run.check(
         'Segments written',
         true,
-        `${manifest.segmentsDone.length} segments, ${manifest.videoCodec} + ${manifest.audioCodec}`,
+        `${manifest.segmentsDone.length} segment${manifest.segmentsDone.length === 1 ? '' : 's'}, ${manifest.videoCodec} + ${manifest.audioCodec}`,
       );
       progress = 'Render complete. Join the segments into the final file.';
     } catch (error) {
