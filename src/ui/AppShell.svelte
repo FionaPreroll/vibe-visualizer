@@ -49,12 +49,15 @@
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
   // The name the user gave the app shows in the window title too, and in the default logo.
+  // Derived, so that the effects run when the name changes, not with every change of the state
+  // (drawing the logo takes a while).
+  const appName = $derived($app.settings.appName);
   $effect(() => {
-    document.title = $app.settings.appName;
+    document.title = appName;
   });
   $effect(() => {
     let current = true;
-    void renderDefaultLogo($app.settings.appName).then((blob) => {
+    void renderDefaultLogo(appName).then((blob) => {
       if (current) assets.setDefaultLogo(blob);
     });
     return () => {

@@ -29,6 +29,7 @@ function deck(number: 1 | 2): { controls: ControlBinding[]; lights: LightBinding
     { kind: 'button', control: 'sync', deck: number, status: note, data: 0x58 },
     { kind: 'button', control: 'headphoneCue', deck: number, status: note, data: 0x54 },
     { kind: 'button', control: 'jogTouch', deck: number, status: note, data: 0x36 },
+    { kind: 'button', control: 'jogTouch', deck: number, shift: true, status: note, data: 0x67 },
     { kind: 'absolute', control: 'eqHigh', deck: number, status: change, msb: 0x07, lsb: 0x27 },
     { kind: 'absolute', control: 'eqMid', deck: number, status: change, msb: 0x0b, lsb: 0x2b },
     { kind: 'absolute', control: 'eqLow', deck: number, status: change, msb: 0x0f, lsb: 0x2f },
@@ -51,8 +52,9 @@ function deck(number: 1 | 2): { controls: ControlBinding[]; lights: LightBinding
       msb: 0x16 + number,
       lsb: 0x36 + number,
     },
-    // The jog wheel's outer ring, and its top (with and without vinyl mode).
-    ...[0x21, 0x22, 0x23].map((data): ControlBinding => ({
+    // The jog wheel's outer ring, its top (with and without vinyl mode, 460 steps a turn), and
+    // its top with SHIFT held.
+    ...[0x21, 0x22, 0x23, 0x29].map((data): ControlBinding => ({
       kind: 'relative',
       control: 'jog',
       deck: number,

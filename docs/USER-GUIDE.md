@@ -100,7 +100,7 @@ Play the app from a Pioneer DJ DDJ-FLX2 over USB. Click the controller button in
 - **CFX:** the DJ filter, off in the middle.
 - **Tempo slider:** the tempo, within the range set in the Sound tab: slower at the top, faster at the bottom.
 - **Channel fader:** the volume.
-- **Jog wheel:** nudges the tempo while it turns.
+- **Jog wheel:** seeks. A turn of its top is 1.8 s, like a record; the outer ring seeks more finely, and with **SHIFT** held it seeks 16 times as fast. To set a cue exactly, pause, turn the jog wheel to the spot and press a dark pad.
 
 These are the controls of deck 1. Knobs and faders take over once they reach the value in the app, so nothing jumps. Deck 2, the EQ knobs and the crossfader do nothing yet.
 

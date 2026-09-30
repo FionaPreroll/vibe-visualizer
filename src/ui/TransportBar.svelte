@@ -67,6 +67,8 @@
     return () => observer.disconnect();
   });
 
+  const waveformStyle = $derived($app.settings.waveformStyle);
+
   // Redrawn when the analysis grows or the bar changes size; the played part is an overlay.
   $effect(() => {
     const canvas = waveCanvas;
@@ -79,7 +81,7 @@
     const context = canvas.getContext('2d');
     if (!context) return;
     const view = { from: 0, to: duration, played: Infinity, available: analysis?.seconds ?? 0 };
-    drawWaveform(context, waveform, view, width, height, $app.settings.waveformStyle);
+    drawWaveform(context, waveform, view, width, height, waveformStyle);
   });
 
   function fractionAt(event: PointerEvent): number {

@@ -140,6 +140,24 @@ test('a DDJ-FLX2 plays, sets hot cues, filters and changes the tempo (CTL-02, CT
   await receive(page, [0x90, 0x0b, 0x7f], [0x90, 0x0b, 0x00]);
   await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Play');
 
+  // The jog wheel seeks: 100 steps of its top are 100 × 1.8 s / 460 = 0.39 s, and 16 times as
+  // far with SHIFT held.
+  const elapsed = async () =>
+    Number(await page.getByTestId('elapsed').getAttribute('data-seconds'));
+  const paused = await elapsed();
+  const turn = (data: number) => Array.from({ length: 10 }, () => [0xb0, data, 0x40 + 10]);
+  await receive(page, ...turn(0x22));
+  await expect.poll(elapsed).toBeCloseTo(paused + 0.391, 1);
+  await receive(page, [0x90, 0x3f, 0x7f], ...turn(0x29), [0x90, 0x3f, 0x00]);
+  const jogged = paused + 0.391 + 6.26;
+  await expect.poll(elapsed).toBeCloseTo(jogged, 1);
+  // A pad right after it sets its cue there.
+  await receive(page, [0x97, 0x01, 0x7f], [0x97, 0x01, 0x00]);
+  await expect(pads.nth(1)).toHaveAttribute('data-set', 'true');
+  // (On the nearest beat, and shown in whole seconds.)
+  const label = (await pads.nth(1).getAttribute('aria-label')) ?? '';
+  expect(Number(/^Cue 2 at 0:(\d\d)$/.exec(label)?.[1])).toBeCloseTo(jogged, -0.5);
+
   // After a reload the controller comes back by itself, as MIDI is allowed.
   await page.reload();
   await page.getByTestId('controller-button').click();
