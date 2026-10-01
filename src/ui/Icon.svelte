@@ -35,6 +35,9 @@
     magnet: 'M6 4v8a6 6 0 0012 0V4M10 4v8a2 2 0 004 0V4M6 8h4M14 8h4',
     controller:
       'M3 7h18v10H3zM10.5 12a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0zM18.5 12a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z',
+    star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z',
+    starOutline: 'M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z',
+    import: 'M12 20V9M7 14l5-5 5 5M5 4h14',
   } as const;
   /** Icons drawn as lines instead of filled shapes. */
   const STROKED: readonly string[] = [
@@ -51,6 +54,8 @@
     'lock',
     'magnet',
     'controller',
+    'starOutline',
+    'import',
   ];
   export type IconName = keyof typeof ICONS;
 </script>

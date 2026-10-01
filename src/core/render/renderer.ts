@@ -1,6 +1,7 @@
 import { AudioEngine } from '../audio/engine/audio-engine';
 import type { KaleidoSettings } from './kaleido-settings';
 import type { ImageKind } from './logo-spectrum';
+import type { AutoPresets } from './preset-director';
 import type { RenderEvent, RenderRequest, SceneKind } from './render-protocol';
 import RenderWorker from './render.worker.ts?worker';
 import type { LogoSpectrumSettings } from './visual-settings';
@@ -57,6 +58,15 @@ export class Renderer {
 
   setKaleidoscope(settings: KaleidoSettings): void {
     this.send({ type: 'kaleidoscope', settings });
+  }
+
+  /** Automatic preset switching and the presets of each mode that take part (PR-02). */
+  setAutoPresets(
+    config: AutoPresets,
+    logoSpectrum: LogoSpectrumSettings[],
+    kaleidoscope: KaleidoSettings[],
+  ): void {
+    this.send({ type: 'autoPresets', config, logoSpectrum, kaleidoscope });
   }
 
   /** Hands an image to the worker (the bitmap is transferred and must not be used afterwards). */

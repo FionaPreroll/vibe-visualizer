@@ -10,12 +10,14 @@
     type ParamGroup,
     type ParamSpec,
     type ParamValue,
+    sanitizeKaleido,
   } from '../core/render/kaleido-settings';
-  import { loadKaleidoPresets, saveKaleidoPresets } from '../core/state/persistence';
+  import AutoPresetsSection from './AutoPresetsSection.svelte';
   import ParamControl from './controls/ParamControl.svelte';
   import PresetBar from './controls/PresetBar.svelte';
   import Section from './controls/Section.svelte';
   import { usePlayer } from './player-context';
+  import { kaleidoPresets } from './preset-store';
 
   /**
    * Controls of the Kaleidoscope mode, generated from the parameter specs of the common
@@ -70,12 +72,17 @@
   </div>
 
   <PresetBar
+    mode="kaleidoscope"
     builtIn={BUILT_IN_KALEIDO_PRESETS}
-    load={loadKaleidoPresets}
-    save={saveKaleidoPresets}
+    store={kaleidoPresets}
     current={k}
     onapply={(settings) => player.replaceKaleido(settings)}
+    favourites={$app.settings.favourites.kaleidoscope}
+    onfavourites={(names) =>
+      player.updateSettings({ favourites: { ...$app.settings.favourites, kaleidoscope: names } })}
+    sanitize={sanitizeKaleido}
   />
+  <AutoPresetsSection />
 
   {#each GROUPS as { group, title, open } (group)}
     <Section {title} {open}>

@@ -1,9 +1,13 @@
 import { FeatureSampler, FeatureTimelineReader } from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
+import { DEFAULT_KALEIDO } from './kaleido-settings';
 import { KaleidoscopeScene } from './kaleidoscope';
 import { LogoSpectrumScene } from './logo-spectrum';
+import { PresetAutomation, SWITCHING_SEEDS } from './preset-automation';
 import type { RenderEvent, RenderRequest, SceneKind } from './render-protocol';
 import type { Scene } from './scene';
+import { morphKaleido, morphLogoSpectrum } from './settings-morph';
+import { DEFAULT_LOGO_SPECTRUM } from './visual-settings';
 
 /**
  * Draws the visuals on an OffscreenCanvas, off the main thread (TECH-STACK: renderer). Each
@@ -39,6 +43,17 @@ let statsStart = 0;
 let statsFrames = 0;
 let lost = false;
 const features = new Float32Array(F.size);
+/** Settings of each mode, with the automatic preset switching (PR-02). */
+const logoSpectrumAuto = new PresetAutomation(
+  morphLogoSpectrum,
+  DEFAULT_LOGO_SPECTRUM,
+  SWITCHING_SEEDS.logoSpectrum,
+);
+const kaleidoscopeAuto = new PresetAutomation(
+  morphKaleido,
+  DEFAULT_KALEIDO,
+  SWITCHING_SEEDS.kaleidoscope,
+);
 
 function post(event: RenderEvent): void {
   scope.postMessage(event);
@@ -66,6 +81,7 @@ function frame(now: number): void {
   // Hits between the last frame shown and this one are collected, so none is missed.
   if (sampler) sampler.sample(audibleFrame(now), features);
   else features.fill(0);
+  applySettings(dt);
   try {
     scene.render({ time: (now - startTime) / 1000, dt, features });
   } catch (error) {
@@ -81,6 +97,19 @@ function frame(now: number): void {
     statsFrames = 0;
   }
   request = scope.requestAnimationFrame(frame);
+}
+
+/** The settings of the scene shown, as the switching and its morph have them now. */
+function applySettings(dt: number): void {
+  if (active === 'logoSpectrum') {
+    const { settings, switched } = logoSpectrumAuto.frame(dt, features);
+    if (settings) logoSpectrum?.setSettings(settings);
+    if (switched) post({ type: 'preset', scene: 'logoSpectrum', settings: switched });
+  } else {
+    const { settings, switched } = kaleidoscopeAuto.frame(dt, features);
+    if (settings) kaleidoscope?.setSettings(settings);
+    if (switched) post({ type: 'preset', scene: 'kaleidoscope', settings: switched });
+  }
 }
 
 function setRunning(value: boolean): void {
@@ -102,6 +131,14 @@ function activate(kind: SceneKind): void {
   active = kind;
   scene = kind === 'logoSpectrum' ? logoSpectrum : kaleidoscope;
   if (scene && canvas) scene.resize(canvas.width, canvas.height);
+  // Its settings are brought up to date before its first frame; the switching counts anew.
+  if (kind === 'logoSpectrum') {
+    logoSpectrum?.setSettings(logoSpectrumAuto.target);
+    logoSpectrumAuto.restart();
+  } else {
+    kaleidoscope?.setSettings(kaleidoscopeAuto.target);
+    kaleidoscopeAuto.restart();
+  }
   lastTime = -1;
 }
 
@@ -148,10 +185,14 @@ scope.addEventListener('message', (event) => {
         activate(message.scene);
         break;
       case 'logoSpectrum':
-        logoSpectrum?.setSettings(message.settings);
+        logoSpectrumAuto.setSettings(message.settings);
         break;
       case 'kaleidoscope':
-        kaleidoscope?.setSettings(message.settings);
+        kaleidoscopeAuto.setSettings(message.settings);
+        break;
+      case 'autoPresets':
+        logoSpectrumAuto.setAuto(message.config, message.logoSpectrum);
+        kaleidoscopeAuto.setAuto(message.config, message.kaleidoscope);
         break;
       case 'image':
         logoSpectrum?.setImage(message.kind, message.image);

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { createPng } from './png';
 import { createWav } from './wav';
 
@@ -174,5 +175,119 @@ test('the ring can be bars, lines or dots, with motion and a tint (LS-11, LS-03,
   await page.getByTestId('preset-select').selectOption('Dot Matrix');
   await expect.poll(async () => (await stored()).ringStyle).toBe('dots');
   await expect(stage).toHaveAttribute('data-status', 'running');
+  expect(errors).toEqual([]);
+});
+
+test('favourite presets, a random pick, and your presets in a file (PR-03, PR-04)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const preset = page.getByTestId('preset-select');
+  const star = page.getByTestId('preset-favourite');
+  await expect(preset).toHaveValue('Classic Rainbow');
+
+  // Two favourites, starred in the list too.
+  await star.click();
+  await expect(star).toHaveAttribute('aria-pressed', 'true');
+  await preset.selectOption('Inferno');
+  await expect(star).toHaveAttribute('aria-pressed', 'false');
+  await star.click();
+  await expect(preset.locator('option', { hasText: '★' })).toHaveCount(2);
+  await expect(preset.locator('option', { hasText: '★ Inferno' })).toHaveCount(1);
+
+  // With favourites, the random pick takes one of them: the other one.
+  await page.getByTestId('preset-random').click();
+  await expect(preset).toHaveValue('Classic Rainbow');
+  await page.getByTestId('preset-random').click();
+  await expect(preset).toHaveValue('Inferno');
+  await page.reload();
+  await expect(preset).toHaveValue('Inferno');
+  await expect(star).toHaveAttribute('aria-pressed', 'true');
+
+  // Your presets go into a file and come back from it.
+  await page.getByRole('slider', { name: 'Glow', exact: true }).focus();
+  await page.keyboard.press('ArrowRight');
+  await page.getByTestId('preset-name').fill('Mine');
+  await page.getByTestId('preset-save').click();
+  await expect(preset).toHaveValue('Mine');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('preset-export').click(),
+  ]);
+  expect(download.suggestedFilename()).toBe('logo-spectrum-presets.json');
+  const file = JSON.parse(await readFile(await download.path(), 'utf8')) as Record<string, unknown>;
+  expect(file).toMatchObject({
+    kind: 'presets',
+    mode: 'logoSpectrum',
+    presets: [{ name: 'Mine' }],
+  });
+
+  await page.getByRole('button', { name: 'Delete this preset' }).click();
+  await expect(preset.locator('option', { hasText: 'Mine' })).toHaveCount(0);
+  const input = page.getByTestId('preset-import-input');
+  const json = (value: unknown) => ({
+    name: 'presets.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(typeof value === 'string' ? value : JSON.stringify(value)),
+  });
+  await input.setInputFiles(json(file));
+  await expect(page.getByTestId('preset-message')).toHaveText('Imported 1 preset.');
+  await expect(preset).toHaveValue('Mine');
+  // A name that is taken gets a number.
+  await input.setInputFiles(json(file));
+  await expect(preset.locator('option', { hasText: 'Mine (2)' })).toHaveCount(1);
+  // Presets of the other mode, and files that are none, are refused with a message.
+  await input.setInputFiles(json({ ...file, mode: 'kaleidoscope' }));
+  await expect(page.getByTestId('preset-message')).toContainText('These are Kaleidoscope presets');
+  await input.setInputFiles(json('{ nope'));
+  await expect(page.getByTestId('preset-message')).toHaveText('This file is not valid JSON.');
+  expect(errors).toEqual([]);
+});
+
+test('the presets switch with the music, in the preview and the export (PR-02)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  await expect(page.getByTestId('visual-stage')).toHaveAttribute('data-status', 'running', {
+    timeout: 15_000,
+  });
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'Clicks.wav',
+    mimeType: 'audio/wav',
+    buffer: createWav(30, 44100),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const preset = page.getByTestId('preset-select');
+  await expect(preset).toHaveValue('Classic Rainbow');
+
+  // Every 5 seconds of music, to the next preset.
+  await page.getByText('Preset switching', { exact: true }).click();
+  await page.getByTestId('auto-presets').check();
+  await page
+    .getByRole('radiogroup', { name: 'Switch every' })
+    .getByRole('radio', { name: 'Seconds' })
+    .click();
+  await page.getByRole('slider', { name: 'Seconds', exact: true }).focus();
+  await page.keyboard.press('Home');
+  await expect(page.getByRole('slider', { name: 'Seconds', exact: true })).toHaveValue('5');
+
+  // Nothing switches without music.
+  await page.waitForTimeout(6000);
+  await expect(preset).toHaveValue('Classic Rainbow');
+  await page.getByTestId('play-button').click();
+  const started = Date.now();
+  await expect(preset).toHaveValue('Neon Night', { timeout: 15_000 });
+  expect(Date.now() - started).toBeGreaterThan(4000);
+  // The switching survives a reload, and the export says it switches too.
+  await page.reload();
+  await expect(page.getByTestId('auto-presets')).toBeChecked();
+  await page.getByTestId('export-button').click();
+  await expect(page.getByTestId('export-switching')).toHaveText('(switching presets every 5 s)');
   expect(errors).toEqual([]);
 });

@@ -5,6 +5,7 @@
     exportSeconds,
     type ExportCodecs,
     type ExportManifest,
+    type ExportVisuals,
   } from '../core/export/export-job';
   import { canPickFile, pickFile } from '../core/export/exporter';
   import { readManifest } from '../core/export/job-store';
@@ -21,12 +22,16 @@
     type AspectRatio,
     type ExportOptions,
   } from '../core/export/video-format';
+  import { BUILT_IN_KALEIDO_PRESETS } from '../core/render/kaleido-settings';
+  import { switchingPool, type AutoPresets } from '../core/render/preset-director';
+  import { BUILT_IN_PRESETS } from '../core/render/visual-settings';
   import { trackRange } from '../core/state/app-state';
   import { loadExportOptions, saveExportOptions } from '../core/state/persistence';
   import { errorMessage, formatBytes, formatDuration } from '../core/util/format';
   import { useExporter } from './exporter-context';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
+  import { kaleidoPresets, logoSpectrumPresets } from './preset-store';
   import { useAssets } from './visuals-context';
 
   /**
@@ -150,10 +155,7 @@
       },
       range,
       format,
-      visuals:
-        mode === 'kaleidoscope'
-          ? { mode, settings: $app.kaleido }
-          : { mode: 'logoSpectrum', settings: $app.visuals },
+      visuals: visualsOf(mode),
       sound,
       grid: player.analysisOf(track)?.grid ?? null,
       images: assets.shown,
@@ -161,6 +163,41 @@
       fileName,
     });
     started.catch((error: unknown) => (problem = errorMessage(error)));
+  }
+
+  /** The visuals of the video: the current settings, and the preset switching if it is on. */
+  function visualsOf(mode: 'logoSpectrum' | 'kaleidoscope'): ExportVisuals {
+    const config = $app.settings.autoPresets;
+    const favourites = $app.settings.favourites;
+    if (mode === 'kaleidoscope') {
+      const presets = switchingPool(
+        BUILT_IN_KALEIDO_PRESETS,
+        $kaleidoPresets,
+        favourites.kaleidoscope,
+        config.pool,
+      );
+      return {
+        mode,
+        settings: $app.kaleido,
+        auto: config.on ? { config, presets } : undefined,
+      };
+    }
+    const presets = switchingPool(
+      BUILT_IN_PRESETS,
+      $logoSpectrumPresets,
+      favourites.logoSpectrum,
+      config.pool,
+    );
+    return { mode, settings: $app.visuals, auto: config.on ? { config, presets } : undefined };
+  }
+
+  /** How the presets switch, for the summary. */
+  function switchingSummary(config: AutoPresets): string {
+    if (config.trigger === 'drops') return 'switching presets on the drops';
+    if (config.trigger === 'bars') {
+      return `switching presets every ${config.bars} bar${config.bars === 1 ? '' : 's'}`;
+    }
+    return `switching presets every ${config.seconds.toFixed(0)} s`;
   }
 
   /** Continues the stored export (after a reload, a crash or a failure). */
@@ -469,6 +506,11 @@
             Switch to Logo Spectrum or Kaleidoscope first
           {:else}
             {mode === 'kaleidoscope' ? 'Kaleidoscope' : 'Logo Spectrum'}, with the current settings
+            {#if $app.settings.autoPresets.on}
+              <span data-testid="export-switching"
+                >({switchingSummary($app.settings.autoPresets)})</span
+              >
+            {/if}
           {/if}
         </dd>
         <dt>Video</dt>

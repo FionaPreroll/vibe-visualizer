@@ -7,6 +7,7 @@ import {
   type SoundSettings,
 } from '../audio/dsp/sound-settings';
 import type { KaleidoSettings } from '../render/kaleido-settings';
+import type { AutoPresets } from '../render/preset-director';
 import type { LogoSpectrumSettings } from '../render/visual-settings';
 import type { VideoFormat } from './video-format';
 
@@ -44,9 +45,22 @@ export const FEATURE_FIELDS = F.waveform;
 export const OUTPUT_FILE = 'output';
 export const CANCELLED = 'The export was cancelled.';
 
+/**
+ * The visuals of the video: a mode, its settings (at the start), and the automatic preset
+ * switching (PR-02) with the presets that take part, if it is on.
+ */
 export type ExportVisuals =
-  | { mode: 'logoSpectrum'; settings: LogoSpectrumSettings }
-  | { mode: 'kaleidoscope'; settings: KaleidoSettings };
+  | {
+      mode: 'logoSpectrum';
+      settings: LogoSpectrumSettings;
+      auto?: ExportSwitching<LogoSpectrumSettings>;
+    }
+  | { mode: 'kaleidoscope'; settings: KaleidoSettings; auto?: ExportSwitching<KaleidoSettings> };
+
+export interface ExportSwitching<S> {
+  config: AutoPresets;
+  presets: S[];
+}
 
 export interface ExportCodecs {
   video: 'avc' | 'vp9';

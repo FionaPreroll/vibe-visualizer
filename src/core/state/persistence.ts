@@ -12,6 +12,7 @@ import {
   type VisualPreset,
 } from '../render/visual-settings';
 import { isAspectRatio, sanitizeExportOptions, type ExportOptions } from '../export/video-format';
+import { sanitizeAutoPresets } from '../render/preset-director';
 import {
   CUE_COUNT,
   DEFAULT_SETTINGS,
@@ -22,6 +23,7 @@ import {
   SYNC_OFFSET_RANGE,
   VISUAL_MODES,
   WAVEFORM_STYLES,
+  type Favourites,
   type Settings,
   type TrackData,
 } from './app-state';
@@ -158,10 +160,25 @@ export function loadSettings(): Settings {
     settings.syncOffset = Number.isFinite(settings.syncOffset)
       ? Math.max(SYNC_OFFSET_RANGE.min, Math.min(SYNC_OFFSET_RANGE.max, settings.syncOffset))
       : DEFAULT_SETTINGS.syncOffset;
+    settings.autoPresets = sanitizeAutoPresets(stored['autoPresets']);
+    settings.favourites = sanitizeFavourites(stored['favourites']);
   } catch {
     // Unreadable storage: defaults.
   }
   return settings;
+}
+
+/** Favourite preset names per mode: strings only, each once. */
+function sanitizeFavourites(value: unknown): Favourites {
+  const input = (typeof value === 'object' && value !== null ? value : {}) as Record<
+    string,
+    unknown
+  >;
+  const names = (list: unknown) =>
+    Array.isArray(list)
+      ? [...new Set(list.filter((name): name is string => typeof name === 'string'))]
+      : [];
+  return { logoSpectrum: names(input['logoSpectrum']), kaleidoscope: names(input['kaleidoscope']) };
 }
 
 export function saveSettings(settings: Settings): void {

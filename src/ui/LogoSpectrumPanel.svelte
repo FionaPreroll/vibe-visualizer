@@ -16,8 +16,9 @@
     type ResponsivenessName,
     type RingDirection,
     type RingStyle,
+    sanitizeSettings,
   } from '../core/render/visual-settings';
-  import { loadPresets, savePresets } from '../core/state/persistence';
+  import AutoPresetsSection from './AutoPresetsSection.svelte';
   import { errorMessage } from '../core/util/format';
   import { degrees, hertz, percent, perMinute, seconds } from './controls/format';
   import ImagePicker from './controls/ImagePicker.svelte';
@@ -25,6 +26,7 @@
   import Section from './controls/Section.svelte';
   import Slider from './controls/Slider.svelte';
   import { usePlayer } from './player-context';
+  import { logoSpectrumPresets } from './preset-store';
   import { useAssets } from './visuals-context';
 
   /** Controls of the Logo Spectrum mode (LS-*) and its presets (PR-01). */
@@ -100,12 +102,17 @@
 
 <section class="visuals" aria-label="Logo Spectrum settings">
   <PresetBar
+    mode="logoSpectrum"
     builtIn={BUILT_IN_PRESETS}
-    load={loadPresets}
-    save={savePresets}
+    store={logoSpectrumPresets}
     current={v}
     onapply={(settings) => player.replaceVisuals(settings)}
+    favourites={$app.settings.favourites.logoSpectrum}
+    onfavourites={(names) =>
+      player.updateSettings({ favourites: { ...$app.settings.favourites, logoSpectrum: names } })}
+    sanitize={sanitizeSettings}
   />
+  <AutoPresetsSection />
 
   {#if imageError}
     <p class="error" role="alert">{imageError}</p>

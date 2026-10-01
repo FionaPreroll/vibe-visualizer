@@ -8,6 +8,7 @@ import {
 } from '../audio/dsp/sound-settings';
 import type { LiveSourceKind } from '../audio/live-input';
 import type { AspectRatio } from '../export/video-format';
+import { DEFAULT_AUTO_PRESETS, type AutoPresets } from '../render/preset-director';
 import {
   DEFAULT_KALEIDO,
   sanitizeKaleido,
@@ -129,6 +130,16 @@ export interface Settings {
   bpmRange: TempoRangeId;
   /** A DJ controller was connected (CTL-03): connect again at the start if MIDI is allowed. */
   controller: boolean;
+  /** Automatic preset switching (PR-02), for the visual mode shown. */
+  autoPresets: AutoPresets;
+  /** Favourite presets by name, per visual mode (PR-03). */
+  favourites: Favourites;
+}
+
+/** Favourite presets by name, per visual mode (PR-03). */
+export interface Favourites {
+  logoSpectrum: string[];
+  kaleidoscope: string[];
 }
 
 /**
@@ -278,6 +289,8 @@ export const DEFAULT_SETTINGS: Settings = {
   waveformStyle: 'bands',
   bpmRange: 'auto',
   controller: false,
+  autoPresets: DEFAULT_AUTO_PRESETS,
+  favourites: { logoSpectrum: [], kaleidoscope: [] },
 };
 
 export function initialState(
