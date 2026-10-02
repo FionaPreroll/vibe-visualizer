@@ -118,6 +118,12 @@ These are the controls of deck 1. Knobs and faders take over once they reach the
 
 If a control does not do what it should, open **MIDI monitor** in the dialog, copy the messages and send them with a bug report. On Windows, close other DJ software first: only one program can use a MIDI device there.
 
+## Backup
+
+Everything the app keeps in this browser can go into one file, to move it to another browser or computer, or to keep it safe: the settings, your presets, the cues, markers, tempos and names of your tracks, and the background and logo images. **With the track analysis** adds the waveforms and beat grids found, so no track needs to be analysed again; the file gets larger (about 0.3 MB for five minutes of music). The music files and the queue are not in it: add the files again where you restore it, and their cues and markers come back with them.
+
+**Restore a backup** replaces everything the app keeps in this browser with what is in the file; it says what that is first. Then the app reloads. The queue stays as it is, and so does the analysis of the tracks if the backup has none.
+
 ## Keyboard shortcuts
 
 Press **?** for the full list. The main ones: Space play and pause, ← and → seek 5 s (30 s with Shift), N next, P previous, 1–8 hot cues, I and O the in and out markers, Q snap to the beat, W the detail waveform, − and + the tempo, V the next view, [ and ] the presets, F fullscreen, Ctrl+Z undo.

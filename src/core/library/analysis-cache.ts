@@ -38,7 +38,8 @@ export function sameGrid(a: GridRequest, b: GridRequest): boolean {
   return sameTempo(a.tempo, b.tempo) && (a.tempo !== null || a.range === b.range);
 }
 
-const DIRECTORY = 'track-analysis';
+/** The directory of the cache in the Origin Private File System: `<fingerprint>.bin` files. */
+export const ANALYSIS_DIRECTORY = 'track-analysis';
 const MAGIC = 0x56564741; // "VVGA"
 const VERSION = 3;
 /** Cached tracks kept; the least recently written go first. */
@@ -144,7 +145,7 @@ export function decodeGrid(buffer: ArrayBuffer): BeatGrid | null {
 async function directory(): Promise<FileSystemDirectoryHandle | null> {
   try {
     const root = await navigator.storage.getDirectory();
-    return await root.getDirectoryHandle(DIRECTORY, { create: true });
+    return await root.getDirectoryHandle(ANALYSIS_DIRECTORY, { create: true });
   } catch {
     return null; // no Origin Private File System (e.g. a private window)
   }

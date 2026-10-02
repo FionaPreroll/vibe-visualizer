@@ -32,15 +32,25 @@ import {
   type TrackEdit,
 } from './app-state';
 
+/** What all keys of the app in localStorage start with. */
+export const STORAGE_PREFIX = 'vibe-visualizer:';
 const SETTINGS_KEY = 'vibe-visualizer:settings:v1';
 const VISUALS_KEY = 'vibe-visualizer:visuals:v1';
-const PRESETS_KEY = 'vibe-visualizer:presets:v1';
+export const PRESETS_KEY = 'vibe-visualizer:presets:v1';
 const KALEIDO_KEY = 'vibe-visualizer:kaleido:v1';
-const KALEIDO_PRESETS_KEY = 'vibe-visualizer:kaleido-presets:v1';
+export const KALEIDO_PRESETS_KEY = 'vibe-visualizer:kaleido-presets:v1';
 const EXPORT_KEY = 'vibe-visualizer:export:v1';
 const SOUND_KEY = 'vibe-visualizer:sound:v1';
 /** Per file (by fingerprint): its cues, markers, corrected tempo and beat grid. */
-const TRACK_PREFIX = 'vibe-visualizer:track:v1:';
+export const TRACK_PREFIX = 'vibe-visualizer:track:v1:';
+
+/** Off while a backup is restored (UI-06): the app then stores nothing until it reloads. */
+let saving = true;
+
+/** Stops (or resumes) storing: the running app must not write its state over a backup. */
+export function setSaving(on: boolean): void {
+  saving = on;
+}
 
 /** A time within the track, or null. */
 function time(value: unknown, duration: number): number | null {
@@ -113,6 +123,7 @@ export function loadTrackData(fingerprint: string, duration: number): TrackData 
  * it.
  */
 export function saveTrackData(fingerprint: string, data: TrackData): void {
+  if (!saving) return;
   const empty =
     data.cues.every((cue) => cue === null) &&
     data.marks.in === null &&
@@ -146,6 +157,7 @@ function read(key: string): unknown {
 }
 
 function write(key: string, value: unknown): void {
+  if (!saving) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
