@@ -190,7 +190,8 @@ function drawLayer(input: SceneInput): void {
     return;
   }
   kaleidoscope.resize(canvas.width, canvas.height);
-  const look = kaleidoscopeAuto.current;
+  // The look behind is the Logo Spectrum's own (through its morph), else the Kaleidoscope's.
+  const look = logoSpectrumAuto.current.layerLook ?? kaleidoscopeAuto.current;
   if (look !== layerLook) {
     kaleidoscope.setSettings(look);
     layerLook = look;
@@ -252,6 +253,8 @@ function setRunning(value: boolean): void {
 /** Shows `kind` from the next frame on (the scene's buffers follow the canvas size). */
 function activate(kind: SceneKind): void {
   active = kind;
+  // The Kaleidoscope gets its look anew: as the layer behind, or in its own mode.
+  layerLook = null;
   scene = kind === 'logoSpectrum' ? logoSpectrum : kaleidoscope;
   if (scene && canvas) scene.resize(canvas.width, canvas.height);
   // Its settings are brought up to date before its first frame; the switching counts anew.

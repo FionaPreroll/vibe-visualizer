@@ -18,12 +18,42 @@
   const player = usePlayer();
   const app = player.store;
   let calibrating = $state(false);
+  /** In the Logo Spectrum: the Kaleidoscope behind it is being set up (VE-08). */
+  let editBehind = $state(false);
+  const layered = $derived(
+    $app.settings.visualMode === 'logoSpectrum' && $app.visuals.backgroundSource === 'kaleidoscope',
+  );
 </script>
 
+{#if layered}
+  <div class="edit" role="tablist" aria-label="Set up">
+    <button
+      role="tab"
+      aria-selected={!editBehind}
+      class:on={!editBehind}
+      onclick={() => (editBehind = false)}
+    >
+      Logo Spectrum
+    </button>
+    <button
+      role="tab"
+      aria-selected={editBehind}
+      class:on={editBehind}
+      onclick={() => (editBehind = true)}
+      data-testid="edit-behind"
+    >
+      Kaleidoscope behind
+    </button>
+  </div>
+{/if}
 {#if $app.settings.visualMode === 'kaleidoscope'}
   <KaleidoPanel />
 {:else if $app.settings.visualMode === 'logoSpectrum'}
-  <LogoSpectrumPanel />
+  {#if layered && editBehind}
+    <KaleidoPanel behind />
+  {:else}
+    <LogoSpectrumPanel oneditbehind={() => (editBehind = true)} />
+  {/if}
 {:else}
   <p class="note">
     The analysis view shows what the visuals react to. It has no settings; switch to Logo Spectrum
@@ -92,6 +122,21 @@
 <SyncCalibration open={calibrating} onclose={() => (calibrating = false)} />
 
 <style>
+  .edit {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 12px 16px 0;
+  }
+  .edit button {
+    padding: 6px 8px;
+    font-size: 13px;
+    background: transparent;
+  }
+  .edit button.on {
+    border-color: var(--accent);
+    background: var(--surface-2);
+  }
   .note {
     margin: 16px;
     color: var(--muted);

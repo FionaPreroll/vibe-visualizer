@@ -56,6 +56,9 @@ export function morphLogoSpectrum(
   result['particles'] = Math.round(result['particles'] as number);
   result['bars'] = Math.round(result['bars'] as number);
   result['backgroundBlur'] = halfway.backgroundBlur;
+  // The Kaleidoscope behind morphs as the Kaleidoscope does; without a look of its own on one
+  // side, it changes halfway.
+  if (a.layerLook && b.layerLook) result['layerLook'] = morphKaleido(a.layerLook, b.layerLook, t);
   // The colour layers blend as colours, whatever palettes they come from.
   result['palette'] = 'custom';
   result['customColors'] = mixColors(layerColors(a), layerColors(b), t);

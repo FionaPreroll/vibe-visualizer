@@ -7,6 +7,8 @@
     sceneById,
     sceneDefaults,
     type KaleidoPaletteName,
+    type KaleidoSceneId,
+    type KaleidoSettings,
     type ParamGroup,
     type ParamSpec,
     type ParamValue,
@@ -21,13 +23,34 @@
 
   /**
    * Controls of the Kaleidoscope mode, generated from the parameter specs of the common
-   * parameters and of the current scene (KA-01), with presets (PR-01).
+   * parameters and of the current scene (KA-01), with presets (PR-01). With `behind`, they
+   * set up the Kaleidoscope behind the Logo Spectrum (VE-08), a look of the Logo Spectrum's
+   * own, and the Logo Spectrum's preset switching applies.
    */
+  interface Props {
+    behind?: boolean;
+  }
+  let { behind = false }: Props = $props();
 
   const player = usePlayer();
   const app = player.store;
-  const k = $derived($app.kaleido);
+  const k = $derived(behind ? ($app.visuals.layerLook ?? $app.kaleido) : $app.kaleido);
   const scene = $derived(sceneById(k.scene));
+  const edit = $derived(
+    behind
+      ? {
+          scene: (id: KaleidoSceneId) => player.setLayerScene(id),
+          param: (scope: 'common' | KaleidoSceneId, key: string, value: ParamValue) =>
+            player.setLayerParam(scope, key, value),
+          replace: (settings: KaleidoSettings) => player.replaceLayer(settings),
+        }
+      : {
+          scene: (id: KaleidoSceneId) => player.setKaleidoScene(id),
+          param: (scope: 'common' | KaleidoSceneId, key: string, value: ParamValue) =>
+            player.setKaleidoParam(scope, key, value),
+          replace: (settings: KaleidoSettings) => player.replaceKaleido(settings),
+        },
+  );
 
   const GROUPS: { group: ParamGroup; title: string; open: boolean }[] = [
     { group: 'symmetry', title: 'Symmetry', open: true },
@@ -49,20 +72,23 @@
     // Your own colours start from the palette shown now.
     if (name === 'custom' && k.common['palette'] !== 'custom') {
       const current = KALEIDO_PALETTES[k.common['palette'] as keyof typeof KALEIDO_PALETTES];
-      player.setKaleidoParam('common', 'gradient', [...current]);
+      edit.param('common', 'gradient', [...current]);
     }
-    player.setKaleidoParam('common', 'palette', name);
+    edit.param('common', 'palette', name);
   }
 </script>
 
-<section class="kaleido" aria-label="Kaleidoscope settings">
+<section
+  class="kaleido"
+  aria-label={behind ? 'Settings of the Kaleidoscope behind' : 'Kaleidoscope settings'}
+>
   <div class="scenes" role="radiogroup" aria-label="Scene">
     {#each KALEIDO_SCENES as entry (entry.id)}
       <button
         role="radio"
         aria-checked={k.scene === entry.id}
         class:on={k.scene === entry.id}
-        onclick={() => player.setKaleidoScene(entry.id)}
+        onclick={() => edit.scene(entry.id)}
         data-testid={`scene-${entry.id}`}
       >
         <span class="name">{entry.name}</span>
@@ -76,13 +102,15 @@
     builtIn={BUILT_IN_KALEIDO_PRESETS}
     store={kaleidoPresets}
     current={k}
-    onapply={(settings) => player.replaceKaleido(settings)}
+    onapply={(settings) => edit.replace(settings)}
     favourites={$app.settings.favourites.kaleidoscope}
     onfavourites={(names) =>
       player.updateSettings({ favourites: { ...$app.settings.favourites, kaleidoscope: names } })}
     sanitize={sanitizeKaleido}
   />
-  <AutoPresetsSection />
+  {#if !behind}
+    <AutoPresetsSection />
+  {/if}
 
   {#each GROUPS as { group, title, open } (group)}
     <Section {title} {open}>
@@ -107,7 +135,7 @@
           <ParamControl
             {spec}
             value={k.common[spec.key]!}
-            onchange={(value) => player.setKaleidoParam('common', spec.key, value)}
+            onchange={(value) => edit.param('common', spec.key, value)}
           />
         {/if}
       {/each}
@@ -118,7 +146,7 @@
           <ParamControl
             {spec}
             value={k.scenes[scene.id][spec.key]!}
-            onchange={(value) => player.setKaleidoParam(scene.id, spec.key, value)}
+            onchange={(value) => edit.param(scene.id, spec.key, value)}
           />
         {/each}
       </Section>
@@ -126,7 +154,7 @@
   {/each}
 
   <div class="footer">
-    <button onclick={() => player.replaceKaleido(sceneDefaults(k.scene))}>
+    <button onclick={() => edit.replace(sceneDefaults(k.scene))}>
       Reset {scene.name}
     </button>
     <span class="hint">Double-click a slider's label to reset it</span>

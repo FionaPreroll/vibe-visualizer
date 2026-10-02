@@ -272,6 +272,57 @@ describe('app state', () => {
     expect(back.kaleido.scenes.crystal['points']).toBe(12);
   });
 
+  it('gives the Logo Spectrum a Kaleidoscope of its own behind it (VE-08)', () => {
+    const crystal = reducer(initialState(), { type: 'kaleido/scene', scene: 'crystal' });
+    // Switched to the Kaleidoscope behind, it starts as the Kaleidoscope is set up.
+    const layered = reducer(crystal, {
+      type: 'visuals/changed',
+      changes: { backgroundSource: 'kaleidoscope' },
+    });
+    expect(layered.visuals.layerLook).toEqual(crystal.kaleido);
+    // From then on it is its own: setting it up leaves the Kaleidoscope mode's look …
+    const ribbons = reducer(layered, { type: 'layer/scene', scene: 'ribbons' });
+    expect(ribbons.visuals.layerLook!.scene).toBe('ribbons');
+    expect(ribbons.visuals.layerLook!.common['flow']).toBe(sceneDefaults('ribbons').common['flow']);
+    const changed = reducer(ribbons, {
+      type: 'layer/param',
+      scope: 'common',
+      key: 'segments',
+      value: 3,
+    });
+    expect(changed.visuals.layerLook!.common['segments']).toBe(3);
+    expect(changed.kaleido).toBe(crystal.kaleido);
+    // … and the Kaleidoscope mode's changes leave it.
+    const own = reducer(changed, { type: 'kaleido/scene', scene: 'vortex' });
+    expect(own.visuals.layerLook).toBe(changed.visuals.layerLook);
+    // An image for a while, then the Kaleidoscope again: it is kept.
+    const image = reducer(own, { type: 'visuals/changed', changes: { backgroundSource: 'image' } });
+    const again = reducer(image, {
+      type: 'visuals/changed',
+      changes: { backgroundSource: 'kaleidoscope' },
+    });
+    expect(again.visuals.layerLook).toEqual(changed.visuals.layerLook);
+    const preset = reducer(again, { type: 'layer/replaced', kaleido: sceneDefaults('crystal') });
+    expect(preset.visuals.layerLook).toEqual(sceneDefaults('crystal'));
+    // Without a look of its own yet, setting it up starts from the Kaleidoscope's.
+    const fresh = reducer(crystal, {
+      type: 'layer/param',
+      scope: 'crystal',
+      key: 'points',
+      value: 5,
+    });
+    expect(fresh.visuals.layerLook).toEqual({
+      ...crystal.kaleido,
+      scenes: {
+        ...crystal.kaleido.scenes,
+        crystal: { ...crystal.kaleido.scenes.crystal, points: 5 },
+      },
+    });
+    expect(reducer(crystal, { type: 'layer/scene', scene: 'crystal' }).visuals.layerLook).toEqual(
+      crystal.kaleido,
+    );
+  });
+
   it('keeps in/out markers inside the track and in order (TR-09)', () => {
     let state = reducer(initialState(), {
       type: 'tracks/added',

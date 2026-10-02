@@ -13,6 +13,7 @@ import {
   supportsFloatTargets,
   type Target,
 } from './gl';
+import type { KaleidoSettings } from './kaleido-settings';
 import { NO_CAMERA, PostProcessing, type Camera } from './post';
 import type { Scene, SceneInput, SceneSnapshot } from './scene';
 import { CURVE_POINTS, SpectrumShaper } from './spectrum-shaper';
@@ -431,6 +432,11 @@ export class LogoSpectrumScene implements Scene {
   /** True when the settings show the Kaleidoscope behind (VE-08). */
   get wantsLayer(): boolean {
     return this.settings.backgroundSource === 'kaleidoscope';
+  }
+
+  /** The Kaleidoscope look behind of the settings shown now (null: the Kaleidoscope's own). */
+  get layerLook(): KaleidoSettings | null {
+    return this.settings.layerLook;
   }
 
   /** The picture of the layer behind for the next frame (null: none). */

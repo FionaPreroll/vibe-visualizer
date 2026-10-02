@@ -26,7 +26,7 @@ import { DspCore } from '../audio/dsp/dsp-core';
 import type { SoundSettings } from '../audio/dsp/sound-settings';
 import { SignalsmithStretch } from '../audio/stretch/signalsmith-stretch';
 import { PictureFade } from '../render/fade';
-import { sanitizeKaleido } from '../render/kaleido-settings';
+import { sanitizeKaleido, type KaleidoSettings } from '../render/kaleido-settings';
 import { KaleidoscopeScene } from '../render/kaleidoscope';
 import { LogoSpectrumScene } from '../render/logo-spectrum';
 import { TrackOverlay } from '../render/overlay';
@@ -599,9 +599,14 @@ function createSwitching<T>(
  * snapshot for both (the layer's values prefixed, its buffers last).
  */
 class LayeredScene implements Scene {
+  /** The Kaleidoscope look the layer was given last. */
+  private shown: KaleidoSettings | null = null;
+
+  /** `fallback`: the Kaleidoscope's own look, for looks without one behind them. */
   constructor(
     private readonly front: LogoSpectrumScene,
     private readonly layer: KaleidoscopeScene,
+    private readonly fallback: KaleidoSettings,
   ) {}
 
   get floatTargets(): boolean {
@@ -618,6 +623,12 @@ class LayeredScene implements Scene {
   }
 
   render(input: SceneInput): void {
+    // The look behind is the one of the settings shown now, through the switching's morph.
+    const look = this.front.layerLook ?? this.fallback;
+    if (look !== this.shown) {
+      this.layer.setSettings(look);
+      this.shown = look;
+    }
     this.front.setBackgroundLayer(this.front.wantsLayer ? this.layer.renderLayer(input) : null);
     this.front.render(input);
   }
@@ -657,8 +668,9 @@ function createScene(
     let scene: Scene = front;
     if (visuals.layer) {
       const layer = new KaleidoscopeScene(gl);
-      layer.setSettings(sanitizeKaleido(visuals.layer));
-      scene = new LayeredScene(front, layer);
+      const fallback = sanitizeKaleido(visuals.layer);
+      layer.setSettings(fallback);
+      scene = new LayeredScene(front, layer, fallback);
     }
     if (!config || !visuals.auto) return { scene, switching: null, logo: front };
     const automation = new PresetAutomation(

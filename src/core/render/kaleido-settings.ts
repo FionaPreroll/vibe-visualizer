@@ -626,3 +626,24 @@ export const BUILT_IN_KALEIDO_PRESETS: readonly KaleidoPreset[] = [
     { ribbons: 3, weave: 0.3, thickness: 0.7, blossoms: 0.8 },
   ),
 ];
+
+/** `look` with another scene, and the common look that suits it (KA-01). */
+export function withKaleidoScene(look: KaleidoSettings, scene: KaleidoSceneId): KaleidoSettings {
+  if (scene === look.scene) return look;
+  const common = sceneDefaults(scene).common;
+  return sanitizeKaleido({ ...look, scene, common: { ...look.common, ...common } });
+}
+
+/** `look` with one parameter changed: a common one, or one of a scene. */
+export function withKaleidoParam(
+  look: KaleidoSettings,
+  scope: 'common' | KaleidoSceneId,
+  key: string,
+  value: ParamValue,
+): KaleidoSettings {
+  const changed =
+    scope === 'common'
+      ? { ...look, common: { ...look.common, [key]: value } }
+      : { ...look, scenes: { ...look.scenes, [scope]: { ...look.scenes[scope], [key]: value } } };
+  return sanitizeKaleido(changed);
+}

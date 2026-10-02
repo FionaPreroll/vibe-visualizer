@@ -344,6 +344,56 @@ test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page 
   expect(errors).toEqual([]);
 });
 
+test('the Kaleidoscope behind is set up in the Logo Spectrum, as a look of its own (VE-08)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const stored = (key: string) =>
+    page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(`vibe-visualizer:${key}:v1`) ?? '{}'),
+      key,
+    );
+  const preset = page.getByTestId('preset-select');
+
+  // A preset with a Kaleidoscope of its own behind the ring.
+  await preset.selectOption('Ribbon Lines');
+  await expect.poll(async () => (await stored('visuals')).layerLook?.scene).toBe('ribbons');
+  await page.getByText('Background', { exact: true }).click();
+  await page.getByTestId('background-layer-edit').click();
+  const behind = page.getByRole('region', { name: 'Settings of the Kaleidoscope behind' });
+  await expect(behind).toBeVisible();
+  await expect(page.getByTestId('scene-ribbons')).toHaveAttribute('aria-checked', 'true');
+  await expect(preset).toHaveValue('Neon Ribbons');
+  // The Logo Spectrum's switching applies: none of the Kaleidoscope's own here.
+  await expect(page.getByTestId('auto-presets')).toHaveCount(0);
+
+  // Set up here, it belongs to the Logo Spectrum; the Kaleidoscope mode keeps its look.
+  await page.getByTestId('scene-crystal').click();
+  await expect.poll(async () => (await stored('visuals')).layerLook?.scene).toBe('crystal');
+  await preset.selectOption('Frozen Mandala');
+  await expect(page.getByRole('slider', { name: 'Star points' })).toBeVisible();
+  expect((await stored('kaleido')).scene ?? 'vortex').toBe('vortex');
+  await page.getByRole('button', { name: 'Kaleidoscope', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-scene', 'kaleidoscope');
+  await expect(page.getByTestId('scene-vortex')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('auto-presets')).toHaveCount(1);
+
+  // Back in the Logo Spectrum, the Kaleidoscope behind is as it was set up.
+  await page.getByRole('button', { name: 'Logo Spectrum' }).click();
+  await expect(stage).toHaveAttribute('data-scene', 'logoSpectrum');
+  await page.getByTestId('edit-behind').click();
+  await expect(page.getByTestId('scene-crystal')).toHaveAttribute('aria-checked', 'true');
+  await expect(preset).toHaveValue('Frozen Mandala');
+  await page.getByRole('tab', { name: 'Logo Spectrum' }).click();
+  await expect(preset).toHaveValue('');
+  expect(errors).toEqual([]);
+});
+
 test('the display settings: resolution, auto-quality and reduce flashing (VE-06, VE-07)', async ({
   page,
 }) => {

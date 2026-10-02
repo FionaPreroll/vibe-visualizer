@@ -31,6 +31,11 @@
   import { useAssets } from './visuals-context';
 
   /** Controls of the Logo Spectrum mode (LS-*) and its presets (PR-01). */
+  interface Props {
+    /** Opens the settings of the Kaleidoscope behind (VE-08). */
+    oneditbehind?: () => void;
+  }
+  let { oneditbehind }: Props = $props();
 
   const player = usePlayer();
   const assets = useAssets();
@@ -320,9 +325,15 @@
     </div>
     {#if v.backgroundSource === 'kaleidoscope'}
       <p class="hint" data-testid="background-layer-hint">
-        The Kaleidoscope, live behind the ring, as it is set up in its own mode. Darken and tint
-        apply to it; it costs about as much as the Kaleidoscope itself.
+        The Kaleidoscope, live behind the ring, with a look of its own that belongs to this one:
+        presets and the preset switching carry it. Darken and tint apply to it; it costs about as
+        much as the Kaleidoscope itself.
       </p>
+      {#if oneditbehind}
+        <button class="edit-behind" onclick={oneditbehind} data-testid="background-layer-edit">
+          Set up the Kaleidoscope behind…
+        </button>
+      {/if}
     {:else}
       <ImagePicker
         label="Background image"
