@@ -79,6 +79,11 @@ export class Program {
     return this;
   }
 
+  vec4(name: string, x: number, y: number, z: number, w: number): this {
+    this.gl.uniform4f(this.uniform(name), x, y, z, w);
+    return this;
+  }
+
   vec3Array(name: string, values: Float32Array): this {
     this.gl.uniform3fv(this.uniform(name), values);
     return this;

@@ -38,6 +38,7 @@
     star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z',
     starOutline: 'M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z',
     import: 'M12 20V9M7 14l5-5 5 5M5 4h14',
+    pencil: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
   } as const;
   /** Icons drawn as lines instead of filled shapes. */
   const STROKED: readonly string[] = [
@@ -56,6 +57,7 @@
     'controller',
     'starOutline',
     'import',
+    'pencil',
   ];
   export type IconName = keyof typeof ICONS;
 </script>

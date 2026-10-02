@@ -44,6 +44,8 @@ import {
   newTrack,
   reducer,
   restoredTrack,
+  shownTitle,
+  trackEdit,
   type AppAction,
   type AppState,
   type Marks,
@@ -88,6 +90,13 @@ function startOf(track: Track | null | undefined): number {
 function endFrom(track: Track | null | undefined, position: number): number | null {
   const out = track?.marks.out ?? null;
   return out !== null && position < out ? out : null;
+}
+
+/** A file in the engine's stream, by the engine's token: the one heard, or the one that follows. */
+export interface StreamFile {
+  token: number;
+  /** The queue entry it plays. */
+  id: string;
 }
 
 /**
@@ -151,6 +160,19 @@ export class Player {
   private readonly endCheck: ReturnType<typeof setInterval>;
   /** The live input's stream while it is the source. */
   private liveInput: OpenedInput | null = null;
+  private streamFiles: readonly StreamFile[] = [];
+  private readonly streamListeners = new Set<(files: readonly StreamFile[]) => void>();
+  /**
+   * The files of the engine's stream (a Svelte store): the track heard and the one that follows,
+   * by their tokens. The visuals know by the token which track the music they show comes from.
+   */
+  readonly stream = {
+    subscribe: (listener: (files: readonly StreamFile[]) => void): (() => void) => {
+      this.streamListeners.add(listener);
+      listener(this.streamFiles);
+      return () => this.streamListeners.delete(listener);
+    },
+  };
   /** Increases with every start or stop of live input; stale attempts are dropped. */
   private liveToken = 0;
 
@@ -211,6 +233,7 @@ export class Player {
     this.endCheck = setInterval(() => {
       this.followStream();
       this.advanceAtEnd();
+      this.publishStream();
     }, 50);
     // Beat grids go to the engine once they are known.
     this.analysis.subscribe(() => this.sendBeatGrids());
@@ -248,6 +271,24 @@ export class Player {
     for (const token of this.sentGrids.keys()) {
       if (!wanted.has(token)) this.sentGrids.delete(token);
     }
+    this.publishStream();
+  }
+
+  /** Tells the subscribers of {@link stream} when the heard or the next file changed. */
+  private publishStream(): void {
+    const files: StreamFile[] = [];
+    if (this.loadedId !== null && !this.live) {
+      files.push({ token: this.loadedToken, id: this.loadedId });
+      const next = this.plan?.after === this.loadedToken ? this.plan.next : null;
+      if (next) files.push({ token: next.token, id: next.id });
+    }
+    const old = this.streamFiles;
+    const same =
+      old.length === files.length &&
+      files.every((file, i) => file.token === old[i]!.token && file.id === old[i]!.id);
+    if (same) return;
+    this.streamFiles = files;
+    for (const listener of this.streamListeners) listener(files);
   }
 
   private get order(): PlayOrder {
@@ -1029,7 +1070,7 @@ export class Player {
     this.handles.delete(id);
     this.dispatch({ type: 'tracks/removed', id });
     this.offerUndo(
-      `Removed “${track.title}”`,
+      `Removed “${shownTitle(track)}”`,
       () => this.putBack(index, [track], current ? id : null, kept),
       () => this.forgetTracks([track]),
     );
@@ -1037,6 +1078,15 @@ export class Player {
 
   move(from: number, to: number): void {
     this.dispatch({ type: 'tracks/moved', from, to });
+  }
+
+  /**
+   * Gives track `id` the title and artist the user typed (LS-18), for every entry of its file;
+   * what the file has already is no change, and an empty title keeps the file's.
+   */
+  renameTrack(id: string, title: string, artist: string): void {
+    const track = this.state.tracks.find((entry) => entry.id === id);
+    if (track) this.dispatch({ type: 'tracks/edited', id, edit: trackEdit(track, title, artist) });
   }
 
   /** Empties the queue (it can be undone for a moment). */
@@ -1267,8 +1317,8 @@ export class Player {
   }
 
   /**
-   * Keeps the cues, markers, tempo and grid correction of each file (TR-05), so they come back
-   * with it.
+   * Keeps the cues, markers, tempo, grid correction and names of each file (TR-05), so they come
+   * back with it.
    */
   private storeTrackData(previous: readonly Track[], next: readonly Track[]): void {
     const before = new Map(previous.map((track) => [track.id, track]));
@@ -1280,10 +1330,11 @@ export class Player {
         old.cues === track.cues &&
         old.marks === track.marks &&
         old.tempo === track.tempo &&
-        old.gridEdit === track.gridEdit;
+        old.gridEdit === track.gridEdit &&
+        old.edit === track.edit;
       if (!unchanged) {
-        const { cues, marks, tempo, gridEdit } = track;
-        saveTrackData(track.fingerprint, { cues, marks, tempo, gridEdit });
+        const { cues, marks, tempo, gridEdit, edit } = track;
+        saveTrackData(track.fingerprint, { cues, marks, tempo, gridEdit, edit });
       }
     }
   }

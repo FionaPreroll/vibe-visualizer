@@ -1,6 +1,5 @@
 import type { BeatGrid } from '../analysis/beat-grid';
 import type { SoundSettings } from '../audio/dsp/sound-settings';
-import type { ImageKind } from '../render/logo-spectrum';
 import { decodeImage, type StoredImages } from '../render/visual-assets';
 import { WorkerClient } from '../util/worker-rpc';
 import {
@@ -19,6 +18,7 @@ import type {
   ResumeArgs,
   StartArgs,
 } from './export.worker';
+import { JOB_IMAGES, type JobImage } from './export-job';
 import ExportWorker from './export.worker.ts?worker';
 import { clearJob, readJobFile, readManifest } from './job-store';
 import type { VideoFormat } from './video-format';
@@ -40,6 +40,8 @@ export interface ExportRequest {
   /** The file's beat grid, if it has been analysed (AN-07). */
   grid: BeatGrid | null;
   images: StoredImages;
+  /** The track's cover art, to show as the logo (LS-15); null: the logo image. */
+  cover: Blob | null;
   /** The file to write (Chromium); null downloads the video at the end. */
   destination: FileSystemFileHandle | null;
   fileName: string;
@@ -115,13 +117,18 @@ export class Exporter {
   async start(request: ExportRequest): Promise<void> {
     if (this.current.status === 'running') throw new Error('An export is already running.');
     this.releaseDownload();
-    const images: StartArgs['images'] = { background: null, logo: null };
+    const images: StartArgs['images'] = { background: null, logo: null, cover: null };
     const transfer: Transferable[] = [];
     if (request.visuals.mode === 'logoSpectrum') {
-      for (const kind of ['background', 'logo'] as const) {
-        const stored = request.images[kind];
-        if (!stored) continue;
-        const input: ImageInput = { blob: stored.blob, bitmap: await decodeImage(stored.blob) };
+      const blobs = {
+        background: request.images.background?.blob ?? null,
+        logo: request.images.logo?.blob ?? null,
+        cover: request.cover,
+      };
+      for (const kind of JOB_IMAGES) {
+        const blob = blobs[kind];
+        if (!blob) continue;
+        const input: ImageInput = { blob, bitmap: await decodeImage(blob) };
         images[kind] = input;
         transfer.push(input.bitmap);
       }
@@ -151,9 +158,9 @@ export class Exporter {
       this.set({ status: 'idle' });
       return;
     }
-    const images: ResumeArgs['images'] = { background: null, logo: null };
+    const images: ResumeArgs['images'] = { background: null, logo: null, cover: null };
     const transfer: Transferable[] = [];
-    for (const kind of ['background', 'logo'] as const) {
+    for (const kind of JOB_IMAGES) {
       const bitmap = await jobImage(manifest, kind);
       images[kind] = bitmap;
       if (bitmap) transfer.push(bitmap);
@@ -386,8 +393,8 @@ async function removeJob(): Promise<void> {
 }
 
 /** An image stored with an export job, decoded for rendering. */
-async function jobImage(manifest: ExportManifest, kind: ImageKind): Promise<ImageBitmap | null> {
-  const type = manifest.images[kind];
+async function jobImage(manifest: ExportManifest, kind: JobImage): Promise<ImageBitmap | null> {
+  const type = manifest.images[kind] ?? null;
   if (!type || manifest.visuals.mode !== 'logoSpectrum') return null;
   try {
     const file = await readJobFile(`image-${kind}`);

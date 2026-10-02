@@ -8,7 +8,14 @@ import { F, HIT_FIELDS } from './features';
 
 const COUNT = 0;
 const HEADER_INTS = 4;
-const TIME_FIELDS = 2; // engine frame, source seconds
+const TIME_FIELDS = 3; // engine frame, source seconds, file token
+
+/** Where the music of an analysis frame comes from: the file (by its token) and the second in it. */
+export interface HeardPosition {
+  seconds: number;
+  /** The engine's token of the file; 0 for none (live input). */
+  token: number;
+}
 
 export function createFeatureTimeline(capacity = 1024): SharedArrayBuffer {
   return new SharedArrayBuffer(
@@ -40,11 +47,12 @@ class TimelineView {
 }
 
 export class FeatureTimelineWriter extends TimelineView {
-  write(engineFrame: number, sourceSeconds: number, frame: Float32Array): void {
+  write(engineFrame: number, sourceSeconds: number, frame: Float32Array, token = 0): void {
     const count = Atomics.load(this.control, COUNT);
     const slot = count % this.capacity;
     this.times[slot * TIME_FIELDS] = engineFrame;
     this.times[slot * TIME_FIELDS + 1] = sourceSeconds;
+    this.times[slot * TIME_FIELDS + 2] = token;
     this.features.set(frame, slot * F.size);
     Atomics.store(this.control, COUNT, count + 1);
   }
@@ -60,9 +68,10 @@ export class FeatureTimelineReader extends TimelineView {
   /**
    * Writes the analysis values at `engineFrame` into `out`, interpolating between the two
    * nearest frames (hit flags are taken from the earlier frame; the beat phase wraps around).
-   * Returns the source position in seconds, or null if no frame is old enough.
+   * Returns the source position in seconds, or null if no frame is old enough; `heard` gets the
+   * position and the file of the earlier frame.
    */
-  sample(engineFrame: number, out: Float32Array): number | null {
+  sample(engineFrame: number, out: Float32Array, heard?: HeardPosition): number | null {
     const count = this.count;
     const oldest = Math.max(0, count - this.capacity + 8);
     for (let index = count - 1; index >= oldest; index--) {
@@ -89,7 +98,12 @@ export class FeatureTimelineReader extends TimelineView {
       } else {
         for (let i = 0; i < F.size; i++) out[i] = this.features[base + i]!;
       }
-      return this.times[slot * TIME_FIELDS + 1]!;
+      const seconds = this.times[slot * TIME_FIELDS + 1]!;
+      if (heard) {
+        heard.seconds = seconds;
+        heard.token = this.times[slot * TIME_FIELDS + 2]!;
+      }
+      return seconds;
     }
     return null;
   }
@@ -124,9 +138,12 @@ export class FeatureSampler {
 
   constructor(private readonly reader: FeatureTimelineReader) {}
 
-  /** Writes the features at engine frame `at` into `out`; zeros (and false) if there are none. */
-  sample(at: number | null, out: Float32Array): boolean {
-    if (at === null || this.reader.sample(at, out) === null) {
+  /**
+   * Writes the features at engine frame `at` into `out`; zeros (and false) if there are none.
+   * `heard` gets the position in the file there.
+   */
+  sample(at: number | null, out: Float32Array, heard?: HeardPosition): boolean {
+    if (at === null || this.reader.sample(at, out, heard) === null) {
       out.fill(0);
       return false;
     }

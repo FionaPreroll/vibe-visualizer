@@ -8,6 +8,7 @@ import {
 } from '../audio/dsp/sound-settings';
 import type { LiveSourceKind } from '../audio/live-input';
 import type { AspectRatio } from '../export/video-format';
+import { DEFAULT_OVERLAY, type OverlaySettings } from '../render/overlay-settings';
 import { DEFAULT_AUTO_PRESETS, type AutoPresets } from '../render/preset-director';
 import {
   DEFAULT_KALEIDO,
@@ -62,14 +63,47 @@ export interface Track {
   tempo: number | null;
   /** The user's correction of the beat grid's phase and bars (TR-11). */
   gridEdit: GridEdit;
+  /** The title and artist the user gave the file (LS-18); null: those of the file. */
+  edit: TrackEdit | null;
 }
 
-/** What is kept per file (TR-05): cues, markers, a corrected tempo and beat grid. */
+/** A title and artist the user gives a file, for the overlay and wherever the track is named. */
+export interface TrackEdit {
+  title: string;
+  artist: string | null;
+}
+
+/** Longest title or artist the user can give. */
+export const TRACK_TEXT_LENGTH = 200;
+
+/** The title shown for `track`: the user's, or that of the file (its tags or its name). */
+export function shownTitle(track: Track): string {
+  return track.edit?.title ?? track.title;
+}
+
+/** The artist shown for `track`: the user's (none if they removed it), or that of the file. */
+export function shownArtist(track: Track): string | null {
+  return track.edit ? track.edit.artist : track.artist;
+}
+
+/**
+ * The title and artist to keep for `track` from what the user typed: trimmed, and null when it
+ * is just what the file has.
+ */
+export function trackEdit(track: Track, title: string, artist: string): TrackEdit | null {
+  const cleanTitle = title.trim().slice(0, TRACK_TEXT_LENGTH) || track.title;
+  const cleanArtist = artist.trim().slice(0, TRACK_TEXT_LENGTH) || null;
+  if (cleanTitle === track.title && cleanArtist === track.artist) return null;
+  return { title: cleanTitle, artist: cleanArtist };
+}
+
+/** What is kept per file (TR-05): cues, markers, a corrected tempo and beat grid, the names. */
 export interface TrackData {
   cues: Cues;
   marks: Marks;
   tempo: number | null;
   gridEdit: GridEdit;
+  edit: TrackEdit | null;
 }
 
 export interface Marks {
@@ -136,6 +170,10 @@ export interface Settings {
   autoQuality: boolean;
   /** Damp sudden jumps in brightness, live and in exports (VE-06). */
   reduceFlashing: boolean;
+  /** The track's title and artist over the visuals, live and in exports (LS-18, LS-19). */
+  overlay: OverlaySettings;
+  /** The Logo Spectrum shows the cover art of the track playing as its logo (LS-15). */
+  coverLogo: boolean;
   /** Automatic preset switching (PR-02), for the visual mode shown. */
   autoPresets: AutoPresets;
   /** Favourite presets by name, per visual mode (PR-03). */
@@ -248,6 +286,11 @@ export type AppAction =
   | { type: 'tracks/tempo'; fingerprint: string; tempo: number | null }
   /** The correction of a file's beat grid (TR-11), for every entry of that file. */
   | { type: 'tracks/grid'; fingerprint: string; edit: GridEdit }
+  /**
+   * The title and artist the user gave a track (LS-18; null: those of the file), for every entry
+   * of its file.
+   */
+  | { type: 'tracks/edited'; id: string; edit: TrackEdit | null }
   | { type: 'player/current'; id: string | null }
   | { type: 'player/playing'; playing: boolean }
   | { type: 'player/seeked'; seconds: number }
@@ -298,6 +341,8 @@ export const DEFAULT_SETTINGS: Settings = {
   renderScale: 1,
   autoQuality: true,
   reduceFlashing: false,
+  overlay: DEFAULT_OVERLAY,
+  coverLogo: false,
   autoPresets: DEFAULT_AUTO_PRESETS,
   favourites: { logoSpectrum: [], kaleidoscope: [] },
 };
@@ -343,6 +388,7 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
     cues: NO_CUES,
     tempo: null,
     gridEdit: NO_GRID_EDIT,
+    edit: null,
   };
 }
 
@@ -448,7 +494,9 @@ export function reducer(state: AppState, action: AppAction): AppState {
         tracks: state.tracks.map((track) => {
           if (track.id !== action.id) return track;
           const { stored, ...info } = action.info;
-          return { ...track, ...info, title: info.title ?? track.title, ...stored };
+          // A name given while the file was probed stays, unless the file had one stored.
+          const edit = stored?.edit ?? track.edit;
+          return { ...track, ...info, title: info.title ?? track.title, ...stored, edit };
         }),
       };
     case 'tracks/removed':
@@ -507,6 +555,19 @@ export function reducer(state: AppState, action: AppAction): AppState {
           track.fingerprint === action.fingerprint ? { ...track, gridEdit: action.edit } : track,
         ),
       };
+    case 'tracks/edited': {
+      const edited = state.tracks.find((track) => track.id === action.id);
+      if (!edited) return state;
+      const sameFile = (track: Track) =>
+        track.id === action.id ||
+        (edited.fingerprint !== null && track.fingerprint === edited.fingerprint);
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          sameFile(track) ? { ...track, edit: action.edit } : track,
+        ),
+      };
+    }
     case 'player/current':
       return { ...state, currentId: action.id };
     case 'player/playing':

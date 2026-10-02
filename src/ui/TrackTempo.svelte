@@ -2,7 +2,7 @@
   import type { BeatGrid } from '../core/analysis/beat-grid';
   import { gridTempo } from '../core/analysis/grid-beats';
   import { sectionTempos } from '../core/analysis/tempo-sections';
-  import type { Track } from '../core/state/app-state';
+  import { shownTitle, type Track } from '../core/state/app-state';
   import { usePlayer } from './player-context';
   import TempoMenu from './TempoMenu.svelte';
 
@@ -40,7 +40,7 @@
   warn={tempos.length > 1}
   {label}
   {title}
-  name={track.title}
+  name={shownTitle(track)}
   holdTitle="The whole track at this tempo"
   testid="queue-bpm"
   onchoose={(bpm) => player.setTempo(track.id, bpm)}

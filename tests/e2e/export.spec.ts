@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { ALL_FORMATS, BufferSource, EncodedPacketSink, Input } from 'mediabunny';
 import { readFile } from 'node:fs/promises';
-import { createWav } from './wav';
+import { COVER, logoQuarters, measure, showsCover, videoFrame } from './pixels';
+import { createTaggedWav, createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -114,12 +115,57 @@ test('exports the range between the markers as a video file', async ({ page }) =
   expect(errors).toEqual([]);
 });
 
+test('the video shows the track overlay and the cover art (LS-15, LS-18, LS-19)', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    // The overlay with its progress and time, and the cover art as the logo.
+    const settings = { coverLogo: true, overlay: { on: true, progress: true, time: true } };
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+  });
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(4, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await expect(page.getByTestId('export-overlay')).toHaveText("(with the track's title)");
+  await expect(page.getByTestId('export-cover')).toHaveText('(its cover art as the logo)');
+  await page.getByTestId('export-start').click();
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 150_000 });
+
+  const file = await download(page);
+  expect(file.name).toMatch(/^The Testers - Sunrise\.(mp4|webm)$/);
+  expect(await inspect(file.data)).toMatchObject({ width: 720, height: 720, frames: 96 });
+  // In the middle: the cover in the logo, and the text at the bottom left.
+  const frame = await videoFrame(page, file.data, 2);
+  test.skip(!frame, 'This browser cannot play the video it made.');
+  const text = { x: 0.04, y: 0.74, width: 0.5, height: 0.22 };
+  const [overlay, ...quarters] = await measure(page, frame!, [
+    text,
+    ...logoQuarters({ width: 720, height: 720 }),
+  ]);
+  expect(overlay!.bright).toBeGreaterThan(0.03);
+  expect(showsCover(quarters)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test('an interrupted export resumes after a reload', async ({ page }) => {
   // Two scenes per frame in software rendering: about 80 s here, half as much again in CI.
   test.setTimeout(240_000);
   const errors = collectErrors(page);
   await page.goto('/');
-  await addTrack(page, 8);
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(8, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
   // The Logo Spectrum with the Kaleidoscope behind it (VE-08): both scenes carry over.
   await page.getByRole('tab', { name: 'Visuals' }).click();
   await page.getByText('Background', { exact: true }).click();
@@ -139,6 +185,11 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
   // Reduce flashing (VE-06) too: its settled level carries over as well.
   await page.getByText('Display', { exact: true }).click();
   await page.getByTestId('reduce-flashing').check();
+  // The cover art as the logo (LS-15) is kept with the job, the overlay (LS-18) in its plan.
+  await page.getByText('Logo', { exact: true }).click();
+  await page.getByTestId('cover-logo').check();
+  await page.getByText('Track info', { exact: true }).click();
+  await page.getByTestId('overlay-on').check();
   await page.getByTestId('export-button').click();
   await expect(page.getByTestId('export-switching')).toHaveText('(switching presets every 5 s)');
   await expect(page.getByTestId('export-calm')).toHaveText('(flashing reduced)');
@@ -162,11 +213,17 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
   await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 180_000 });
 
   const file = await download(page);
-  expect(file.name).toMatch(/^Clicks\.(mp4|webm)$/);
+  expect(file.name).toMatch(/^The Testers - Sunrise\.(mp4|webm)$/);
   const video = await inspect(file.data);
   expect(video).toMatchObject({ width: 720, height: 720, frames: 192 });
   expect(video.duration).toBeCloseTo(8, 1);
   expect(video.audioDuration).toBeCloseTo(8, 1);
+  // The resumed part still shows the cover art in the logo.
+  const frame = await videoFrame(page, file.data, 7);
+  if (frame) {
+    const quarters = await measure(page, frame, logoQuarters({ width: 720, height: 720 }));
+    expect(showsCover(quarters)).toBe(true);
+  }
   expect(errors).toEqual([]);
 });
 

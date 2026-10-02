@@ -27,7 +27,12 @@
   },
   "dependencies": {
     "@fibestation/dj-controllers": "workspace:*",
+    "@fontsource/bebas-neue": "^5.3.0",
+    "@fontsource/montserrat": "^5.3.0",
+    "@fontsource/orbitron": "^5.3.0",
     "@fontsource/pacifico": "^5.3.0",
+    "@fontsource/playfair-display": "^5.3.0",
+    "@fontsource/space-mono": "^5.3.0",
     "@mediabunny/aac-encoder": "^1.60.0",
     "fft.js": "^4.0.4",
     "mediabunny": "^1.60.0",

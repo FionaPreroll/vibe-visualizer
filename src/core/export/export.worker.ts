@@ -29,6 +29,8 @@ import { SignalsmithStretch } from '../audio/stretch/signalsmith-stretch';
 import { sanitizeKaleido } from '../render/kaleido-settings';
 import { KaleidoscopeScene } from '../render/kaleidoscope';
 import { LogoSpectrumScene } from '../render/logo-spectrum';
+import { TrackOverlay } from '../render/overlay';
+import { sanitizeOverlay } from '../render/overlay-settings';
 import { PresetAutomation, SWITCHING_SEEDS } from '../render/preset-automation';
 import { sanitizeAutoPresets } from '../render/preset-director';
 import {
@@ -47,9 +49,11 @@ import {
   CANCELLED,
   EXPORT_RATE,
   FEATURE_FIELDS,
+  JOB_IMAGES,
   OUTPUT_FILE,
   frameTime,
   planTiming,
+  type JobImage,
   type ExportCodecs,
   type ExportManifest,
   type ExportSource,
@@ -88,7 +92,8 @@ export interface StartArgs {
   sound: SoundSettings;
   /** The file's beat grid (AN-07), if it has been analysed: the beats come from it. */
   grid: BeatGrid | null;
-  images: { background: ImageInput | null; logo: ImageInput | null };
+  /** The Logo Spectrum's images, and the cover art to show as the logo (LS-15). */
+  images: Record<JobImage, ImageInput | null>;
   /** The file to write; null writes into browser storage for a download. */
   destination: FileSystemFileHandle | null;
   fileName: string;
@@ -99,7 +104,7 @@ export interface StartArgs {
 export interface ResumeArgs {
   /** The source file; only needed when the audio pass was not finished. */
   file: File | null;
-  images: { background: ImageBitmap | null; logo: ImageBitmap | null };
+  images: Record<JobImage, ImageBitmap | null>;
   destination: FileSystemFileHandle | null;
 }
 
@@ -241,6 +246,7 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
       images: {
         background: args.images.background?.blob.type ?? null,
         logo: args.images.logo?.blob.type ?? null,
+        cover: args.images.cover?.blob.type ?? null,
       },
       timing: planTiming(
         args.range,
@@ -255,7 +261,7 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
       resumeCount: 0,
     };
     if (args.visuals.mode === 'logoSpectrum') {
-      for (const kind of ['background', 'logo'] as const) {
+      for (const kind of JOB_IMAGES) {
         const image = args.images[kind];
         if (image) await store.writeFile(`image-${kind}`, image.blob);
       }
@@ -266,12 +272,12 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
     const bitmaps = {
       background: args.images.background?.bitmap ?? null,
       logo: args.images.logo?.bitmap ?? null,
+      cover: args.images.cover?.bitmap ?? null,
     };
     return await run(store, manifest, args.file, bitmaps, args.destination, progress, analyzer);
   } finally {
     running = false;
-    args.images.background?.bitmap.close();
-    args.images.logo?.bitmap.close();
+    for (const kind of JOB_IMAGES) args.images[kind]?.bitmap.close();
   }
 }
 
@@ -293,8 +299,7 @@ async function resume(args: ResumeArgs, progress: (update: ExportProgress) => vo
     return await run(store, manifest, args.file, args.images, args.destination, progress);
   } finally {
     running = false;
-    args.images.background?.close();
-    args.images.logo?.close();
+    for (const kind of JOB_IMAGES) args.images[kind]?.close();
   }
 }
 
@@ -322,7 +327,8 @@ async function run(
   }
   const bytes = await join(store, manifest, destination, progress);
   // Only the finished file (for a download) and the manifest stay.
-  for (const name of ['audio.mp4', 'features.bin', 'image-background', 'image-logo', GRID_FILE]) {
+  const imageFiles = JOB_IMAGES.map((kind) => `image-${kind}`);
+  for (const name of ['audio.mp4', 'features.bin', ...imageFiles, GRID_FILE]) {
     await store.remove(name);
   }
   if (destination) {
@@ -563,6 +569,9 @@ function createScene(
     front.setSettings(settings);
     front.setImage('background', images.background);
     front.setImage('logo', images.logo);
+    // The cover art goes with the job only when it is shown as the logo (LS-15).
+    front.setCover(images.cover);
+    front.setCoverLogo(images.cover !== null);
     let scene: Scene = front;
     if (visuals.layer) {
       const layer = new KaleidoscopeScene(gl);
@@ -614,9 +623,18 @@ async function videoPass(
   });
   if (!gl) throw new Error('WebGL2 is not available.');
   const { scene, switching } = createScene(gl, manifest.visuals, images);
+  // The track overlay (LS-18, LS-19), over the picture: it has no state of its own, its text
+  // follows from the frame's place in the track.
+  const overlaySpec = manifest.visuals.overlay;
+  const overlay = overlaySpec ? new TrackOverlay(gl) : null;
   try {
     scene.resize(format.width, format.height);
     scene.setReduceFlashing(manifest.visuals.reduceFlashing === true);
+    if (overlay && overlaySpec) {
+      overlay.setSettings(sanitizeOverlay(overlaySpec.settings));
+      overlay.resize(format.width, format.height);
+      await overlay.ready();
+    }
     const analysis = await store.file('features.bin');
     const feed = new FeatureFeed(async (index, count) => {
       const bytes = FEATURE_FIELDS * 4;
@@ -648,6 +666,9 @@ async function videoPass(
       // The switching counts from the first frame of the video, not in the pre-roll.
       if (frame >= 0) switching?.frame(1 / fps, features);
       scene.render({ time: (frame + timing.preRollFrames) / fps, dt: 1 / fps, features });
+      // Frame 0 shows the start of the range; the tempo plays the file faster or slower.
+      const position = manifest.range.start + (frame / fps) * manifest.sound.rate;
+      if (overlay && overlaySpec) overlay.draw(overlaySpec.track, position, manifest.sound.rate);
     };
 
     // The pre-roll is rendered but not encoded: trails and motion are running at frame 0.
@@ -727,6 +748,7 @@ async function videoPass(
     }
   } finally {
     scene.dispose();
+    overlay?.dispose();
     gl.getExtension('WEBGL_lose_context')?.loseContext();
   }
 }

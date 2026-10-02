@@ -1,6 +1,7 @@
 import { AudioEngine } from '../audio/engine/audio-engine';
 import type { KaleidoSettings } from './kaleido-settings';
 import type { ImageKind } from './logo-spectrum';
+import type { OverlaySettings, OverlayTrack } from './overlay-settings';
 import type { AutoPresets } from './preset-director';
 import type { RenderEvent, RenderRequest, SceneKind } from './render-protocol';
 import RenderWorker from './render.worker.ts?worker';
@@ -72,6 +73,26 @@ export class Renderer {
   /** Reduce flashing (VE-06). */
   setReduceFlashing(on: boolean): void {
     this.send({ type: 'reduceFlashing', on });
+  }
+
+  /** The track overlay (LS-18, LS-19). */
+  setOverlay(settings: OverlaySettings): void {
+    this.send({ type: 'overlay', settings });
+  }
+
+  /** The tracks of the files in the stream, by the engine's token, and their tempo. */
+  setTracks(tracks: { token: number; track: OverlayTrack | null }[], rate: number): void {
+    this.send({ type: 'tracks', tracks, rate });
+  }
+
+  /** The cover art of the file with `token` (the bitmap is transferred). */
+  setCover(token: number, image: ImageBitmap | null): void {
+    this.send({ type: 'cover', token, image }, image ? [image] : []);
+  }
+
+  /** Shows the cover art of the track heard as the Logo Spectrum's logo (LS-15). */
+  setCoverLogo(on: boolean): void {
+    this.send({ type: 'coverLogo', on });
   }
 
   /** Hands an image to the worker (the bitmap is transferred and must not be used afterwards). */

@@ -7,6 +7,7 @@ import {
   type SoundSettings,
 } from '../audio/dsp/sound-settings';
 import type { KaleidoSettings } from '../render/kaleido-settings';
+import type { OverlaySettings, OverlayTrack } from '../render/overlay-settings';
 import type { AutoPresets } from '../render/preset-director';
 import type { LogoSpectrumSettings } from '../render/visual-settings';
 import type { VideoFormat } from './video-format';
@@ -47,7 +48,8 @@ export const CANCELLED = 'The export was cancelled.';
 
 /**
  * The visuals of the video: a mode, its settings (at the start), the automatic preset
- * switching (PR-02) with the presets that take part if it is on, and reduce flashing (VE-06).
+ * switching (PR-02) with the presets that take part if it is on, reduce flashing (VE-06), and
+ * the track overlay (LS-18, LS-19).
  */
 export type ExportVisuals = (
   | {
@@ -58,7 +60,14 @@ export type ExportVisuals = (
       layer?: KaleidoSettings;
     }
   | { mode: 'kaleidoscope'; settings: KaleidoSettings; auto?: ExportSwitching<KaleidoSettings> }
-) & { reduceFlashing?: boolean };
+) & { reduceFlashing?: boolean; overlay?: ExportOverlay };
+
+/** The track overlay of a video (LS-18, LS-19): its settings and the track it names. */
+export interface ExportOverlay {
+  settings: OverlaySettings;
+  /** The track, and the part of its file the video plays (source seconds). */
+  track: OverlayTrack;
+}
 
 export interface ExportSwitching<S> {
   config: AutoPresets;
@@ -117,8 +126,11 @@ export interface ExportManifest {
   visuals: ExportVisuals;
   /** Tempo and effects of the audio (EX-02). */
   sound: SoundSettings;
-  /** Image files of the Logo Spectrum mode, stored with the job (their MIME types). */
-  images: { background: string | null; logo: string | null };
+  /**
+   * Image files of the Logo Spectrum mode, stored with the job (their MIME types): the cover
+   * art is shown as the logo (LS-15).
+   */
+  images: { background: string | null; logo: string | null; cover?: string | null };
   timing: ExportTiming;
   destination: 'file' | 'download';
   fileName: string;
@@ -131,6 +143,10 @@ export interface ExportManifest {
   };
   resumeCount: number;
 }
+
+/** The images an export job keeps: the Logo Spectrum's background and logo, the cover art. */
+export const JOB_IMAGES = ['background', 'logo', 'cover'] as const;
+export type JobImage = (typeof JOB_IMAGES)[number];
 
 /** Length of the video for `range` (source seconds) played at the tempo of `sound`. */
 export function exportSeconds(range: { start: number; end: number }, sound: SoundSettings): number {

@@ -25,7 +25,7 @@
   import { BUILT_IN_KALEIDO_PRESETS } from '../core/render/kaleido-settings';
   import { switchingPool, type AutoPresets } from '../core/render/preset-director';
   import { BUILT_IN_PRESETS } from '../core/render/visual-settings';
-  import { trackRange } from '../core/state/app-state';
+  import { shownArtist, shownTitle, trackRange } from '../core/state/app-state';
   import { loadExportOptions, saveExportOptions } from '../core/state/persistence';
   import { errorMessage, formatBytes, formatDuration } from '../core/util/format';
   import { useExporter } from './exporter-context';
@@ -133,7 +133,14 @@
     const file = player.fileFor(track.id);
     if (!file) return;
     const whole = range.start <= 0 && range.end >= (track.duration ?? range.end);
-    const source = { title: track.title, artist: track.artist };
+    const source = { title: shownTitle(track), artist: shownArtist(track) };
+    // The track overlay names the track over the part the video plays (LS-18, LS-19).
+    const overlay = $app.settings.overlay;
+    const visuals: ExportVisuals = {
+      ...visualsOf(mode),
+      overlay: overlay.on ? { settings: overlay, track: { ...source, ...range } } : undefined,
+    };
+    const coverUrl = mode === 'logoSpectrum' && $app.settings.coverLogo ? track.coverUrl : null;
     const fileName = exportFileName(source, whole ? null : range, codecs.container, sound);
     let destination: FileSystemFileHandle | null;
     try {
@@ -144,6 +151,12 @@
       }
       return;
     }
+    // The cover art as the logo (LS-15); read after the save dialog, which needs the click.
+    const cover = coverUrl
+      ? await fetch(coverUrl)
+          .then((response) => response.blob())
+          .catch(() => null)
+      : null;
     player.pause();
     const started = exporter.start({
       file,
@@ -155,10 +168,11 @@
       },
       range,
       format,
-      visuals: visualsOf(mode),
+      visuals,
       sound,
       grid: player.analysisOf(track)?.grid ?? null,
       images: assets.shown,
+      cover,
       destination,
       fileName,
     });
@@ -509,7 +523,9 @@
 
       <dl class="summary">
         <dt>Track</dt>
-        <dd data-testid="export-track">{track?.title ?? 'Add a track to the queue first'}</dd>
+        <dd data-testid="export-track">
+          {track ? shownTitle(track) : 'Add a track to the queue first'}
+        </dd>
         <dt>Visuals</dt>
         <dd>
           {#if mode === 'analysis'}
@@ -523,6 +539,12 @@
             {/if}
             {#if $app.settings.reduceFlashing}
               <span data-testid="export-calm">(flashing reduced)</span>
+            {/if}
+            {#if $app.settings.overlay.on}
+              <span data-testid="export-overlay">(with the track's title)</span>
+            {/if}
+            {#if mode === 'logoSpectrum' && $app.settings.coverLogo && track?.coverUrl}
+              <span data-testid="export-cover">(its cover art as the logo)</span>
             {/if}
           {/if}
         </dd>

@@ -1,8 +1,14 @@
-import { FeatureSampler, FeatureTimelineReader } from '../analysis/feature-timeline';
+import {
+  FeatureSampler,
+  FeatureTimelineReader,
+  type HeardPosition,
+} from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
 import { DEFAULT_KALEIDO } from './kaleido-settings';
 import { KaleidoscopeScene } from './kaleidoscope';
 import { LogoSpectrumScene } from './logo-spectrum';
+import { SAMPLE_POSITION, SAMPLE_TRACK, TrackOverlay } from './overlay';
+import { DEFAULT_OVERLAY, type OverlaySettings, type OverlayTrack } from './overlay-settings';
 import { PresetAutomation, SWITCHING_SEEDS } from './preset-automation';
 import type { RenderEvent, RenderRequest, SceneKind } from './render-protocol';
 import type { Scene, SceneInput } from './scene';
@@ -12,8 +18,13 @@ import { DEFAULT_LOGO_SPECTRUM } from './visual-settings';
 /**
  * Draws the visuals on an OffscreenCanvas, off the main thread (TECH-STACK: renderer). Each
  * frame it looks up the analysis frame for the moment you hear, from the shared feature
- * timeline and the audio clock sent by the main thread.
+ * timeline and the audio clock sent by the main thread. The timeline also says which file that
+ * music comes from and where in it: the track overlay and the cover art follow it exactly, also
+ * across a gapless transition.
  */
+
+/** After a change of the overlay's settings, it shows this long (ms), so the change is seen. */
+const OVERLAY_PREVIEW_MS = 3000;
 
 /** The parts of the dedicated worker scope used here (the project compiles with the DOM lib). */
 const scope = self as unknown as {
@@ -46,6 +57,18 @@ let reduceFlashing = false;
 /** The Kaleidoscope look last given to it as the Logo Spectrum's layer (VE-08). */
 let layerLook: unknown = null;
 const features = new Float32Array(F.size);
+/** The file heard now (by its token; 0: none) and the position in it. */
+const heard: HeardPosition = { seconds: 0, token: 0 };
+let overlay: TrackOverlay | null = null;
+let overlaySettings: OverlaySettings = DEFAULT_OVERLAY;
+/** Until then (performance.now()), the overlay shows in full: its settings just changed. */
+let overlayPreview = 0;
+const overlayTracks = new Map<number, OverlayTrack>();
+let overlayRate = 1;
+/** Cover art by token (LS-15), and the token whose cover the Logo Spectrum has. */
+const covers = new Map<number, ImageBitmap>();
+let coverToken = -1;
+let coverLogo = false;
 /** Settings of each mode, with the automatic preset switching (PR-02). */
 const logoSpectrumAuto = new PresetAutomation(
   morphLogoSpectrum,
@@ -82,13 +105,19 @@ function frame(now: number): void {
   lastTime = now;
 
   // Hits between the last frame shown and this one are collected, so none is missed.
-  if (sampler) sampler.sample(audibleFrame(now), features);
-  else features.fill(0);
+  const sampled = sampler ? sampler.sample(audibleFrame(now), features, heard) : false;
+  if (!sampler) features.fill(0);
+  // Live input comes from no file.
+  const token = sampled && !clock?.live ? heard.token : 0;
   applySettings(dt);
   try {
     const input = { time: (now - startTime) / 1000, dt, features };
-    if (active === 'logoSpectrum') drawLayer(input);
+    if (active === 'logoSpectrum') {
+      showCover(token);
+      drawLayer(input);
+    }
     scene.render(input);
+    drawOverlay(now, token);
   } catch (error) {
     running = false;
     post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
@@ -134,6 +163,22 @@ function drawLayer(input: SceneInput): void {
     layerLook = look;
   }
   logoSpectrum.setBackgroundLayer(kaleidoscope.renderLayer(input));
+}
+
+/** The cover art of the file heard, for the Logo Spectrum's logo (LS-15). */
+function showCover(token: number): void {
+  if (token === coverToken || !logoSpectrum) return;
+  coverToken = token;
+  logoSpectrum.setCover(covers.get(token) ?? null);
+}
+
+/** The track overlay of the file heard; while its settings change, a sample if none plays. */
+function drawOverlay(now: number, token: number): void {
+  if (!overlay) return;
+  const preview = Math.min(1, Math.max(0, (overlayPreview - now) / 500));
+  const track = overlayTracks.get(token) ?? null;
+  if (track) overlay.draw(track, heard.seconds, overlayRate, preview);
+  else if (preview > 0) overlay.draw(SAMPLE_TRACK, SAMPLE_POSITION, 1, preview);
 }
 
 function setRunning(value: boolean): void {
@@ -195,6 +240,10 @@ scope.addEventListener('message', (event) => {
         kaleidoscope = new KaleidoscopeScene(gl);
         logoSpectrum.setReduceFlashing(reduceFlashing);
         kaleidoscope.setReduceFlashing(reduceFlashing);
+        logoSpectrum.setCoverLogo(coverLogo);
+        overlay = new TrackOverlay(gl);
+        overlay.setSettings(overlaySettings);
+        overlay.resize(canvas.width, canvas.height);
         activate(active);
         post({ type: 'ready', floatTargets: logoSpectrum.floatTargets });
         setRunning(running);
@@ -205,6 +254,7 @@ scope.addEventListener('message', (event) => {
           canvas.width = Math.max(1, message.width);
           canvas.height = Math.max(1, message.height);
           scene.resize(canvas.width, canvas.height);
+          overlay?.resize(canvas.width, canvas.height);
         }
         break;
       case 'scene':
@@ -229,6 +279,42 @@ scope.addEventListener('message', (event) => {
         logoSpectrum?.setImage(message.kind, message.image);
         message.image?.close();
         break;
+      case 'overlay': {
+        const changed = JSON.stringify(message.settings) !== JSON.stringify(overlaySettings);
+        // The first settings are no change; a change shows the overlay for a moment.
+        if (changed && overlay && message.settings.on) {
+          overlayPreview = performance.now() + OVERLAY_PREVIEW_MS;
+        }
+        overlaySettings = message.settings;
+        overlay?.setSettings(message.settings);
+        break;
+      }
+      case 'tracks': {
+        overlayTracks.clear();
+        for (const { token, track } of message.tracks) if (track) overlayTracks.set(token, track);
+        overlayRate = message.rate;
+        // The covers of files that left the stream go.
+        for (const [token, image] of covers) {
+          if (message.tracks.some((entry) => entry.token === token)) continue;
+          image.close();
+          covers.delete(token);
+        }
+        break;
+      }
+      case 'cover':
+        covers.get(message.token)?.close();
+        if (message.image) covers.set(message.token, message.image);
+        else covers.delete(message.token);
+        // The file heard got its cover: it shows at once.
+        if (message.token === coverToken) {
+          coverToken = -1;
+          showCover(message.token);
+        }
+        break;
+      case 'coverLogo':
+        coverLogo = message.on;
+        logoSpectrum?.setCoverLogo(message.on);
+        break;
       case 'clock':
         clock = {
           contextTime: message.contextTime,
@@ -243,6 +329,9 @@ scope.addEventListener('message', (event) => {
         setRunning(false);
         logoSpectrum?.dispose();
         kaleidoscope?.dispose();
+        overlay?.dispose();
+        for (const image of covers.values()) image.close();
+        covers.clear();
         logoSpectrum = null;
         kaleidoscope = null;
         scene = null;

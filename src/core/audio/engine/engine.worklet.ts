@@ -99,7 +99,9 @@ class EngineProcessor extends AudioWorkletProcessor {
       if (this.blockRate > 0) {
         this.grids.get(token)?.apply(this.analyzer.frame, seconds, this.blockRate);
       }
-      this.timeline.write(this.blockStart + offset, seconds, this.analyzer.frame);
+      // Live input comes from no file.
+      const file = this.control.live ? 0 : token;
+      this.timeline.write(this.blockStart + offset, seconds, this.analyzer.frame, file);
     };
   }
 

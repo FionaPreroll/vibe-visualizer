@@ -313,6 +313,13 @@ export function cameraShake(amount: number, kick: number, time: number, aspect: 
   };
 }
 
+/** Scale of a logo image inside the circle: its shorter side fills the diameter. */
+function imageScale(image: { width: number; height: number } | null): [number, number] {
+  if (!image) return [1, 1];
+  const aspect = image.width / image.height;
+  return aspect > 1 ? [1 / aspect, 1] : [1, aspect];
+}
+
 class Follower {
   value = 0;
   constructor(
@@ -356,6 +363,9 @@ export class LogoSpectrumScene implements Scene {
   private blurred: Target | null = null;
   private blurredFor = -1;
   private logo: { texture: WebGLTexture; width: number; height: number } | null = null;
+  /** The cover art of the track playing, and whether it takes the logo's place (LS-15). */
+  private cover: { texture: WebGLTexture; width: number; height: number } | null = null;
+  private coverLogo = false;
 
   private readonly bass = new Follower(0.015, 0.22);
   private readonly energy = new Follower(0.05, 0.5);
@@ -445,6 +455,19 @@ export class LogoSpectrumScene implements Scene {
     } else {
       this.logo = next;
     }
+  }
+
+  /** The cover art of the track playing (null: none); it shows while {@link setCoverLogo}. */
+  setCover(image: ImageBitmap | null): void {
+    if (this.cover) this.gl.deleteTexture(this.cover.texture);
+    this.cover = image
+      ? { texture: createImageTexture(this.gl, image), width: image.width, height: image.height }
+      : null;
+  }
+
+  /** Shows the cover art of the track playing as the logo, where it has one (LS-15). */
+  setCoverLogo(on: boolean): void {
+    this.coverLogo = on;
   }
 
   resize(width: number, height: number): void {
@@ -569,20 +592,23 @@ export class LogoSpectrumScene implements Scene {
       .float('thickness', s.thickness);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    // Logo.
+    // Logo: the cover art fills the circle; zoom and pan are for the logo image.
+    const cover = this.coverLogo ? this.cover : null;
+    const logo = cover ?? this.logo;
+    const logoZoom = cover ? 1 : s.logoZoom;
     const logoRadius = radius * s.logoSize;
     const [lr, lg, lb] = parseColor(s.rimColor);
-    const [ix, iy] = this.logoScale();
+    const [ix, iy] = imageScale(logo);
     this.programs.logo
       .use()
-      .texture('logo', this.logo?.texture ?? null, 0)
-      .int('hasLogo', this.logo ? 1 : 0)
+      .texture('logo', logo?.texture ?? null, 0)
+      .int('hasLogo', logo ? 1 : 0)
       .vec2('center', cx, cy)
       .float('radius', logoRadius)
       .float('rim', s.rimWidth * logoRadius)
       .vec3('rimColor', lr, lg, lb)
-      .vec2('imageScale', ix / s.logoZoom, iy / s.logoZoom)
-      .vec2('pan', s.logoPanX, s.logoPanY)
+      .vec2('imageScale', ix / logoZoom, iy / logoZoom)
+      .vec2('pan', cover ? 0 : s.logoPanX, cover ? 0 : s.logoPanY)
       .float('shadow', s.logoShadow);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disable(gl.BLEND);
@@ -648,6 +674,7 @@ export class LogoSpectrumScene implements Scene {
     deleteTarget(gl, this.blurred);
     if (this.background) gl.deleteTexture(this.background.texture);
     if (this.logo) gl.deleteTexture(this.logo.texture);
+    if (this.cover) gl.deleteTexture(this.cover.texture);
     gl.deleteTexture(this.curveTexture);
   }
 
@@ -659,13 +686,6 @@ export class LogoSpectrumScene implements Scene {
     const cover = this.settings.backgroundFit === 'cover';
     if (image > canvas === cover) return [canvas / image, 1];
     return [1, image / canvas];
-  }
-
-  /** Scale of the logo image inside the circle: its shorter side fills the diameter. */
-  private logoScale(): [number, number] {
-    if (!this.logo) return [1, 1];
-    const aspect = this.logo.width / this.logo.height;
-    return aspect > 1 ? [1 / aspect, 1] : [1, aspect];
   }
 
   private backgroundTexture(): WebGLTexture | null {

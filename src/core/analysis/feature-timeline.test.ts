@@ -31,6 +31,26 @@ describe('feature timeline', () => {
     expect(out[F.energy]).toBeCloseTo(0.6);
   });
 
+  it('tells where the music of a frame comes from: the file and the second in it', () => {
+    const sab = createFeatureTimeline(16);
+    const writer = new FeatureTimelineWriter(sab);
+    const reader = new FeatureTimelineReader(sab);
+    // A gapless transition: the next file (token 8) starts at its in marker.
+    writer.write(1000, 211.5, frameWith(0.2), 7);
+    writer.write(1512, 30, frameWith(0.6), 8);
+    const out = new Float32Array(F.size);
+    const heard = { seconds: -1, token: -1 };
+    reader.sample(1256, out, heard);
+    expect(heard).toEqual({ seconds: 211.5, token: 7 });
+    const sampler = new FeatureSampler(reader);
+    expect(sampler.sample(1600, out, heard)).toBe(true);
+    expect(heard).toEqual({ seconds: 30, token: 8 });
+    // Frames without a file (live input) have token 0.
+    writer.write(2024, 0, frameWith(0.1));
+    reader.sample(2100, out, heard);
+    expect(heard.token).toBe(0);
+  });
+
   it('wraps around its capacity', () => {
     const sab = createFeatureTimeline(16);
     const writer = new FeatureTimelineWriter(sab);
