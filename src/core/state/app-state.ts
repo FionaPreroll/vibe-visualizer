@@ -130,6 +130,12 @@ export interface Settings {
   bpmRange: TempoRangeId;
   /** A DJ controller was connected (CTL-03): connect again at the start if MIDI is allowed. */
   controller: boolean;
+  /** Share of the screen's resolution the live visuals draw at (VE-07). */
+  renderScale: number;
+  /** Draw at a lower resolution while the frame rate drops (VE-07). */
+  autoQuality: boolean;
+  /** Damp sudden jumps in brightness, live and in exports (VE-06). */
+  reduceFlashing: boolean;
   /** Automatic preset switching (PR-02), for the visual mode shown. */
   autoPresets: AutoPresets;
   /** Favourite presets by name, per visual mode (PR-03). */
@@ -289,6 +295,9 @@ export const DEFAULT_SETTINGS: Settings = {
   waveformStyle: 'bands',
   bpmRange: 'auto',
   controller: false,
+  renderScale: 1,
+  autoQuality: true,
+  reduceFlashing: false,
   autoPresets: DEFAULT_AUTO_PRESETS,
   favourites: { logoSpectrum: [], kaleidoscope: [] },
 };

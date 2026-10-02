@@ -22,7 +22,7 @@ import {
   type KaleidoSettings,
   type ParamSpec,
 } from './kaleido-settings';
-import { PostProcessing } from './post';
+import { NO_CAMERA, PostProcessing } from './post';
 import { FixedStepper, type Scene, type SceneInput, type SceneSnapshot } from './scene';
 import { parseColor } from './visual-settings';
 
@@ -512,6 +512,11 @@ export class KaleidoscopeScene implements Scene {
     this.updatePalette();
   }
 
+  /** Reduce flashing (VE-06): sudden jumps in brightness are damped. */
+  setReduceFlashing(on: boolean): void {
+    this.post.setReduceFlashing(on);
+  }
+
   setSettings(settings: KaleidoSettings): void {
     const sceneChanged = settings.scene !== this.settings.scene;
     this.settings = settings;
@@ -535,10 +540,36 @@ export class KaleidoscopeScene implements Scene {
   }
 
   render(input: SceneInput): void {
+    const scene = this.draw(input);
+    if (!scene) return;
+    this.post.present(
+      scene,
+      this.settings.common['bloom'] as number,
+      this.width,
+      this.height,
+      this.frameCount,
+      NO_CAMERA,
+      Math.min(Math.max(input.dt, 0), 0.25),
+    );
+    this.gl.bindVertexArray(null);
+  }
+
+  /**
+   * Draws the picture as a layer behind another scene (VE-08): the same steps, without the
+   * bloom and the output. Returns its texture (the size set by resize).
+   */
+  renderLayer(input: SceneInput): WebGLTexture | null {
+    const scene = this.draw(input);
+    this.gl.bindVertexArray(null);
+    return scene?.texture ?? null;
+  }
+
+  /** The simulation steps and the composite into the scene target (null: no size yet). */
+  private draw(input: SceneInput): Target | null {
     const gl = this.gl;
     const states = this.states;
     const scene = this.scene;
-    if (!states || !scene) return;
+    if (!states || !scene) return null;
     this.frameCount++;
     const { features } = input;
     const common = this.settings.common;
@@ -582,8 +613,7 @@ export class KaleidoscopeScene implements Scene {
     this.setParams(this.composite, COMMON_PARAMS, common);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    this.post.present(scene, common['bloom'] as number, this.width, this.height, this.frameCount);
-    gl.bindVertexArray(null);
+    return scene;
   }
 
   saveState(): SceneSnapshot {
@@ -604,12 +634,16 @@ export class KaleidoscopeScene implements Scene {
     const buffers = this.states
       ? this.states.map((target) => readTarget(this.gl, target, this.floatTargets))
       : [];
+    const calm = this.post.saveState();
+    values['calm'] = calm !== null;
+    if (calm) buffers.push(calm);
     return { values, buffers };
   }
 
   restoreState(snapshot: SceneSnapshot): void {
     const { values, buffers } = snapshot;
-    if (!this.states || buffers.length !== 2) {
+    const calm = values['calm'] === true;
+    if (!this.states || buffers.length !== (calm ? 3 : 2)) {
       throw new Error('Snapshot does not match the Kaleidoscope scene');
     }
     writeTarget(this.gl, this.states[0], buffers[0]!);
@@ -627,6 +661,7 @@ export class KaleidoscopeScene implements Scene {
     for (const [name, follower] of Object.entries(this.drives)) {
       follower.value = Number(values[`drive.${name}`]);
     }
+    this.post.restoreState(calm ? buffers[2] : null);
   }
 
   dispose(): void {

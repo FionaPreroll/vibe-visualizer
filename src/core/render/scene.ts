@@ -13,6 +13,8 @@ export interface Scene {
   /** True when half-float render targets work (banding-free HD rendering). */
   readonly floatTargets: boolean;
   resize(width: number, height: number): void;
+  /** Reduce flashing (VE-06): sudden jumps in brightness are damped. */
+  setReduceFlashing(on: boolean): void;
   render(input: SceneInput): void;
   /** Everything that carries over from one frame to the next (settings and images excluded). */
   saveState(): SceneSnapshot;
@@ -30,6 +32,44 @@ export type SnapshotBuffer = Float32Array | Uint16Array | Uint8Array;
 export interface SceneSnapshot {
   values: Record<string, number | boolean>;
   buffers: SnapshotBuffer[];
+}
+
+/**
+ * One snapshot of two scenes (a scene and its layer, VE-08): the second's values under
+ * `prefix`, its buffers last, and how many there are (a key no scene uses).
+ */
+export function joinSnapshots(
+  first: SceneSnapshot,
+  second: SceneSnapshot,
+  prefix: string,
+): SceneSnapshot {
+  const values: SceneSnapshot['values'] = { ...first.values };
+  for (const [key, value] of Object.entries(second.values)) values[`${prefix}${key}`] = value;
+  values[`${prefix}#buffers`] = second.buffers.length;
+  return { values, buffers: [...first.buffers, ...second.buffers] };
+}
+
+/** The two snapshots joined by joinSnapshots. */
+export function splitSnapshot(
+  snapshot: SceneSnapshot,
+  prefix: string,
+): [SceneSnapshot, SceneSnapshot] {
+  const count = Number(snapshot.values[`${prefix}#buffers`]);
+  if (!Number.isInteger(count) || count < 0 || count > snapshot.buffers.length) {
+    throw new Error('Snapshot does not hold the layer');
+  }
+  const split = snapshot.buffers.length - count;
+  const first: SceneSnapshot['values'] = {};
+  const second: SceneSnapshot['values'] = {};
+  for (const [key, value] of Object.entries(snapshot.values)) {
+    if (key === `${prefix}#buffers`) continue;
+    if (key.startsWith(prefix)) second[key.slice(prefix.length)] = value;
+    else first[key] = value;
+  }
+  return [
+    { values: first, buffers: snapshot.buffers.slice(0, split) },
+    { values: second, buffers: snapshot.buffers.slice(split) },
+  ];
 }
 
 const SNAPSHOT_MAGIC = 0x31535656; // "VVS1"

@@ -21,6 +21,8 @@ export type RenderRequest =
       kaleidoscope: KaleidoSettings[];
     }
   | { type: 'image'; kind: ImageKind; image: ImageBitmap | null }
+  /** Reduce flashing (VE-06), for both scenes. */
+  | { type: 'reduceFlashing'; on: boolean }
   /**
    * The audio clock: `contextTime` is heard at `performanceTime` (epoch milliseconds). With
    * `live` input the newest analysis frame is shown instead.

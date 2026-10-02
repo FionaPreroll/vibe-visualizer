@@ -133,9 +133,19 @@
       <li class="warning">
         <Icon name="alert" size={16} />
         <span>
-          <strong>Flashing visuals.</strong> The visuals move fast, flash and use strong contrasts. If
-          you or anyone watching may be sensitive to flashing light (photosensitive epilepsy), please
-          take care.
+          <strong>Flashing visuals.</strong> The visuals move fast, flash and use strong contrasts.
+          If you or anyone watching may be sensitive to flashing light (photosensitive epilepsy),
+          please take care.
+          <label class="calm">
+            <input
+              type="checkbox"
+              checked={$app.settings.reduceFlashing}
+              onchange={(event) =>
+                player.updateSettings({ reduceFlashing: event.currentTarget.checked })}
+              data-testid="welcome-reduce-flashing"
+            />
+            Reduce flashing (also in Visuals → Display)
+          </label>
         </span>
       </li>
     </ul>
@@ -296,6 +306,13 @@
   .warning :global(svg) {
     flex: none;
     margin-top: 2px;
+  }
+  .calm {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    color: var(--text);
   }
   footer {
     display: flex;

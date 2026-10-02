@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { aspectRatio, type AspectRatio } from '../core/export/video-format';
+  import { AutoQuality } from '../core/render/auto-quality';
   import { BUILT_IN_KALEIDO_PRESETS } from '../core/render/kaleido-settings';
   import type { ImageKind } from '../core/render/logo-spectrum';
   import { switchingPool } from '../core/render/preset-director';
@@ -10,6 +11,7 @@
   import { BUILT_IN_PRESETS } from '../core/render/visual-settings';
   import { usePlayer } from './player-context';
   import { kaleidoPresets, logoSpectrumPresets } from './preset-store';
+  import { liveScale } from './render-quality';
   import SafeAreas from './SafeAreas.svelte';
   import { useAssets } from './visuals-context';
 
@@ -18,6 +20,8 @@
    * native resolution (VE-01), letterboxed to the video's aspect ratio (VE-09). Switching between
    * the two keeps the worker and both scenes; settings and images are forwarded as they change.
    * The worker switches presets on its own (PR-02) and says so, so the panels show the preset.
+   * It draws at a share of the canvas's device pixels (VE-07): the render scale, lowered by the
+   * auto-quality while the frame rate drops.
    */
   interface Props {
     mode: SceneKind;
@@ -39,12 +43,40 @@
 
   let visible = $state(true);
 
+  // Render scale and auto-quality (VE-07).
+  const quality = new AutoQuality();
+  let autoScale = $state(1);
+  const autoQuality = $derived($app.settings.autoQuality);
+  const scale = $derived($app.settings.renderScale * (autoQuality ? autoScale : 1));
+  /** Device pixels of the canvas box, before the scale. */
+  let box: readonly [number, number] = [1, 1];
+  const scaled = () =>
+    [Math.max(1, Math.round(box[0] * scale)), Math.max(1, Math.round(box[1] * scale))] as const;
+
+  $effect(() => {
+    liveScale.set(scale);
+    renderer?.resize(...scaled());
+  });
+
+  $effect(() => {
+    // Switched on again: it measures anew, from the full resolution.
+    if (!autoQuality) {
+      quality.reset();
+      autoScale = 1;
+    }
+  });
+
   $effect(() => {
     renderer?.setScene(mode);
   });
 
   $effect(() => {
     renderer?.setRunning(visible && !paused);
+  });
+
+  const reduceFlashing = $derived($app.settings.reduceFlashing);
+  $effect(() => {
+    renderer?.setReduceFlashing(reduceFlashing);
   });
 
   // Automatic preset switching: its settings and the presets of each mode that take part.
@@ -67,14 +99,16 @@
         Math.max(1, Math.round(canvas.clientHeight * ratio)),
       ] as const;
     };
-    const [width, height] = size();
-    const instance = new Renderer(canvas, player.engine, width, height);
+    box = size();
+    const instance = new Renderer(canvas, player.engine, ...scaled());
     // The first frame already shows the right scene (the effect takes over after mounting).
     instance.setScene(mode);
     instance.onEvent = (event) => {
       if (event.type === 'ready') status = 'running';
-      else if (event.type === 'stats') fps = event.fps;
-      else if (event.type === 'preset') {
+      else if (event.type === 'stats') {
+        fps = event.fps;
+        if (autoQuality && quality.update(event.fps)) autoScale = quality.scale;
+      } else if (event.type === 'preset') {
         // The switching chose it: the panels show it (the worker morphs there already).
         if (event.scene === 'logoSpectrum') player.replaceVisuals(event.settings);
         else player.replaceKaleido(event.settings);
@@ -85,9 +119,9 @@
     };
 
     const observer = new ResizeObserver((entries) => {
-      const box = entries[0]?.devicePixelContentBoxSize?.[0];
-      if (box) instance.resize(box.inlineSize, box.blockSize);
-      else instance.resize(...size());
+      const device = entries[0]?.devicePixelContentBoxSize?.[0];
+      box = device ? [device.inlineSize, device.blockSize] : size();
+      instance.resize(...scaled());
     });
     try {
       observer.observe(canvas, { box: 'device-pixel-content-box' });
@@ -164,6 +198,7 @@
       data-testid="visual-stage"
       data-status={status}
       data-fps={fps.toFixed(0)}
+      data-scale={scale.toFixed(3)}
       data-scene={mode}
       aria-label={mode === 'kaleidoscope' ? 'Kaleidoscope visuals' : 'Logo Spectrum visuals'}
     ></canvas>
