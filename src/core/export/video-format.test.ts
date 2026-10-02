@@ -77,11 +77,14 @@ describe('video formats', () => {
     expect(
       sanitizeExportOptions({ preset: 'tiktok', fps: 31, resolution: 2160, quality: 'best' }),
     ).toEqual({ ...DEFAULT_EXPORT_OPTIONS, preset: 'tiktok', resolution: 2160 });
-    expect(sanitizeExportOptions({ range: 'tracks', fade: 2 })).toEqual({
+    expect(sanitizeExportOptions({ range: 'tracks', perTrack: true, fade: 2 })).toEqual({
       ...DEFAULT_EXPORT_OPTIONS,
       range: 'tracks',
+      perTrack: true,
       fade: 2,
     });
-    expect(sanitizeExportOptions({ range: 'all', fade: 4 })).toEqual(DEFAULT_EXPORT_OPTIONS);
+    expect(sanitizeExportOptions({ range: 'all', perTrack: 1, fade: 4 })).toEqual(
+      DEFAULT_EXPORT_OPTIONS,
+    );
   });
 });

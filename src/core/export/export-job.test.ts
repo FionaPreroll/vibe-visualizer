@@ -18,6 +18,7 @@ import {
   partLayout,
   planParts,
   planTiming,
+  uniqueName,
   upgradeManifest,
   videoFileName,
   type ExportManifest,
@@ -278,6 +279,13 @@ describe('videos of several tracks (EX-05, EX-14, EX-16)', () => {
     expect(videoFileName([part('A', 5, 10), part('B', 0, 9), part('C', 0, 9)], 'webm')).toBe(
       'DJ - A and 2 more.webm',
     );
+  });
+
+  it('gives the videos of a batch names of their own (EX-09)', () => {
+    expect(uniqueName('A.mp4', new Set())).toBe('A.mp4');
+    expect(uniqueName('A.mp4', new Set(['A.mp4']))).toBe('A (2).mp4');
+    expect(uniqueName('A.mp4', new Set(['A.mp4', 'A (2).mp4']))).toBe('A (3).mp4');
+    expect(uniqueName('.hidden', new Set(['.hidden']))).toBe('.hidden (2)');
   });
 
   it('fades the start and the end in and out', () => {

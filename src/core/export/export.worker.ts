@@ -110,6 +110,13 @@ export interface StartArgs {
   /** The file to write; null writes into browser storage for a download. */
   destination: FileSystemFileHandle | null;
   fileName: string;
+  /**
+   * For a video of a batch (EX-09): the folder its file goes into (Chromium), made only when
+   * it is written, so that a cancelled video leaves none; or else its file among the batch's
+   * videos in browser storage.
+   */
+  folder?: FileSystemDirectoryHandle | null;
+  output?: string | null;
   /** Shorter segments for tests. */
   segmentSeconds?: number;
 }
@@ -120,6 +127,8 @@ export interface ResumeArgs {
   images: Record<JobImage, ImageBitmap | null>;
   covers: (ImageBitmap | null)[];
   destination: FileSystemFileHandle | null;
+  /** The folder of a batch (EX-09), for its video that failed. */
+  folder?: FileSystemDirectoryHandle | null;
 }
 
 export interface ExportResult {
@@ -130,6 +139,8 @@ export interface ExportResult {
   seconds: number;
   /** Where each track starts in the video (EX-14). */
   chapters: Chapter[];
+  /** The video's file among a batch's videos in storage (EX-09); null: the job's own. */
+  output: string | null;
 }
 
 /** The pictures the video pass shows: the Logo Spectrum's images and each part's cover. */
@@ -270,8 +281,9 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
         covers: args.parts.map((_, i) => (logoSpectrum ? args.covers[i]?.blob.type : null) ?? null),
       },
       timing: planParts(args.parts, args.format.fps, analyzer.hop, args.sound, args.segmentSeconds),
-      destination: args.destination ? 'file' : 'download',
+      destination: args.destination || args.folder ? 'file' : 'download',
       fileName: args.fileName,
+      output: args.destination || args.folder ? null : (args.output ?? null),
       progress: { audioDone: false, segmentsDone: 0, finished: false, bytes: null },
       resumeCount: 0,
     };
@@ -296,7 +308,8 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
       },
       covers: args.parts.map((_, i) => (logoSpectrum ? args.covers[i]?.bitmap : null) ?? null),
     };
-    return await run(store, manifest, args.files, pictures, args.destination, progress, analyzer);
+    const target = { file: args.destination, folder: args.folder ?? null };
+    return await run(store, manifest, args.files, pictures, target, progress, analyzer);
   } finally {
     running = false;
     for (const kind of JOB_IMAGES) args.images[kind]?.bitmap.close();
@@ -321,10 +334,11 @@ async function resume(args: ResumeArgs, progress: (update: ExportProgress) => vo
     }
     const store = await JobWriter.open();
     manifest.resumeCount++;
-    manifest.destination = args.destination ? 'file' : 'download';
+    manifest.destination = args.destination || args.folder ? 'file' : 'download';
     await store.writeManifest(manifest);
     const pictures = { images: args.images, covers: args.covers };
-    return await run(store, manifest, args.files, pictures, args.destination, progress);
+    const target = { file: args.destination, folder: args.folder ?? null };
+    return await run(store, manifest, args.files, pictures, target, progress);
   } finally {
     running = false;
     for (const kind of JOB_IMAGES) args.images[kind]?.close();
@@ -337,7 +351,7 @@ async function run(
   manifest: ExportManifest,
   files: (File | null)[],
   pictures: Pictures,
-  destination: FileSystemFileHandle | null,
+  target: { file: FileSystemFileHandle | null; folder: FileSystemDirectoryHandle | null },
   progress: (update: ExportProgress) => void,
   analyzer = new Analyzer(EXPORT_RATE),
 ): Promise<ExportResult> {
@@ -358,6 +372,11 @@ async function run(
   if (manifest.progress.segmentsDone < manifest.timing.segments) {
     await videoPass(store, manifest, pictures, progress);
   }
+  // The file of a batch's video in its folder is only made now (EX-09).
+  const destination =
+    target.file ??
+    (await target.folder?.getFileHandle(manifest.fileName, { create: true })) ??
+    null;
   const bytes = await join(store, manifest, destination, progress);
   // Only the finished file (for a download) and the manifest stay.
   const jobFiles = [
@@ -380,6 +399,7 @@ async function run(
     destination: manifest.destination,
     seconds: (performance.now() - started) / 1000,
     chapters: partChapters(manifest.parts, manifest.timing, manifest.sound),
+    output: destination ? null : (manifest.output ?? null),
   };
 }
 
@@ -868,6 +888,8 @@ async function join(
   // was written instead of leaving a broken video there.
   let abandon = false;
   let target: StreamTarget;
+  // A video of a batch waits among the others to be downloaded (EX-09).
+  const shelf = !destination && manifest.output ? await JobWriter.shelf() : null;
   if (destination) {
     const file = await destination.createWritable();
     target = new StreamTarget(
@@ -877,6 +899,8 @@ async function join(
         abort: () => file.abort(),
       }),
     );
+  } else if (shelf) {
+    target = await shelf.target(manifest.output!);
   } else {
     target = await store.target(OUTPUT_FILE);
   }
@@ -948,7 +972,10 @@ async function join(
   for (let segment = 0; segment < timing.segments; segment++) {
     await store.remove(`video-${segment}.mp4`);
   }
-  return destination ? (await destination.getFile()).size : (await store.file(OUTPUT_FILE)).size;
+  const written = destination
+    ? await destination.getFile()
+    : await (shelf ?? store).file(shelf ? manifest.output! : OUTPUT_FILE);
+  return written.size;
 }
 
 /** Deletes the job (after cancelling, or when you discard an unfinished export). */

@@ -8,7 +8,7 @@ FibeStation turns music into visuals: a logo with a spectrum ring, or kaleidosco
 
 1. **Add music.** Drop audio files or whole folders onto the window, or click **Add files** (the folder button next to it adds a folder). MP3, M4A, FLAC, Ogg, Opus and WAV work; several files make a queue. Double-click a track to play it, and press **Space** to pause.
 2. **Pick a look.** The top bar switches between *Logo Spectrum*, *Kaleidoscope* and *Analysis*. The **Visuals** tab in the side panel has presets and every setting, and takes your own logo and background.
-3. **Make a video or play live.** **Export** in the top bar renders a video of the track, of the part between two markers, or of several tracks of the queue. **F** shows the visuals in fullscreen.
+3. **Make a video or play live.** **Export** in the top bar renders a video of the track, of the part between two markers, or of several tracks of the queue (one video of them all, or a video of each). The camera next to it saves the picture as a thumbnail. **F** shows the visuals in fullscreen.
 
 To visualise music from somewhere else (a DJ mixer, another app or a browser tab), use the **Live** tab instead of the queue.
 
@@ -92,13 +92,15 @@ Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K
 
 - **Several tracks in one video**, such as a mix or an album: choose *Tracks of the queue* and tick the tracks to include (all are ticked at first). They play in the order of the queue, each between its markers, and follow each other as in the player: without a gap, crossing over in 10 ms where a track stops at its out marker. The track overlay names each track while it plays, and the logo shows each one's cover art if that is set up.
 - **Chapters:** a video of several tracks comes with a list of where each track starts ("0:00 Artist – Title", one per line). Paste it into the video's description on YouTube, and YouTube shows the chapters on the timeline. **Copy** puts the list on the clipboard, **Save as text** saves it as a file. YouTube shows chapters only for three tracks or more, each at least 10 seconds long; the dialog says when that is not the case.
+- **A video of each track**, e.g. to upload an album track by track: choose *Tracks of the queue*, tick the tracks, and pick *A video of each*. The videos are made one after the other, each between its markers and named after its track (a second one of the same name gets a number). In Chrome and Edge you pick a folder, and each video is written into it; other browsers keep the videos in browser storage, each with a **Download** button, until the next export. Cancelling keeps the videos finished before. If a video fails, resuming it goes on with the rest.
 - **Fade in and out:** the picture fades from and to black at the start and the end of the video, over 1–5 seconds, and the sound with it.
 
 - The video is rendered frame by frame, independent of the speed of your graphics card: a slower machine takes longer, and the result is always smooth.
 - In Chrome and Edge you pick the file first, and the video is written straight into it. Other browsers download it at the end.
 - The format is MP4 (H.264 and AAC); a browser without H.264 encoding writes WebM instead.
 - The track overlay and the cover art go into the video as set up for the preview; the dialog says when they do.
-- You can pause or cancel the export, and close the dialog while it runs. Long exports are written in segments; if the tab crashes or you reload, the app offers to resume where it stopped. If the sound was not finished yet, it asks you to add the tracks to the queue again first.
+- You can pause or cancel the export, and close the dialog while it runs. Long exports are written in segments; if the tab crashes or you reload, the app offers to resume where it stopped. If the sound was not finished yet, it asks you to add the tracks to the queue again first. After a reload, a video of each track resumes only the video it was making.
+- **A picture for a thumbnail:** the camera button in the top bar (or **C**) saves the picture on the stage as a PNG, named after the track playing: 1280×720 for 16:9, the size YouTube recommends for thumbnails, and 720 pixels on the shorter side for the other aspect ratios. It shows what the stage shows at that moment, the track overlay included; pause where you like the picture.
 
 ## DJ controller
 

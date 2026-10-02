@@ -149,6 +149,11 @@ export interface ExportManifest {
   timing: ExportTiming;
   destination: 'file' | 'download';
   fileName: string;
+  /**
+   * A video of a batch that is downloaded (EX-09) goes to this file among the batch's videos in
+   * browser storage, not to the job's own output file.
+   */
+  output?: string | null;
   progress: {
     audioDone: boolean;
     segmentsDone: number;
@@ -454,4 +459,16 @@ export function videoFileName(
   }
   const title = `${first.source.title} and ${parts.length - 1} more`;
   return exportFileName({ title, artist: first.source.artist }, null, extension, sound);
+}
+
+/** `name`, or "name (2).ext" and so on, whichever is not in `taken` yet (EX-09). */
+export function uniqueName(name: string, taken: ReadonlySet<string>): string {
+  const dot = name.lastIndexOf('.');
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const extension = dot > 0 ? name.slice(dot) : '';
+  let candidate = name;
+  for (let number = 2; taken.has(candidate); number++) {
+    candidate = `${base} (${number})${extension}`;
+  }
+  return candidate;
 }

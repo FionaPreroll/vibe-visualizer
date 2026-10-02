@@ -63,6 +63,8 @@ export interface ExportOptions {
    * one video, each between its markers (EX-05).
    */
   range: 'track' | 'marks' | 'tracks';
+  /** Tracks of the queue as a video of each, not one video (EX-09). */
+  perTrack: boolean;
   fade: FadeSeconds;
 }
 
@@ -72,6 +74,7 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   fps: 60,
   quality: 'standard',
   range: 'marks',
+  perTrack: false,
   fade: 0,
 };
 
@@ -226,6 +229,7 @@ export function sanitizeExportOptions(value: unknown): ExportOptions {
       ['track', 'marks', 'tracks'] as const,
       DEFAULT_EXPORT_OPTIONS.range,
     ),
+    perTrack: input['perTrack'] === true,
     fade: pick(input['fade'], FADE_CHOICES, DEFAULT_EXPORT_OPTIONS.fade),
   };
 }

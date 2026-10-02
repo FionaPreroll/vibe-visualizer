@@ -8,8 +8,9 @@ import { createTaggedWav, createWav } from './wav';
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('vibe-visualizer:welcome:v1', '1');
-    // Headless browsers cannot show the save dialog: the video is downloaded at the end.
+    // Headless browsers cannot show the save dialogs: the videos are downloaded instead.
     delete (window as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as { showDirectoryPicker?: unknown }).showDirectoryPicker;
   });
 });
 
@@ -282,6 +283,130 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
     expect(levels[0]).toBeLessThan(0.01);
     expect(levels[1]).toBeGreaterThan(0.15);
     expect(levels[2]).toBeLessThan(0.02);
+  }
+  expect(errors).toEqual([]);
+});
+
+/** Three tagged tracks of `seconds` in the queue; the third has the name of the first. */
+async function addBatchTracks(page: Page, seconds: number) {
+  const tagged = (file: string, title: string, artist: string) => ({
+    name: file,
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(seconds, { title, artist }),
+  });
+  await page
+    .getByTestId('file-input')
+    .setInputFiles([
+      tagged('one.wav', 'One', 'Alpha'),
+      tagged('two.wav', 'Two', 'Beta'),
+      tagged('again.wav', 'One', 'Alpha'),
+    ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items).toHaveCount(3);
+  for (const item of await items.all()) await expect(item).toHaveAttribute('data-status', 'ready');
+}
+
+test('a video of each track, waiting in browser storage (EX-09)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await addBatchTracks(page, 3);
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await page.getByTestId('export-range-tracks').check();
+  await page.getByTestId('export-per-track').check();
+  await expect(page.getByTestId('export-track')).toHaveText('3 videos, one of each track');
+  await expect(page.getByTestId('export-length')).toContainText('0:09 in all');
+  await page.getByTestId('export-start').click();
+  // One after the other, and the top bar counts them.
+  await expect(page.getByTestId('export-file')).toContainText('Video 1 of 3');
+  await expect(page.getByTestId('export-button')).toContainText('1/3');
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });
+  await expect(page.getByTestId('export-done')).toContainText('Your 3 videos are ready.');
+
+  // Each named after its track; the second of the same name gets a number.
+  const links = page.getByTestId('export-video-download');
+  await expect(links).toHaveCount(3);
+  const names: string[] = [];
+  for (const link of await links.all()) {
+    const [file] = await Promise.all([page.waitForEvent('download'), link.click()]);
+    names.push(file.suggestedFilename());
+    const video = await inspect(await readFile(await file.path()));
+    expect(video).toMatchObject({ width: 720, height: 720, frames: 72 });
+    expect(video.audioDuration).toBeCloseTo(3, 1);
+  }
+  expect(names).toEqual([
+    expect.stringMatching(/^Alpha - One\.(mp4|webm)$/),
+    expect.stringMatching(/^Beta - Two\.(mp4|webm)$/),
+    expect.stringMatching(/^Alpha - One \(2\)\.(mp4|webm)$/),
+  ]);
+  // Deleted from browser storage, they are gone.
+  await page.getByRole('button', { name: 'Delete from browser storage' }).click();
+  await expect(page.getByTestId('export-start')).toBeVisible();
+  const kept = await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const names: string[] = [];
+    for await (const name of (root as unknown as { keys(): AsyncIterable<string> }).keys()) {
+      names.push(name);
+    }
+    return names;
+  });
+  expect(kept).not.toContain('export-videos');
+  expect(errors).toEqual([]);
+});
+
+test('a video of each track, into a folder you pick (EX-09)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    // The folder you would pick: one in the Origin Private File System.
+    (window as unknown as { showDirectoryPicker: () => Promise<unknown> }).showDirectoryPicker =
+      async () =>
+        (await navigator.storage.getDirectory()).getDirectoryHandle('picked', { create: true });
+  });
+  await page.goto('/');
+  await addBatchTracks(page, 2);
+  // A video of that name is already in the folder: it stays.
+  await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const folder = await root.getDirectoryHandle('picked', { create: true });
+    for (const name of ['Beta - Two.mp4', 'Beta - Two.webm']) {
+      const file = await folder.getFileHandle(name, { create: true });
+      const writable = await file.createWritable();
+      await writable.write('old');
+      await writable.close();
+    }
+  });
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await page.getByTestId('export-range-tracks').check();
+  await page.getByTestId('export-per-track').check();
+  await page.getByTestId('export-start').click();
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });
+  await expect(page.getByTestId('export-done')).toContainText('Saved into the folder you chose.');
+  await expect(page.getByTestId('export-video-download')).toHaveCount(0);
+
+  const files = await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const folder = await root.getDirectoryHandle('picked');
+    const found: { name: string; data: string }[] = [];
+    const entries = folder as unknown as { values(): AsyncIterable<FileSystemFileHandle> };
+    for await (const handle of entries.values()) {
+      const bytes = new Uint8Array(await (await handle.getFile()).arrayBuffer());
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      found.push({ name: handle.name, data: btoa(binary) });
+    }
+    return found.sort((a, b) => a.name.localeCompare(b.name));
+  });
+  const videos = files.filter((file) => file.data !== btoa('old'));
+  expect(videos.map((file) => file.name)).toEqual([
+    expect.stringMatching(/^Alpha - One \(2\)\.(mp4|webm)$/),
+    expect.stringMatching(/^Alpha - One\.(mp4|webm)$/),
+    expect.stringMatching(/^Beta - Two \(2\)\.(mp4|webm)$/),
+  ]);
+  for (const file of videos) {
+    expect(await inspect(Buffer.from(file.data, 'base64'))).toMatchObject({ frames: 48 });
   }
   expect(errors).toEqual([]);
 });

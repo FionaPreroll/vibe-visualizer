@@ -13,7 +13,14 @@
     type ExportPart,
     type ExportVisuals,
   } from '../core/export/export-job';
-  import { canPickFile, pickFile, type RequestPart } from '../core/export/exporter';
+  import {
+    canPickFile,
+    canPickFolder,
+    pickFile,
+    pickFolder,
+    type BatchVideo,
+    type RequestPart,
+  } from '../core/export/exporter';
   import { readManifest } from '../core/export/job-store';
   import {
     ASPECT_RATIOS,
@@ -98,12 +105,20 @@
     choice === 'tracks' ? ready.filter((entry) => !skipped.has(entry.id)) : track ? [track] : [],
   );
   const parts = $derived(chosen.map((entry) => exportPart(entry, choice !== 'track')));
+  /** A video of each track (EX-09), rather than one of them all. */
+  const perTrack = $derived(choice === 'tracks' && fitted.perTrack);
   const sound = $derived($app.sound);
-  /** Length of the video: the parts at the tempo of the sound. */
-  const seconds = $derived(parts.length > 0 ? partsSeconds(parts, sound) : 0);
+  /** Length of the video (of all of them, for a video of each): the parts at the tempo. */
+  const seconds = $derived(
+    perTrack
+      ? parts.reduce((sum, part) => sum + partsSeconds([part], sound), 0)
+      : parts.length > 0
+        ? partsSeconds(parts, sound)
+        : 0,
+  );
   /** Where the tracks will start in the video (EX-14). */
   const chapters = $derived(
-    choice === 'tracks' && parts.length > 1
+    choice === 'tracks' && !perTrack && parts.length > 1
       ? partChapters(parts, { partStarts: partLayout(parts).starts }, sound)
       : [],
   );
@@ -126,10 +141,14 @@
     return () => (stale = true);
   });
 
-  // The latest preview frame of a running export.
+  // The latest preview frame of a running export (none yet: the next video of a batch).
   $effect(() => {
     const bitmap = $exporter.status === 'running' ? $exporter.job.preview : null;
-    if (!preview || !bitmap) return;
+    if (!preview) return;
+    if (!bitmap) {
+      preview.getContext('2d')?.clearRect(0, 0, preview.width, preview.height);
+      return;
+    }
     try {
       preview.width = bitmap.width;
       preview.height = bitmap.height;
@@ -195,10 +214,16 @@
       overlay: overlay.on ? overlay : undefined,
     };
     const covered = mode === 'logoSpectrum' && $app.settings.coverLogo;
-    const fileName = videoFileName(planned, codecs.container, sound);
-    let destination: FileSystemFileHandle | null;
+    const container = codecs.container;
+    const each = perTrack;
+    const fileName = videoFileName(planned, container, sound);
+    // Where the video goes: a file you pick (Chromium) or a download; for a video of each
+    // track, a folder you pick (Chromium) or browser storage.
+    let destination: FileSystemFileHandle | null = null;
+    let folder: FileSystemDirectoryHandle | null = null;
     try {
-      destination = await saveTarget(fileName, codecs.container);
+      if (each) folder = canPickFolder() ? await pickFolder() : null;
+      else destination = await saveTarget(fileName, container);
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         problem = errorMessage(error);
@@ -222,17 +247,24 @@
       cover: covers[index] ?? null,
     }));
     player.pause();
-    const started = exporter.start({
-      parts: requested,
-      format,
-      visuals,
-      sound,
-      fade: fitted.fade,
-      images: assets.shown,
-      destination,
-      fileName,
-    });
+    const common = { format, visuals, sound, fade: fitted.fade, images: assets.shown };
+    const started = each
+      ? exporter.startBatch(
+          requested.map((part) => ({
+            ...common,
+            parts: [part],
+            fileName: videoFileName([part.part], container, sound),
+          })),
+          folder,
+        )
+      : exporter.start({ ...common, parts: requested, destination, fileName });
     started.catch((error: unknown) => (problem = errorMessage(error)));
+  }
+
+  /** "Your video is ready.", or how many of a batch's videos are. */
+  function readyText(count: number, planned: number): string {
+    if (count < planned) return `${count} of ${planned} videos are ready.`;
+    return count === 1 ? 'Your video is ready.' : `Your ${count} videos are ready.`;
   }
 
   /** "A", "A and B", "A, B and C". */
@@ -308,9 +340,11 @@
         return;
       }
     }
-    let destination: FileSystemFileHandle | null;
+    let destination: FileSystemFileHandle | null = null;
     try {
-      destination = await saveTarget(manifest.fileName, manifest.codecs.container);
+      // A video of a batch goes into the batch's folder, without asking again.
+      const intoFolder = manifest.destination === 'file' && exporter.batchFolder !== null;
+      if (!intoFolder) destination = await saveTarget(manifest.fileName, manifest.codecs.container);
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         problem = errorMessage(error);
@@ -385,6 +419,26 @@
   }
 </script>
 
+{#snippet videoList(videos: BatchVideo[])}
+  <ul class="videos" data-testid="export-videos">
+    {#each videos as video, index (index)}
+      <li>
+        <span class="file">{video.fileName} · {formatBytes(video.bytes)}</span>
+        {#if video.url}
+          <a
+            class="button small"
+            href={video.url}
+            download={video.fileName}
+            data-testid="export-video-download"
+          >
+            <Icon name="export" size={14} /> Download
+          </a>
+        {/if}
+      </li>
+    {/each}
+  </ul>
+{/snippet}
+
 <dialog
   bind:this={dialog}
   class="export"
@@ -407,7 +461,8 @@
         class="preview"
         style:aspect-ratio={job.format.width / job.format.height}
       ></canvas>
-      <p class="file">
+      <p class="file" data-testid="export-file">
+        {#if job.batch}Video {job.batch.index + 1} of {job.batch.count} ·{/if}
         {job.fileName} · {job.format.width}×{job.format.height} · {job.format.fps} fps
       </p>
       <div
@@ -446,8 +501,12 @@
   {:else if $exporter.status === 'done'}
     {@const done = $exporter}
     <section class="result" data-testid="export-done">
-      <p class="big">Your video is ready.</p>
-      <p class="file">{done.fileName} · {formatBytes(done.bytes)}</p>
+      <p class="big">{readyText(Math.max(1, done.videos.length), done.planned)}</p>
+      {#if done.videos.length > 0}
+        {@render videoList(done.videos)}
+      {:else}
+        <p class="file">{done.fileName} · {formatBytes(done.bytes)}</p>
+      {/if}
       {#if done.seconds !== null}
         <p class="hint">Rendered in {formatDuration(done.seconds)}.</p>
       {/if}
@@ -484,11 +543,18 @@
             <Icon name="export" size={16} /> Download
           </a>
           <button onclick={() => exporter.discard()}>Delete from browser storage</button>
+        {:else if done.videos.some((video) => video.url)}
+          <button onclick={() => exporter.discard()}>Delete from browser storage</button>
+        {:else if done.videos.length > 0}
+          <p class="hint">Saved into the folder you chose.</p>
         {:else}
           <p class="hint">Saved to the file you chose.</p>
         {/if}
         <button onclick={() => exporter.dismiss()}>New export</button>
       </div>
+      {#if done.videos.some((video) => video.url)}
+        <p class="hint">The videos stay in browser storage until the next export.</p>
+      {/if}
     </section>
   {:else if $exporter.status === 'interrupted' || ($exporter.status === 'failed' && $exporter.resumable)}
     <section class="result" data-testid="export-interrupted">
@@ -504,6 +570,15 @@
         </p>
       {/if}
       <p class="hint">It continues where it stopped.</p>
+      {#if $exporter.status === 'failed' && $exporter.videos.length > 0}
+        <p class="hint">
+          Finished before, from the same batch; resuming goes on with the rest.
+          {#if $exporter.videos.some((video) => video.url)}
+            Discard deletes these videos from browser storage too.
+          {/if}
+        </p>
+        {@render videoList($exporter.videos)}
+      {/if}
       <div class="actions">
         <button class="primary" onclick={resume} data-testid="export-resume">Resume</button>
         <button onclick={() => exporter.discard()} data-testid="export-discard">Discard</button>
@@ -512,6 +587,10 @@
   {:else}
     {#if $exporter.status === 'failed'}
       <p class="problem" role="alert">The export failed: {$exporter.message}</p>
+      {#if $exporter.videos.length > 0}
+        <p class="hint">Finished before, from the same batch:</p>
+        {@render videoList($exporter.videos)}
+      {/if}
     {/if}
     <section class="form">
       <fieldset>
@@ -665,8 +744,8 @@
             <span class="name">Tracks of the queue</span>
             <span class="detail">
               {ready.length < 2
-                ? 'One video of several tracks: add more to the queue first'
-                : 'One video of several tracks, one after the other, with chapters'}
+                ? 'Several tracks: add more to the queue first'
+                : 'One video of them all, with chapters, or a video of each'}
             </span>
           </label>
         </div>
@@ -707,23 +786,52 @@
               </li>
             {/each}
           </ul>
+          <div class="make" role="radiogroup" aria-label="Make">
+            <label>
+              <input
+                type="radio"
+                name="make"
+                checked={!fitted.perTrack}
+                onchange={() => (options.perTrack = false)}
+                data-testid="export-one-video"
+              />
+              One video of them all
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="make"
+                checked={fitted.perTrack}
+                onchange={() => (options.perTrack = true)}
+                data-testid="export-per-track"
+              />
+              A video of each
+            </label>
+          </div>
           <p class="hint">
-            In the order of the queue, each between its markers, joined as the player joins them.
-            {#if chapters.length > 0}
-              {chapterProblem(chapters, seconds) ??
-                'The finished video comes with chapters for its description on YouTube.'}
+            {#if perTrack}
+              Each between its markers, one video after the other, each named after its track, e.g.
+              to upload them one by one.
+            {:else}
+              In the order of the queue, each between its markers, joined as the player joins them.
+              {#if chapters.length > 0}
+                {chapterProblem(chapters, seconds) ??
+                  'The finished video comes with chapters for its description on YouTube.'}
+              {/if}
             {/if}
           </p>
         {/if}
       </fieldset>
 
       <dl class="summary">
-        <dt>{choice === 'tracks' ? 'Tracks' : 'Track'}</dt>
+        <dt>{choice !== 'tracks' ? 'Track' : perTrack ? 'Videos' : 'Tracks'}</dt>
         <dd data-testid="export-track">
-          {#if choice === 'tracks'}
-            {chosen.length === 0
-              ? 'Choose them above'
-              : `${chosen.length} track${chosen.length === 1 ? '' : 's'}, from ${shownTitle(chosen[0]!)}`}
+          {#if choice === 'tracks' && chosen.length === 0}
+            Choose them above
+          {:else if perTrack}
+            {chosen.length === 1 ? 'One video' : `${chosen.length} videos, one of each track`}
+          {:else if choice === 'tracks'}
+            {chosen.length} track{chosen.length === 1 ? '' : 's'}, from {shownTitle(chosen[0]!)}
           {:else}
             {track ? shownTitle(track) : 'Add a track to the queue first'}
           {/if}
@@ -768,13 +876,21 @@
         <dd data-testid="export-sound">{soundSummary(sound)} (set in the Sound tab)</dd>
         <dt>Length</dt>
         <dd data-testid="export-length">
-          {formatDuration(seconds)} · about {formatBytes(estimateBytes(format, seconds))}
+          {formatDuration(seconds)}{perTrack && chosen.length > 1 ? ' in all' : ''} · about {formatBytes(
+            estimateBytes(format, seconds),
+          )}
         </dd>
         <dt>Saving</dt>
         <dd>
-          {canPickFile()
-            ? 'You choose a file; the video is written into it while rendering.'
-            : 'The video downloads when it is finished.'}
+          {#if perTrack}
+            {canPickFolder()
+              ? 'You choose a folder; each video is written into it while rendering.'
+              : 'The videos wait in browser storage; you download each when it is finished.'}
+          {:else}
+            {canPickFile()
+              ? 'You choose a file; the video is written into it while rendering.'
+              : 'The video downloads when it is finished.'}
+          {/if}
         </dd>
       </dl>
       {#if codecs?.video === 'vp9'}
@@ -963,6 +1079,45 @@
   }
   .chapters .actions {
     margin-top: 8px;
+  }
+  .make {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin-top: 10px;
+  }
+  .make label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .make input {
+    accent-color: var(--accent);
+  }
+  .videos {
+    max-height: 220px;
+    margin: 10px 0 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+  .videos li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .videos .file {
+    margin: 0;
+  }
+  .button.small {
+    flex: none;
+    padding: 3px 10px;
+    font-size: 13px;
   }
   .summary {
     display: grid;

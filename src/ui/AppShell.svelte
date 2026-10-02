@@ -357,7 +357,7 @@
           {#if $exporter.status === 'interrupted'}
             An export was interrupted. Resume it…
           {:else if $exporter.status === 'done'}
-            Your video is ready.
+            {$exporter.videos.length > 1 ? 'Your videos are ready.' : 'Your video is ready.'}
           {:else}
             The export stopped. Details…
           {/if}

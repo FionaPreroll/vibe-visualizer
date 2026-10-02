@@ -169,8 +169,10 @@
     <button class="primary export" onclick={onExport} data-testid="export-button">
       <Icon name="export" size={18} />
       {#if $exporter.status === 'running'}
-        {$exporter.job.paused ? 'Paused' : 'Exporting'}
-        {Math.floor($exporter.job.progress * 100)} %
+        {@const job = $exporter.job}
+        {job.paused ? 'Paused' : 'Exporting'}
+        {#if job.batch}{job.batch.index + 1}/{job.batch.count} ·{/if}
+        {Math.floor(job.progress * 100)} %
       {:else}
         Export
       {/if}
