@@ -4,6 +4,7 @@ import { exposeWorker } from '../../util/worker-rpc';
 import { decodeAtRate, openInput } from '../decode-stream';
 import { Resampler } from '../resampler';
 import { AudioRingProducer } from '../ring-buffer';
+import { CROSSFADE_SECONDS, StreamJoiner } from '../stream-joiner';
 
 /**
  * Streams files into the engine ring: decodes in pieces (Mediabunny + WebCodecs), converts to
@@ -68,8 +69,6 @@ const COMMIT_SECONDS = 1.5;
  * much music (the main thread answers once the file is heard; paused, the ring stays full).
  */
 const ANSWER_RESERVE_SECONDS = 0.25;
-/** Length of the crossfade at a cut in the middle of the music (seconds). */
-const CROSSFADE_SECONDS = 0.01;
 /**
  * Decoding can run on promises alone for a long time (a file read at once, a new stream filling
  * the ring): messages are let in at least this often (ms), so a newer seek takes over at once
@@ -200,25 +199,6 @@ async function writeAll(planes: Float32Array[], token: number): Promise<boolean>
   return token === streamToken;
 }
 
-/** Stereo frames held back or mixed at a cut. */
-class Tail {
-  readonly planes: Float32Array[];
-  length = 0;
-
-  constructor(frames: number) {
-    this.planes = [new Float32Array(frames), new Float32Array(frames)];
-  }
-
-  get capacity(): number {
-    return this.planes[0]!.length;
-  }
-}
-
-/** Gain of the incoming side of an equal-power crossfade at frame `i` of `frames`. */
-function fadeGain(i: number, frames: number): number {
-  return Math.sin(((i + 0.5) / frames) * (Math.PI / 2));
-}
-
 /**
  * Decodes `first` from `startFrame` (to `endFrame`, or its end) into the ring, then the files
  * that follow it.
@@ -233,9 +213,8 @@ async function stream(
   const commit = COMMIT_SECONDS * engineRate;
   const reserve = ANSWER_RESERVE_SECONDS * engineRate;
   const crossfade = Math.max(1, Math.round(CROSSFADE_SECONDS * engineRate));
-  // What the last file held back at its out marker, and what this one holds back at its own.
-  let incoming = new Tail(crossfade);
-  let outgoing = new Tail(crossfade);
+  // Crosses the files at their markers, as the export does.
+  const joiner = new StreamJoiner(crossfade);
   let source = first;
   let from = startFrame;
   let end = endFrame;
@@ -253,10 +232,9 @@ async function stream(
     currentEnd = end;
     currentPosition = from;
     holding = false;
-    outgoing.length = 0;
     // A start in the middle of the music (an in marker) crosses from what the last file held
     // back, or fades in. The first file of a stream is faded in by the tempo stage.
-    const fadeIn = !firstFile && incoming.length === 0 && from > 0 ? crossfade : 0;
+    joiner.begin(from, firstFile);
     for await (const decoded of decodeAtRate(source.track, resamplerFor(source.track), from)) {
       await letMessagesIn();
       if (token !== streamToken) return;
@@ -276,28 +254,10 @@ async function stream(
       ];
       // Taken before writing: a new end the main thread sends meanwhile must lie beyond it.
       currentPosition = position + count;
-      const offset = position - from;
-      const cross = incoming.length > 0 ? incoming.length : fadeIn;
-      for (let i = offset; i < Math.min(cross, offset + count); i++) {
-        const gain = fadeGain(i, cross);
-        const fade = Math.sqrt(1 - gain * gain);
-        for (let c = 0; c < 2; c++) {
-          const plane = planes[c]!;
-          const held = incoming.length > 0 ? incoming.planes[c]![i]! * fade : 0;
-          plane[i - offset] = plane[i - offset]! * gain + held;
-        }
-      }
       // The frames just before the out marker are held back for the crossfade.
-      const holdFrom = limit === null ? Infinity : limit - outgoing.capacity;
-      const keep = Math.max(0, Math.min(count, holdFrom - position));
+      const keep = joiner.take(planes, position, limit);
+      holding = joiner.holding;
       if (!(await write(planes.map((plane) => plane.subarray(0, keep))))) return;
-      if (keep < count) {
-        holding = true;
-        for (let c = 0; c < 2; c++) {
-          outgoing.planes[c]!.set(planes[c]!.subarray(keep, count), outgoing.length);
-        }
-        outgoing.length += count - keep;
-      }
       if (limit !== null && currentPosition >= limit) break;
     }
     if (token !== streamToken) return;
@@ -317,17 +277,12 @@ async function stream(
     if (token !== streamToken) return;
     if (!next || !taken) {
       // The end of the queue at an out marker: what was held back fades out.
-      const planes = outgoing.planes.map((plane) => plane.subarray(0, outgoing.length));
-      for (let i = 0; i < outgoing.length; i++) {
-        const gain = fadeGain(outgoing.length - 1 - i, outgoing.length);
-        for (const plane of planes) plane[i] = plane[i]! * gain;
-      }
-      if (!(await write(planes))) return;
+      if (!(await write(joiner.end()))) return;
       break;
     }
     // Gapless: the next file follows right after the last frame written of this one.
     ring().markNext(generation, written, next.token, taken.start);
-    [incoming, outgoing] = [outgoing, incoming];
+    joiner.next();
     source = next;
     from = taken.start;
     end = taken.end;
