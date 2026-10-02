@@ -47,6 +47,17 @@ test('Kaleidoscope renders, moves with the music and switches scenes and modes',
   await page.waitForTimeout(700);
   expect(crystal.equals(await stage.screenshot())).toBe(false);
 
+  // Neon Ribbons (KA-04): its own controls, and it moves too.
+  await page.getByTestId('scene-ribbons').click();
+  await expect(page.getByTestId('scene-ribbons')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('preset-select')).toHaveValue('Neon Ribbons');
+  await expect(page.getByRole('slider', { name: 'Ribbons', exact: true })).toHaveValue('4');
+  await expect(page.getByRole('slider', { name: 'Lobes', exact: true })).toHaveValue('5');
+  const ribbons = await stage.screenshot();
+  await page.waitForTimeout(700);
+  expect(ribbons.equals(await stage.screenshot())).toBe(false);
+  await expect(stage).toHaveAttribute('data-status', 'running');
+
   // Logo Spectrum and back: the same render worker keeps running.
   await page.getByRole('button', { name: 'Logo Spectrum' }).click();
   await expect(stage).toHaveAttribute('data-scene', 'logoSpectrum');

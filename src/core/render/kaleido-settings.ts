@@ -48,6 +48,8 @@ export const KALEIDO_PALETTES = {
   magenta: ['#10001c', '#56097a', '#e0249f', '#ff8ad8', '#eafcff'],
   ice: ['#020814', '#0b3a6b', '#2a9df4', '#9be7ff', '#ffffff'],
   neon: ['#0b0016', '#3d00a8', '#ff2fd6', '#1ff0ff', '#f2ffff'],
+  /** Neon tubes: violet, then pink, yellow, green and cyan (orange between pink and yellow). */
+  ribbons: ['#1c0638', '#ff2d6a', '#ffe83b', '#3dff8e', '#27e3ff'],
   mono: ['#000000', '#2e2e2e', '#7c7c7c', '#c6c6c6', '#ffffff'],
 } as const;
 
@@ -225,7 +227,7 @@ export interface KaleidoScene {
   look: Record<string, ParamValue>;
 }
 
-export type KaleidoSceneId = 'vortex' | 'crystal';
+export type KaleidoSceneId = 'vortex' | 'crystal' | 'ribbons';
 
 export const KALEIDO_SCENES: readonly KaleidoScene[] = [
   {
@@ -351,6 +353,98 @@ export const KALEIDO_SCENES: readonly KaleidoScene[] = [
       trails: 0.45,
       palette: 'magenta',
       spin: -0.4,
+    },
+  },
+  {
+    id: 'ribbons',
+    name: 'Neon Ribbons',
+    description: 'Neon tubes weave around the centre, blossoms glow in the lobes, flowers float',
+    params: [
+      {
+        kind: 'number',
+        key: 'ribbons',
+        label: 'Ribbons',
+        group: 'scene',
+        min: 1,
+        max: 4,
+        default: 4,
+        integer: true,
+        format: 'integer',
+      },
+      {
+        kind: 'number',
+        key: 'lobes',
+        label: 'Lobes',
+        group: 'scene',
+        min: 3,
+        max: 8,
+        default: 5,
+        integer: true,
+        format: 'integer',
+      },
+      {
+        kind: 'number',
+        key: 'weave',
+        label: 'Weave',
+        group: 'scene',
+        min: 0,
+        max: 1,
+        default: 0.65,
+        format: 'percent',
+        hint: 'How far the ribbons swing in and out',
+      },
+      {
+        kind: 'number',
+        key: 'thickness',
+        label: 'Thickness',
+        group: 'scene',
+        min: 0,
+        max: 1,
+        default: 0.35,
+        format: 'percent',
+      },
+      {
+        kind: 'number',
+        key: 'depth',
+        label: 'Depth',
+        group: 'scene',
+        min: 0,
+        max: 1,
+        default: 0.7,
+        format: 'percent',
+        hint: 'How much the far parts of the tubes are darker and thinner',
+      },
+      {
+        kind: 'number',
+        key: 'blossoms',
+        label: 'Blossoms',
+        group: 'scene',
+        min: 0,
+        max: 1,
+        default: 0.6,
+        format: 'percent',
+      },
+      {
+        kind: 'number',
+        key: 'flowers',
+        label: 'Flowers',
+        group: 'scene',
+        min: 0,
+        max: 1,
+        default: 0.5,
+        format: 'percent',
+      },
+    ],
+    look: {
+      segments: 1,
+      mirror: false,
+      flow: 0.25,
+      twist: 0.15,
+      trails: 0.12,
+      palette: 'ribbons',
+      spin: 0.6,
+      barShift: 0,
+      bloom: 0.7,
     },
   },
 ];
@@ -516,5 +610,19 @@ export const BUILT_IN_KALEIDO_PRESETS: readonly KaleidoPreset[] = [
     'crystal',
     { palette: 'neon', segments: 12, hueCycle: 2, bloom: 0.7 },
     { points: 12 },
+  ),
+  preset('Neon Ribbons', 'ribbons'),
+  preset('Ribbon Knot', 'ribbons', { spin: 1 }, { ribbons: 2, lobes: 3, thickness: 0.6 }),
+  preset(
+    'Neon Mandala',
+    'ribbons',
+    { palette: 'neon', segments: 10, mirror: true, spin: -0.8 },
+    { ribbons: 3, lobes: 6, weave: 0.8, flowers: 0.3 },
+  ),
+  preset(
+    'Lava Braid',
+    'ribbons',
+    { palette: 'ember', trails: 0.3, bloom: 0.8 },
+    { ribbons: 3, weave: 0.3, thickness: 0.7, blossoms: 0.8 },
   ),
 ];
