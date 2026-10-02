@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { ALL_FORMATS, BufferSource, EncodedPacketSink, Input } from 'mediabunny';
 import { readFile } from 'node:fs/promises';
 import { COVER, logoQuarters, measure, showsCover, videoFrame } from './pixels';
+import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
@@ -152,6 +153,136 @@ test('the video shows the track overlay and the cover art (LS-15, LS-18, LS-19)'
   ]);
   expect(overlay!.bright).toBeGreaterThan(0.03);
   expect(showsCover(quarters)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+/**
+ * The level (RMS of the left channel) of the video's sound over 50 ms from each of `times`,
+ * decoded by the page; null if this browser cannot decode it.
+ */
+async function soundLevels(page: Page, data: Buffer, times: number[]): Promise<number[] | null> {
+  return page.evaluate(
+    async ({ bytes, times }) => {
+      const binary = atob(bytes);
+      const array = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+      try {
+        const buffer = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(array.buffer);
+        const channel = buffer.getChannelData(0);
+        return times.map((seconds) => {
+          const from = Math.round(seconds * buffer.sampleRate);
+          const to = Math.min(channel.length, from + Math.round(0.05 * buffer.sampleRate));
+          let sum = 0;
+          for (let i = from; i < to; i++) sum += channel[i]! ** 2;
+          return Math.sqrt(sum / Math.max(1, to - from));
+        });
+      } catch {
+        return null;
+      }
+    },
+    { bytes: data.toString('base64'), times },
+  );
+}
+
+test('tracks of the queue become one video with chapters and fades (EX-05, EX-14, EX-16)', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    // Each track's title over its part, and its cover art as the logo.
+    const settings = { coverLogo: true, overlay: { on: true } };
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+  });
+  await page.goto('/');
+  const cyan = createPng(64, 64, () => [30, 220, 230]);
+  const tagged = (title: string, artist: string, cover?: Buffer) => ({
+    name: `${title}.wav`,
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(3, { title, artist, cover }),
+  });
+  await page
+    .getByTestId('file-input')
+    .setInputFiles([
+      tagged('One', 'Alpha', COVER),
+      tagged('Two', 'Beta'),
+      tagged('Three', 'Gamma', cyan),
+    ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items).toHaveCount(3);
+  for (const item of await items.all()) await expect(item).toHaveAttribute('data-status', 'ready');
+
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await page.getByTestId('export-range-tracks').check();
+  const choices = page.getByTestId('export-track-choice');
+  await expect(choices).toHaveCount(3);
+  // Without the second track the video is shorter; all three again.
+  await choices.nth(1).uncheck();
+  await expect(page.getByTestId('export-track')).toHaveText('2 tracks, from One');
+  await expect(page.getByTestId('export-length')).toContainText('0:06');
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(page.getByTestId('export-track')).toHaveText('3 tracks, from One');
+  await expect(page.getByTestId('export-length')).toContainText('0:09');
+  await page.getByTestId('export-fade').selectOption('1');
+  await expect(page.getByTestId('export-fades')).toHaveText('(fading in and out over 1 s)');
+  await page.getByTestId('export-start').click();
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });
+
+  // The chapters for YouTube, where each track starts; three seconds are too short for YouTube.
+  const chapters = '0:00 Alpha – One\n0:03 Beta – Two\n0:06 Gamma – Three';
+  expect(await page.getByTestId('export-chapters').textContent()).toBe(chapters);
+  await expect(page.getByTestId('export-done')).toContainText('at least 10 s long');
+  const [text] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('export-chapters-save').click(),
+  ]);
+  expect(text.suggestedFilename()).toMatch(/^Alpha - One and 2 more - chapters\.txt$/);
+  expect(await readFile(await text.path(), 'utf8')).toBe(`${chapters}\n`);
+
+  const file = await download(page);
+  expect(file.name).toMatch(/^Alpha - One and 2 more\.(mp4|webm)$/);
+  const video = await inspect(file.data);
+  expect(video).toMatchObject({ width: 720, height: 720, frames: 216 });
+  expect(video.audioDuration).toBeCloseTo(9, 1);
+
+  // Black at the start and the end; in between, each track with its cover (the second has
+  // none: the logo) and its title.
+  const shots: Buffer[] = [];
+  for (const seconds of [0, 1.5, 4.5, 7.5, 8.98]) {
+    const frame = await videoFrame(page, file.data, seconds);
+    test.skip(!frame, 'This browser cannot play the video it made.');
+    shots.push(frame!);
+  }
+  const whole = { x: 0, y: 0, width: 1, height: 1 };
+  const title = { x: 0.04, y: 0.74, width: 0.5, height: 0.22 };
+  const look = async (frame: Buffer) => {
+    const [all, overlay, ...quarters] = await measure(page, frame, [
+      whole,
+      title,
+      ...logoQuarters({ width: 720, height: 720 }),
+    ]);
+    const brightness = all!.mean.reduce((sum, value) => sum + value, 0) / 3;
+    return { brightness, text: overlay!.bright, quarters };
+  };
+  const [start, one, two, three, end] = await Promise.all(shots.map(look));
+  expect(start!.brightness).toBeLessThan(2);
+  expect(end!.brightness).toBeLessThan(5);
+  expect(showsCover(one!.quarters)).toBe(true);
+  expect(showsCover(two!.quarters)).toBe(false);
+  const isCyan = (quarter: { mean: [number, number, number] }) =>
+    quarter.mean[0] < 90 && quarter.mean[1] > 180 && quarter.mean[2] > 180;
+  expect(two!.quarters.some(isCyan)).toBe(false);
+  expect(three!.quarters.every(isCyan)).toBe(true);
+  for (const part of [one, two, three]) expect(part!.text).toBeGreaterThan(0.01);
+
+  // The sound fades in and out with the picture.
+  const levels = await soundLevels(page, file.data, [0, 1.5, 8.9]);
+  if (levels) {
+    expect(levels[0]).toBeLessThan(0.01);
+    expect(levels[1]).toBeGreaterThan(0.15);
+    expect(levels[2]).toBeLessThan(0.02);
+  }
   expect(errors).toEqual([]);
 });
 

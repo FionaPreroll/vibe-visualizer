@@ -6,22 +6,25 @@ import {
   SOUND_PRESETS,
   type SoundSettings,
 } from '../audio/dsp/sound-settings';
+import { CROSSFADE_SECONDS } from '../audio/stream-joiner';
 import type { KaleidoSettings } from '../render/kaleido-settings';
-import type { OverlaySettings, OverlayTrack } from '../render/overlay-settings';
+import { clockText, type OverlaySettings, type OverlayTrack } from '../render/overlay-settings';
 import type { AutoPresets } from '../render/preset-director';
 import type { LogoSpectrumSettings } from '../render/visual-settings';
 import type { VideoFormat } from './video-format';
 
 /**
- * An export job and its plan. The export runs in two passes: the audio pass decodes the range,
- * plays it through the sound chain (tempo and effects, EX-02), analyses it and encodes it; the
- * video pass renders frame n at time n / fps from the stored analysis and encodes it in segments
- * (EX-01, EX-15). A manifest in the Origin Private File System records what is done, so an
- * interrupted export can resume.
+ * An export job and its plan. A video plays one track or several (EX-05), each a part of its
+ * file, joined as the player joins the queue. The export runs in two passes: the audio pass
+ * decodes the parts, plays them through the sound chain (tempo and effects, EX-02), analyses
+ * them and encodes the sound; the video pass renders frame n at time n / fps from the stored
+ * analysis and encodes it in segments (EX-01, EX-15). A manifest in the Origin Private File
+ * System records what is done, so an interrupted export can resume.
  *
  * Times are counted in output frames (48 kHz) from the start of the processed stream, which
- * begins at `sourceStart` in the file. With a tempo change, output frame o plays source frame
- * sourceStart + o × rate; the effects delay what is heard by the limiter's look-ahead.
+ * begins at `sourceStart` in the first file. The stream joins the parts; its own frames (stream
+ * frames, before the tempo) count from there too. With a tempo change, output frame o plays
+ * stream frame o × rate; the effects delay what is heard by the limiter's look-ahead.
  */
 
 /** The engine rate: the export hears exactly what the live engine would play. */
@@ -60,14 +63,11 @@ export type ExportVisuals = (
       layer?: KaleidoSettings;
     }
   | { mode: 'kaleidoscope'; settings: KaleidoSettings; auto?: ExportSwitching<KaleidoSettings> }
-) & { reduceFlashing?: boolean; overlay?: ExportOverlay };
-
-/** The track overlay of a video (LS-18, LS-19): its settings and the track it names. */
-export interface ExportOverlay {
-  settings: OverlaySettings;
-  /** The track, and the part of its file the video plays (source seconds). */
-  track: OverlayTrack;
-}
+) & {
+  reduceFlashing?: boolean;
+  /** The track overlay over the video (LS-18, LS-19); it names each part. */
+  overlay?: OverlaySettings;
+};
 
 export interface ExportSwitching<S> {
   config: AutoPresets;
@@ -92,6 +92,15 @@ export interface ExportSource {
   artist: string | null;
 }
 
+/** A track of the video: the part of its file that plays (EX-05). */
+export interface ExportPart {
+  source: ExportSource;
+  /** Seconds in the file. */
+  range: { start: number; end: number };
+  /** The part stops at an out marker, before the end of its file: it crosses into what follows. */
+  cut: boolean;
+}
+
 export interface ExportTiming {
   /** Video frames in the output. */
   frames: number;
@@ -110,27 +119,33 @@ export interface ExportTiming {
   hop: number;
   segmentFrames: number;
   segments: number;
+  /**
+   * Stream frame at which each part's range starts (the first after its pre-roll): planned from
+   * the parts' lengths, then as the audio pass found it.
+   */
+  partStarts: number[];
 }
 
 export interface ExportManifest {
-  version: 2;
+  version: 3;
   /** Increases with every write (the manifest is written to two files in turn). */
   sequence: number;
   id: string;
   createdAt: string;
-  source: ExportSource;
-  /** Seconds in the source file. */
-  range: { start: number; end: number };
+  /** The tracks of the video in order, one for a single track (EX-05). */
+  parts: ExportPart[];
   format: VideoFormat;
   codecs: ExportCodecs;
   visuals: ExportVisuals;
   /** Tempo and effects of the audio (EX-02). */
   sound: SoundSettings;
+  /** Seconds the picture and the sound fade in at the start and out at the end (EX-16). */
+  fade: number;
   /**
-   * Image files of the Logo Spectrum mode, stored with the job (their MIME types): the cover
-   * art is shown as the logo (LS-15).
+   * Image files of the Logo Spectrum mode, stored with the job (their MIME types), and the cover
+   * art of each part, shown as the logo (LS-15).
    */
-  images: { background: string | null; logo: string | null; cover?: string | null };
+  images: { background: string | null; logo: string | null; covers: (string | null)[] };
   timing: ExportTiming;
   destination: 'file' | 'download';
   fileName: string;
@@ -144,13 +159,149 @@ export interface ExportManifest {
   resumeCount: number;
 }
 
-/** The images an export job keeps: the Logo Spectrum's background and logo, the cover art. */
-export const JOB_IMAGES = ['background', 'logo', 'cover'] as const;
+/** The image files an export job keeps for the Logo Spectrum: its background and logo. */
+export const JOB_IMAGES = ['background', 'logo'] as const;
 export type JobImage = (typeof JOB_IMAGES)[number];
+
+/** The file of a part's cover art in the job (the first has the name of a single track's). */
+export function coverFile(index: number): string {
+  return index === 0 ? 'image-cover' : `image-cover-${index}`;
+}
+
+/** The file of a part's beat grid in the job (the first has the name of a single track's). */
+export function gridFile(index: number): string {
+  return index === 0 ? 'beat-grid.bin' : `beat-grid-${index}.bin`;
+}
 
 /** Length of the video for `range` (source seconds) played at the tempo of `sound`. */
 export function exportSeconds(range: { start: number; end: number }, sound: SoundSettings): number {
   return (range.end - range.start) / sound.rate;
+}
+
+/** Frames of the crossfade where a part stops at an out marker. */
+const CROSSFADE_FRAMES = Math.max(1, Math.round(CROSSFADE_SECONDS * EXPORT_RATE));
+
+/**
+ * Where each part's range starts in the joined music, counted from the start of the first
+ * part's range (48 kHz frames), and the length of it all: a part that stops at an out marker
+ * crosses its last frames into what follows, as in the player.
+ */
+export function partLayout(parts: readonly ExportPart[]): { starts: number[]; length: number } {
+  const starts: number[] = [];
+  let at = 0;
+  parts.forEach((part, index) => {
+    starts.push(at);
+    at += Math.max(0, Math.round((part.range.end - part.range.start) * EXPORT_RATE));
+    if (part.cut && index + 1 < parts.length) at -= CROSSFADE_FRAMES;
+  });
+  return { starts, length: at };
+}
+
+/** Seconds of video for `parts` played at the tempo of `sound`. */
+export function partsSeconds(parts: readonly ExportPart[], sound: SoundSettings): number {
+  return partLayout(parts).length / EXPORT_RATE / sound.rate;
+}
+
+/**
+ * Plans frames, pre-rolls and segments for a video of `parts` at `fps`: as for one range of
+ * the first file that is as long as all of them, and where each part starts.
+ */
+export function planParts(
+  parts: readonly ExportPart[],
+  fps: number,
+  hop: number,
+  sound: SoundSettings = DEFAULT_SOUND,
+  segmentSeconds?: number,
+): ExportTiming {
+  const { starts, length } = partLayout(parts);
+  const first = parts[0]!.range.start;
+  const range = { start: first, end: first + length / EXPORT_RATE };
+  const timing = planTiming(range, fps, hop, sound, segmentSeconds);
+  // The stream starts with the pre-roll before the first range.
+  const lead = Math.round(first * EXPORT_RATE) - timing.sourceStart;
+  return { ...timing, partStarts: starts.map((start) => start + lead) };
+}
+
+/** The part heard at video frame `n`, and the second of its file heard then. */
+export function partAt(
+  manifest: Pick<ExportManifest, 'parts' | 'timing' | 'sound'>,
+  fps: number,
+  n: number,
+): { index: number; seconds: number } {
+  const { parts, timing, sound } = manifest;
+  // What is heard left the sound chain the effects' delay earlier.
+  const stream = (frameTime(timing, fps, n) - timing.analysisStart) * sound.rate;
+  const starts = timing.partStarts;
+  let index = 0;
+  while (index + 1 < starts.length && starts[index + 1]! <= stream) index++;
+  // The first part plays from where the stream starts, the others from their range.
+  const from =
+    index === 0 ? timing.sourceStart : Math.round(parts[index]!.range.start * EXPORT_RATE);
+  const offset = index === 0 ? stream : stream - starts[index]!;
+  return { index, seconds: (from + offset) / EXPORT_RATE };
+}
+
+/** The track overlay's view of `part` (LS-18): its names and its range. */
+export function partTrack(part: ExportPart): OverlayTrack {
+  return { title: part.source.title, artist: part.source.artist, ...part.range };
+}
+
+/** A chapter of a video of several tracks (EX-14). */
+export interface Chapter {
+  /** Where it starts in the video. */
+  seconds: number;
+  title: string;
+}
+
+/** The chapters of a video: where each part starts in it, named after its track (EX-14). */
+export function partChapters(
+  parts: readonly ExportPart[],
+  timing: Pick<ExportTiming, 'partStarts'>,
+  sound: SoundSettings,
+): Chapter[] {
+  const lead = timing.partStarts[0] ?? 0;
+  return parts.map((part, index) => ({
+    seconds: ((timing.partStarts[index] ?? lead) - lead) / EXPORT_RATE / sound.rate,
+    title: part.source.artist ? `${part.source.artist} – ${part.source.title}` : part.source.title,
+  }));
+}
+
+/**
+ * The chapters as YouTube reads them from a description: "0:00 Artist – Title" per line, at the
+ * nearest second.
+ */
+export function chapterText(chapters: readonly Chapter[]): string {
+  return chapters
+    .map((chapter) => `${clockText(Math.round(chapter.seconds))} ${chapter.title}`)
+    .join('\n');
+}
+
+/** Shortest chapter YouTube shows, and the fewest chapters (seconds, count). */
+export const CHAPTER_MIN_SECONDS = 10;
+export const CHAPTER_MIN_COUNT = 3;
+
+/** Why YouTube would not show these chapters of a video of `seconds`; null when it would. */
+export function chapterProblem(chapters: readonly Chapter[], seconds: number): string | null {
+  if (chapters.length < CHAPTER_MIN_COUNT) {
+    return `YouTube shows chapters only for ${CHAPTER_MIN_COUNT} tracks or more.`;
+  }
+  const short = chapters.find((chapter, index) => {
+    const end = chapters[index + 1]?.seconds ?? seconds;
+    return end - chapter.seconds < CHAPTER_MIN_SECONDS;
+  });
+  return short
+    ? `YouTube shows chapters only if each is at least ${CHAPTER_MIN_SECONDS} s long; “${short.title}” is shorter.`
+    : null;
+}
+
+/**
+ * How much of the picture and the sound shows `seconds` into a video of `total` seconds that
+ * fades in and out over `fade` seconds (0…1).
+ */
+export function fadeAt(fade: number, seconds: number, total: number): number {
+  if (fade <= 0) return 1;
+  const t = Math.min(1, Math.max(0, Math.min(seconds, total - seconds) / fade));
+  return t * t * (3 - 2 * t);
 }
 
 /** Plans frames, pre-rolls and segments for `range` (source seconds) at `fps`. */
@@ -184,30 +335,59 @@ export function planTiming(
     hop,
     segmentFrames,
     segments: Math.ceil(frames / segmentFrames),
+    partStarts: [Math.round(range.start * EXPORT_RATE) - sourceStart],
   };
 }
 
+/** A manifest of version 2: one track (`source`, `range`), perhaps its cover. */
+interface ManifestV2 extends Omit<ExportManifest, 'version' | 'parts' | 'fade' | 'images'> {
+  version: 2;
+  source: ExportSource;
+  range: { start: number; end: number };
+  images: { background: string | null; logo: string | null; cover?: string | null };
+}
+
 /**
- * A manifest of this version, from a stored one: exports started before tempo and effects
- * (version 1) counted from the start of the file and played the sound unchanged.
+ * A manifest of this version, from a stored one. Exports started before tempo and effects
+ * (version 1) counted from the start of the file and played the sound unchanged; those of one
+ * track (version 2) had its source and range instead of parts, and played it to its end.
  */
 export function upgradeManifest(stored: unknown): ExportManifest | null {
-  const manifest = stored as ExportManifest | { version: 1; timing: ExportTiming } | null;
+  let manifest = stored as ExportManifest | ManifestV2 | { version: 1; timing: ExportTiming };
   if (!manifest || typeof manifest !== 'object') return null;
-  if (manifest.version === 2) return manifest;
-  if (manifest.version !== 1) return null;
-  const timing = manifest.timing;
-  return {
-    ...(manifest as unknown as ExportManifest),
-    version: 2,
-    sound: DEFAULT_SOUND,
-    timing: {
-      ...timing,
-      sourceStart: timing.analysisStart,
-      analysisStart: 0,
-      audioStart: timing.audioStart - timing.analysisStart,
-    },
-  };
+  if (manifest.version === 1) {
+    const timing = manifest.timing;
+    manifest = {
+      ...(manifest as unknown as ManifestV2),
+      version: 2,
+      sound: DEFAULT_SOUND,
+      timing: {
+        ...timing,
+        sourceStart: timing.analysisStart,
+        analysisStart: 0,
+        audioStart: timing.audioStart - timing.analysisStart,
+      },
+    };
+  }
+  if (manifest.version === 2) {
+    const { source, range, images, timing, visuals, ...rest } = manifest;
+    // The overlay of a single track named it by itself.
+    const overlay = visuals.overlay as { settings?: OverlaySettings } | OverlaySettings | undefined;
+    const settings = overlay && 'settings' in overlay ? overlay.settings : overlay;
+    manifest = {
+      ...rest,
+      version: 3,
+      parts: [{ source, range, cut: false }],
+      fade: 0,
+      visuals: { ...visuals, overlay: settings as OverlaySettings | undefined },
+      images: { background: images.background, logo: images.logo, covers: [images.cover ?? null] },
+      timing: {
+        ...timing,
+        partStarts: [Math.round(range.start * EXPORT_RATE) - timing.sourceStart],
+      },
+    };
+  }
+  return manifest.version === 3 ? manifest : null;
 }
 
 /** The output frame heard at video frame `n` (negative n: the pre-roll). */
@@ -256,4 +436,22 @@ export function exportFileName(
     .trim()
     .slice(0, 150);
   return `${clean || 'Video'}.${extension}`;
+}
+
+/**
+ * The file name for a video of `parts`: that of its track for one (with its range if it is not
+ * all of it), "Artist - Title and 2 more" after the first for several (EX-05).
+ */
+export function videoFileName(
+  parts: readonly ExportPart[],
+  extension: string,
+  sound: SoundSettings = DEFAULT_SOUND,
+): string {
+  const first = parts[0]!;
+  if (parts.length === 1) {
+    const whole = first.range.start <= 0 && !first.cut;
+    return exportFileName(first.source, whole ? null : first.range, extension, sound);
+  }
+  const title = `${first.source.title} and ${parts.length - 1} more`;
+  return exportFileName({ title, artist: first.source.artist }, null, extension, sound);
 }

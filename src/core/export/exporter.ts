@@ -4,11 +4,15 @@ import { decodeImage, type StoredImages } from '../render/visual-assets';
 import { WorkerClient } from '../util/worker-rpc';
 import {
   CANCELLED,
-  exportSeconds,
+  coverFile,
+  JOB_IMAGES,
   OUTPUT_FILE,
+  partChapters,
+  partsSeconds,
+  type Chapter,
   type ExportCodecs,
   type ExportManifest,
-  type ExportSource,
+  type ExportPart,
   type ExportVisuals,
 } from './export-job';
 import type {
@@ -18,7 +22,6 @@ import type {
   ResumeArgs,
   StartArgs,
 } from './export.worker';
-import { JOB_IMAGES, type JobImage } from './export-job';
 import ExportWorker from './export.worker.ts?worker';
 import { clearJob, readJobFile, readManifest } from './job-store';
 import type { VideoFormat } from './video-format';
@@ -29,19 +32,26 @@ import type { VideoFormat } from './video-format';
  * interrupted by a reload or a crash.
  */
 
-export interface ExportRequest {
+/** A track of a video: its part, its file, its beat grid and its cover art. */
+export interface RequestPart {
+  part: ExportPart;
   file: File;
-  source: ExportSource;
-  range: { start: number; end: number };
+  /** The file's beat grid, if it has been analysed (AN-07). */
+  grid: BeatGrid | null;
+  /** The cover art, to show as the logo (LS-15); null: the logo image. */
+  cover: Blob | null;
+}
+
+export interface ExportRequest {
+  /** The tracks of the video, in order (EX-05). */
+  parts: RequestPart[];
   format: VideoFormat;
   visuals: ExportVisuals;
   /** Tempo and effects (EX-02). */
   sound: SoundSettings;
-  /** The file's beat grid, if it has been analysed (AN-07). */
-  grid: BeatGrid | null;
+  /** Seconds of the fades at the start and the end (EX-16). */
+  fade: number;
   images: StoredImages;
-  /** The track's cover art, to show as the logo (LS-15); null: the logo image. */
-  cover: Blob | null;
   /** The file to write (Chromium); null downloads the video at the end. */
   destination: FileSystemFileHandle | null;
   fileName: string;
@@ -76,7 +86,12 @@ export type ExportState =
       bytes: number;
       /** Download link when the video is in browser storage; null when it was saved to a file. */
       url: string | null;
+      /** Wall-clock seconds the export took; null for one found in storage. */
       seconds: number | null;
+      /** Seconds of video. */
+      duration: number;
+      /** Where each track starts in the video (EX-14). */
+      chapters: Chapter[];
     }
   | { status: 'failed'; message: string; resumable: boolean };
 
@@ -117,55 +132,67 @@ export class Exporter {
   async start(request: ExportRequest): Promise<void> {
     if (this.current.status === 'running') throw new Error('An export is already running.');
     this.releaseDownload();
-    const images: StartArgs['images'] = { background: null, logo: null, cover: null };
+    const images: StartArgs['images'] = { background: null, logo: null };
+    const covers: StartArgs['covers'] = request.parts.map(() => null);
     const transfer: Transferable[] = [];
+    const decode = async (blob: Blob): Promise<ImageInput> => {
+      const input = { blob, bitmap: await decodeImage(blob) };
+      transfer.push(input.bitmap);
+      return input;
+    };
     if (request.visuals.mode === 'logoSpectrum') {
-      const blobs = {
-        background: request.images.background?.blob ?? null,
-        logo: request.images.logo?.blob ?? null,
-        cover: request.cover,
-      };
       for (const kind of JOB_IMAGES) {
-        const blob = blobs[kind];
-        if (!blob) continue;
-        const input: ImageInput = { blob, bitmap: await decodeImage(blob) };
-        images[kind] = input;
-        transfer.push(input.bitmap);
+        const blob = request.images[kind]?.blob;
+        if (blob) images[kind] = await decode(blob);
+      }
+      for (const [index, { cover }] of request.parts.entries()) {
+        if (cover) covers[index] = await decode(cover).catch(() => null);
       }
     }
+    const parts = request.parts.map((entry) => entry.part);
     const args: StartArgs = {
-      file: request.file,
-      source: request.source,
-      range: request.range,
+      parts,
+      files: request.parts.map((entry) => entry.file),
       format: request.format,
       visuals: request.visuals,
       sound: request.sound,
-      grid: request.grid,
+      fade: request.fade,
+      grids: request.parts.map((entry) => entry.grid),
       images,
+      covers,
       destination: request.destination,
       fileName: request.fileName,
       segmentSeconds: request.segmentSeconds,
     };
-    const duration = exportSeconds(request.range, request.sound);
+    const duration = partsSeconds(parts, request.sound);
     await this.run('start', args, transfer, request.fileName, request.format, duration);
   }
 
-  /** Continues an interrupted export; `file` is only needed if its audio was not finished. */
-  async resume(file: File | null, destination: FileSystemFileHandle | null): Promise<void> {
+  /**
+   * Continues an interrupted export; `files` (those of its parts, in order) are only needed if
+   * its audio was not finished.
+   */
+  async resume(files: (File | null)[], destination: FileSystemFileHandle | null): Promise<void> {
     if (this.current.status !== 'interrupted' && this.current.status !== 'failed') return;
     const manifest = await readManifest();
     if (!manifest || manifest.progress.finished) {
       this.set({ status: 'idle' });
       return;
     }
-    const images: ResumeArgs['images'] = { background: null, logo: null, cover: null };
+    const images: ResumeArgs['images'] = { background: null, logo: null };
     const transfer: Transferable[] = [];
     for (const kind of JOB_IMAGES) {
-      const bitmap = await jobImage(manifest, kind);
+      const bitmap = await jobImage(manifest, `image-${kind}`, manifest.images[kind]);
       images[kind] = bitmap;
       if (bitmap) transfer.push(bitmap);
     }
-    const args: ResumeArgs = { file, images, destination };
+    const covers: ResumeArgs['covers'] = [];
+    for (const [index, type] of manifest.images.covers.entries()) {
+      const bitmap = await jobImage(manifest, coverFile(index), type);
+      covers.push(bitmap);
+      if (bitmap) transfer.push(bitmap);
+    }
+    const args: ResumeArgs = { files, images, covers, destination };
     const duration = manifest.timing.frames / manifest.format.fps;
     await this.run('resume', args, transfer, manifest.fileName, manifest.format, duration);
   }
@@ -255,6 +282,8 @@ export class Exporter {
         bytes: result.bytes,
         url,
         seconds: result.seconds,
+        duration,
+        chapters: result.chapters,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -359,6 +388,8 @@ export class Exporter {
         bytes: manifest.progress.bytes ?? 0,
         url,
         seconds: null,
+        duration: manifest.timing.frames / manifest.format.fps,
+        chapters: partChapters(manifest.parts, manifest.timing, manifest.sound),
       });
     } catch {
       await removeJob();
@@ -392,12 +423,15 @@ async function removeJob(): Promise<void> {
   }
 }
 
-/** An image stored with an export job, decoded for rendering. */
-async function jobImage(manifest: ExportManifest, kind: JobImage): Promise<ImageBitmap | null> {
-  const type = manifest.images[kind] ?? null;
+/** An image stored with an export job (`name`, of MIME type `type`), decoded for rendering. */
+async function jobImage(
+  manifest: ExportManifest,
+  name: string,
+  type: string | null | undefined,
+): Promise<ImageBitmap | null> {
   if (!type || manifest.visuals.mode !== 'logoSpectrum') return null;
   try {
-    const file = await readJobFile(`image-${kind}`);
+    const file = await readJobFile(name);
     return await decodeImage(file.slice(0, file.size, type));
   } catch {
     return null;

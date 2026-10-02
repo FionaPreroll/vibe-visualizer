@@ -8,7 +8,7 @@ FibeStation turns music into visuals: a logo with a spectrum ring, or kaleidosco
 
 1. **Add music.** Drop audio files or whole folders onto the window, or click **Add files** (the folder button next to it adds a folder). MP3, M4A, FLAC, Ogg, Opus and WAV work; several files make a queue. Double-click a track to play it, and press **Space** to pause.
 2. **Pick a look.** The top bar switches between *Logo Spectrum*, *Kaleidoscope* and *Analysis*. The **Visuals** tab in the side panel has presets and every setting, and takes your own logo and background.
-3. **Make a video or play live.** **Export** in the top bar renders a video of the track, or of the part between two markers. **F** shows the visuals in fullscreen.
+3. **Make a video or play live.** **Export** in the top bar renders a video of the track, of the part between two markers, or of several tracks of the queue. **F** shows the visuals in fullscreen.
 
 To visualise music from somewhere else (a DJ mixer, another app or a browser tab), use the **Live** tab instead of the queue.
 
@@ -88,13 +88,17 @@ While live input runs, the queue pauses; double-click a track to go back to it.
 
 ## Exporting videos
 
-Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K30*, *TikTok / Shorts 1080×1920*, or your own size and frame rate), the quality, and the range: the whole track or the part between the markers. The export uses the same scenes, analysis, settings, tempo and effects as the preview, so the video looks and sounds like what you see and hear.
+Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K30*, *TikTok / Shorts 1080×1920*, or your own size and frame rate), the quality, and the range: the whole track, the part between the markers, or **tracks of the queue**. The export uses the same scenes, analysis, settings, tempo and effects as the preview, so the video looks and sounds like what you see and hear.
+
+- **Several tracks in one video**, such as a mix or an album: choose *Tracks of the queue* and tick the tracks to include (all are ticked at first). They play in the order of the queue, each between its markers, and follow each other as in the player: without a gap, crossing over in 10 ms where a track stops at its out marker. The track overlay names each track while it plays, and the logo shows each one's cover art if that is set up.
+- **Chapters:** a video of several tracks comes with a list of where each track starts ("0:00 Artist – Title", one per line). Paste it into the video's description on YouTube, and YouTube shows the chapters on the timeline. **Copy** puts the list on the clipboard, **Save as text** saves it as a file. YouTube shows chapters only for three tracks or more, each at least 10 seconds long; the dialog says when that is not the case.
+- **Fade in and out:** the picture fades from and to black at the start and the end of the video, over 1–5 seconds, and the sound with it.
 
 - The video is rendered frame by frame, independent of the speed of your graphics card: a slower machine takes longer, and the result is always smooth.
 - In Chrome and Edge you pick the file first, and the video is written straight into it. Other browsers download it at the end.
 - The format is MP4 (H.264 and AAC); a browser without H.264 encoding writes WebM instead.
 - The track overlay and the cover art go into the video as set up for the preview; the dialog says when they do.
-- You can pause or cancel the export, and close the dialog while it runs. Long exports are written in segments; if the tab crashes or you reload, the app offers to resume where it stopped.
+- You can pause or cancel the export, and close the dialog while it runs. Long exports are written in segments; if the tab crashes or you reload, the app offers to resume where it stopped. If the sound was not finished yet, it asks you to add the tracks to the queue again first.
 
 ## DJ controller
 
