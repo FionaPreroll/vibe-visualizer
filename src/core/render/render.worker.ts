@@ -71,12 +71,16 @@ let coverToken = -1;
 let coverLogo = false;
 /** Pictures asked for (EX-10): taken from the next frame drawn. */
 const captures: { id: number; width: number; height: number }[] = [];
-/** The file and position heard at the last frame, and for how many frames it stood still. */
+/** The file and position heard at the last frame, and how long it has stood still (s). */
 const lastHeard = { token: -1, seconds: 0, still: 0 };
 /** A step of the position heard this long or longer is a jump (a seek), not the music. */
 const JUMP_SECONDS = 0.25;
-/** Frames the position may stand still while playing (an analysis frame lasts ~10 ms). */
-const STILL_FRAMES = 6;
+/**
+ * How long the position may stand still while playing (s): at high frame rates a frame can
+ * fall between two analysis frames (~10 ms apart). Longer, it is paused, however few frames
+ * that took.
+ */
+const STILL_SECONDS = 0.05;
 /** Settings of each mode, with the automatic preset switching (PR-02). */
 const logoSpectrumAuto = new PresetAutomation(
   morphLogoSpectrum,
@@ -118,7 +122,7 @@ function playedSince(dt: number, sampled: boolean, live: boolean): number {
   lastHeard.token = heard.token;
   lastHeard.seconds = heard.seconds;
   if (!sameFile || Math.abs(step) >= JUMP_SECONDS) return dt * overlayRate;
-  if (step === 0) return ++lastHeard.still > STILL_FRAMES ? 0 : dt * overlayRate;
+  if (step === 0) return (lastHeard.still += dt) > STILL_SECONDS ? 0 : dt * overlayRate;
   lastHeard.still = 0;
   // Playing on: at the tempo, without the steps of the analysis frames.
   return step > 0 && step < 3 * dt * overlayRate + 0.03 ? dt * overlayRate : step;
@@ -186,7 +190,8 @@ function drawLayer(input: SceneInput): void {
     return;
   }
   kaleidoscope.resize(canvas.width, canvas.height);
-  const look = kaleidoscopeAuto.current;
+  // The look behind is the Logo Spectrum's own (through its morph), else the Kaleidoscope's.
+  const look = logoSpectrumAuto.current.layerLook ?? kaleidoscopeAuto.current;
   if (look !== layerLook) {
     kaleidoscope.setSettings(look);
     layerLook = look;
@@ -248,6 +253,8 @@ function setRunning(value: boolean): void {
 /** Shows `kind` from the next frame on (the scene's buffers follow the canvas size). */
 function activate(kind: SceneKind): void {
   active = kind;
+  // The Kaleidoscope gets its look anew: as the layer behind, or in its own mode.
+  layerLook = null;
   scene = kind === 'logoSpectrum' ? logoSpectrum : kaleidoscope;
   if (scene && canvas) scene.resize(canvas.width, canvas.height);
   // Its settings are brought up to date before its first frame; the switching counts anew.

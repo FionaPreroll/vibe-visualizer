@@ -1,6 +1,7 @@
 <script lang="ts">
   import guide from '../../docs/USER-GUIDE.md?raw';
   import { bugReportLink, BUG_EMAIL } from './app-info';
+  import BackupSection from './BackupSection.svelte';
   import Icon from './Icon.svelte';
   import { guideSections, renderMarkdown } from './markdown';
   import { usePlayer } from './player-context';
@@ -25,6 +26,7 @@
   const app = player.store;
   const SHORTCUTS_ID = 'keyboard-shortcuts';
   const ABOUT_ID = 'about';
+  const BACKUP_ID = 'backup';
   const sections = guideSections(guide).map((entry) => ({
     ...entry,
     html: renderMarkdown(entry.markdown),
@@ -86,6 +88,9 @@
         <!-- The guide is our own text, rendered with everything else escaped. -->
         <!-- eslint-disable-next-line svelte/no-at-html-tags -->
         <div class="guide">{@html current.html}</div>
+      {/if}
+      {#if current.id === BACKUP_ID}
+        <BackupSection />
       {/if}
       {#if current.id === ABOUT_ID}
         <div class="actions">

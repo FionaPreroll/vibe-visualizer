@@ -1,7 +1,14 @@
+import {
+  BUILT_IN_KALEIDO_PRESETS,
+  sanitizeKaleido,
+  type KaleidoSettings,
+} from './kaleido-settings';
+
 /**
  * Parameters of the Logo Spectrum mode (LS-*), with palettes and built-in presets (PR-01).
- * Flat and JSON-serialisable: stored in the app state, recorded as timestamped actions and
- * sent to the render worker as they are.
+ * Flat and JSON-serialisable (but for the Kaleidoscope behind, which is a Kaleidoscope look):
+ * stored in the app state, recorded as timestamped actions and sent to the render worker as
+ * they are.
  */
 
 export const PALETTES = {
@@ -33,6 +40,12 @@ export const BACKGROUND_SOURCES: readonly BackgroundSource[] = ['image', 'kaleid
 export interface LogoSpectrumSettings {
   // Background (LS-01…03, VE-08)
   backgroundSource: BackgroundSource;
+  /**
+   * The Kaleidoscope behind the ring when the background shows it (VE-08): a look of its own
+   * that belongs to this one, so presets and the switching carry it; null: the Kaleidoscope
+   * as it is set up in its own mode.
+   */
+  layerLook: KaleidoSettings | null;
   backgroundFit: 'cover' | 'contain';
   /** 0…1 */
   backgroundBlur: number;
@@ -147,6 +160,7 @@ export interface LogoSpectrumSettings {
 /** The look the presets start from. */
 const CLASSIC: LogoSpectrumSettings = {
   backgroundSource: 'image',
+  layerLook: null,
   backgroundFit: 'cover',
   backgroundBlur: 0.15,
   backgroundDim: 0.35,
@@ -217,6 +231,14 @@ export interface VisualPreset {
 
 function preset(name: string, changes: Partial<LogoSpectrumSettings>): VisualPreset {
   return { name, settings: { ...CLASSIC, ...changes }, builtIn: true };
+}
+
+/** A built-in Kaleidoscope look, to show behind the ring (VE-08). */
+function behind(name: string): Partial<LogoSpectrumSettings> {
+  const look = BUILT_IN_KALEIDO_PRESETS.find((entry) => entry.name === name);
+  if (!look) throw new Error(`There is no Kaleidoscope preset "${name}".`);
+  // The Kaleidoscope moves by itself: few stars and no drift in front of it.
+  return { backgroundSource: 'kaleidoscope', layerLook: look.settings, particles: 90, drift: 0 };
 }
 
 export const BUILT_IN_PRESETS: readonly VisualPreset[] = [
@@ -315,6 +337,76 @@ export const BUILT_IN_PRESETS: readonly VisualPreset[] = [
     backgroundTintAmount: 0.35,
     ...RESPONSIVENESS.smooth,
   }),
+  // With the Kaleidoscope behind the ring (VE-08), so that the switching mixes both modes.
+  preset('Mandala Core', {
+    palette: 'neon',
+    layers: 5,
+    glow: 0.8,
+    bloom: 0.45,
+    backgroundDim: 0.35,
+    ...RESPONSIVENESS.punchy,
+    ...behind('Neon Mandala'),
+  }),
+  preset('Ember Record', {
+    palette: 'fire',
+    layers: 7,
+    layerDelay: 0.05,
+    amplitude: 0.7,
+    topColor: '#fff4d6',
+    rimColor: '#ffd9a0',
+    logoSpin: 100 / 3,
+    backgroundDim: 0.3,
+    ...behind('Ember Vortex'),
+  }),
+  preset('Bloom Halo', {
+    palette: 'ice',
+    layers: 6,
+    glow: 0.7,
+    backgroundDim: 0.3,
+    ...RESPONSIVENESS.smooth,
+    ...behind('Neon Bloom'),
+  }),
+  preset('Ribbon Lines', {
+    palette: 'sunset',
+    ringStyle: 'lines',
+    ringDirection: 'both',
+    thickness: 0.35,
+    logoSize: 0.7,
+    layers: 6,
+    layerSpread: 0.03,
+    glow: 0.8,
+    bloom: 0.45,
+    backgroundDim: 0.4,
+    ...RESPONSIVENESS.smooth,
+    ...behind('Neon Ribbons'),
+  }),
+  preset('Aurora Disc', {
+    palette: 'pastel',
+    layers: 8,
+    layerSpread: 0.04,
+    layerDelay: 0.16,
+    amplitude: 0.7,
+    glow: 0.6,
+    logoSpin: 100 / 3,
+    backgroundDim: 0.3,
+    ...RESPONSIVENESS.smooth,
+    ...behind('Aurora Spiral'),
+  }),
+  preset('Lava Bars', {
+    palette: 'fire',
+    ringStyle: 'bars',
+    ringDirection: 'both',
+    bars: 72,
+    thickness: 0.55,
+    layers: 4,
+    amplitude: 0.5,
+    logoSize: 0.62,
+    glow: 0.7,
+    shake: 0.3,
+    backgroundDim: 0.35,
+    ...RESPONSIVENESS.punchy,
+    ...behind('Lava Braid'),
+  }),
 ];
 
 /** The look of a first visit and of "Reset to defaults": the preset "Classic Rainbow". */
@@ -411,6 +503,9 @@ export function sanitizeSettings(value: unknown): LogoSpectrumSettings {
         continue;
       }
       target[key] = stored;
+    } else if (key === 'layerLook') {
+      result.layerLook =
+        typeof stored === 'object' && stored !== null ? sanitizeKaleido(stored) : null;
     } else if (Array.isArray(stored)) {
       const colors = stored.filter((color) => typeof color === 'string' && COLOR.test(color));
       if (colors.length === MAX_LAYERS) result.customColors = colors as string[];

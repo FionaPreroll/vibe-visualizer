@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_KALEIDO, KALEIDO_SCENES, sanitizeKaleido } from './kaleido-settings';
 import {
   BUILT_IN_PRESETS,
   DEFAULT_LOGO_SPECTRUM,
@@ -74,5 +75,24 @@ describe('visual settings', () => {
       expect(sanitizeSettings(preset.settings)).toEqual(preset.settings);
     }
     for (const colors of Object.values(PALETTES)) expect(colors).toHaveLength(MAX_LAYERS);
+  });
+
+  it('keeps the Kaleidoscope behind as a valid look of its own (VE-08)', () => {
+    const look = sanitizeKaleido({ scene: 'crystal', common: { segments: 99 } });
+    const settings = sanitizeSettings({ backgroundSource: 'kaleidoscope', layerLook: look });
+    expect(settings.layerLook).toEqual(look);
+    // A broken look is mended; none, or something else, is the Kaleidoscope's own.
+    expect(sanitizeSettings({ layerLook: { scene: 'plaid' } }).layerLook).toEqual(DEFAULT_KALEIDO);
+    expect(sanitizeSettings({ layerLook: 'crystal' }).layerLook).toBeNull();
+    expect(sanitizeSettings({}).layerLook).toBeNull();
+  });
+
+  it('has built-in looks with a Kaleidoscope of their own behind the ring', () => {
+    const layered = BUILT_IN_PRESETS.filter((preset) => preset.settings.layerLook);
+    expect(layered.length).toBeGreaterThanOrEqual(5);
+    for (const { settings } of layered) expect(settings.backgroundSource).toBe('kaleidoscope');
+    // Every scene is behind one of them.
+    const scenes = new Set(layered.map(({ settings }) => settings.layerLook!.scene));
+    expect(scenes.size).toBe(KALEIDO_SCENES.length);
   });
 });

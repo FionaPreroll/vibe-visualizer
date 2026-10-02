@@ -344,6 +344,56 @@ test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page 
   expect(errors).toEqual([]);
 });
 
+test('the Kaleidoscope behind is set up in the Logo Spectrum, as a look of its own (VE-08)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const stored = (key: string) =>
+    page.evaluate(
+      (key) => JSON.parse(localStorage.getItem(`vibe-visualizer:${key}:v1`) ?? '{}'),
+      key,
+    );
+  const preset = page.getByTestId('preset-select');
+
+  // A preset with a Kaleidoscope of its own behind the ring.
+  await preset.selectOption('Ribbon Lines');
+  await expect.poll(async () => (await stored('visuals')).layerLook?.scene).toBe('ribbons');
+  await page.getByText('Background', { exact: true }).click();
+  await page.getByTestId('background-layer-edit').click();
+  const behind = page.getByRole('region', { name: 'Settings of the Kaleidoscope behind' });
+  await expect(behind).toBeVisible();
+  await expect(page.getByTestId('scene-ribbons')).toHaveAttribute('aria-checked', 'true');
+  await expect(preset).toHaveValue('Neon Ribbons');
+  // The Logo Spectrum's switching applies: none of the Kaleidoscope's own here.
+  await expect(page.getByTestId('auto-presets')).toHaveCount(0);
+
+  // Set up here, it belongs to the Logo Spectrum; the Kaleidoscope mode keeps its look.
+  await page.getByTestId('scene-crystal').click();
+  await expect.poll(async () => (await stored('visuals')).layerLook?.scene).toBe('crystal');
+  await preset.selectOption('Frozen Mandala');
+  await expect(page.getByRole('slider', { name: 'Star points' })).toBeVisible();
+  expect((await stored('kaleido')).scene ?? 'vortex').toBe('vortex');
+  await page.getByRole('button', { name: 'Kaleidoscope', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-scene', 'kaleidoscope');
+  await expect(page.getByTestId('scene-vortex')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('auto-presets')).toHaveCount(1);
+
+  // Back in the Logo Spectrum, the Kaleidoscope behind is as it was set up.
+  await page.getByRole('button', { name: 'Logo Spectrum' }).click();
+  await expect(stage).toHaveAttribute('data-scene', 'logoSpectrum');
+  await page.getByTestId('edit-behind').click();
+  await expect(page.getByTestId('scene-crystal')).toHaveAttribute('aria-checked', 'true');
+  await expect(preset).toHaveValue('Frozen Mandala');
+  await page.getByRole('tab', { name: 'Logo Spectrum' }).click();
+  await expect(preset).toHaveValue('');
+  expect(errors).toEqual([]);
+});
+
 test('the display settings: resolution, auto-quality and reduce flashing (VE-06, VE-07)', async ({
   page,
 }) => {
@@ -444,5 +494,48 @@ test('a track can be named, and the visuals show its title and cover art (LS-15,
   await page.getByTestId('queue-rename').click();
   await page.getByTestId('track-name-reset').click();
   await expect(item).toContainText('The Testers');
+  expect(errors).toEqual([]);
+});
+
+test('the cover art turns like a record while the music plays (LS-16)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.addInitScript(() =>
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify({ coverLogo: true })),
+  );
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(30, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByText('Logo', { exact: true }).click();
+  await page.getByTestId('logo-spin').selectOption({ label: '45 rpm' });
+
+  // The colours of the cover's quarters, and how far they moved between two looks.
+  const quarters = logoQuarters((await stage.boundingBox())!);
+  const look = async () =>
+    (await measure(page, await stage.screenshot(), quarters)).flatMap((quarter) => quarter.mean);
+  const moved = (a: number[], b: number[]) =>
+    a.reduce((sum, value, i) => sum + Math.abs(value - b[i]!), 0);
+  const play = page.getByTestId('play-button');
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Pause');
+  await expect.poll(look).not.toEqual(Array(12).fill(0));
+  // Playing, it turns: at 45 rpm, 0.3 s is about 80°.
+  const a = await look();
+  await page.waitForTimeout(300);
+  expect(moved(a, await look())).toBeGreaterThan(150);
+  // Paused, it stands.
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Play');
+  await page.waitForTimeout(800);
+  const b = await look();
+  await page.waitForTimeout(500);
+  expect(moved(b, await look())).toBeLessThan(20);
   expect(errors).toEqual([]);
 });

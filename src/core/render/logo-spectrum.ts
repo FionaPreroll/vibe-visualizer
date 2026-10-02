@@ -13,6 +13,7 @@ import {
   supportsFloatTargets,
   type Target,
 } from './gl';
+import type { KaleidoSettings } from './kaleido-settings';
 import { NO_CAMERA, PostProcessing, type Camera } from './post';
 import type { Scene, SceneInput, SceneSnapshot } from './scene';
 import { CURVE_POINTS, SpectrumShaper } from './spectrum-shaper';
@@ -279,6 +280,8 @@ void main() {
 }`;
 
 const MAX_PARTICLES = 600;
+/** How quickly a logo that stops turning comes back upright (time constant, s). */
+const UPRIGHT_SECONDS = 0.25;
 
 /**
  * The slow drift of the background (LS-03, Ken Burns): a gentle zoom, and a pan within what
@@ -431,6 +434,11 @@ export class LogoSpectrumScene implements Scene {
     return this.settings.backgroundSource === 'kaleidoscope';
   }
 
+  /** The Kaleidoscope look behind of the settings shown now (null: the Kaleidoscope's own). */
+  get layerLook(): KaleidoSettings | null {
+    return this.settings.layerLook;
+  }
+
   /** The picture of the layer behind for the next frame (null: none). */
   setBackgroundLayer(texture: WebGLTexture | null): void {
     this.layer = texture;
@@ -492,9 +500,16 @@ export class LogoSpectrumScene implements Scene {
     const scene = this.scene;
     if (!scene) return;
     this.frameCount++;
-    // The logo turns with the music like a record: it stands while paused (LS-16).
-    const played = Math.min(Math.max(input.played ?? dt, -0.5), 0.5);
-    this.logoTurns = (((this.logoTurns + (played * s.logoSpin) / 60) % 1) + 1) % 1;
+    // The logo turns with the music like a record: it stands while paused (LS-16). Not
+    // turning at all, it comes back upright, the short way.
+    if (s.logoSpin > 0) {
+      const played = Math.min(Math.max(input.played ?? dt, -0.5), 0.5);
+      this.logoTurns = (((this.logoTurns + (played * s.logoSpin) / 60) % 1) + 1) % 1;
+    } else if (this.logoTurns !== 0) {
+      const off = this.logoTurns > 0.5 ? this.logoTurns - 1 : this.logoTurns;
+      const eased = off * Math.exp(-dt / UPRIGHT_SECONDS);
+      this.logoTurns = Math.abs(eased) < 1e-4 ? 0 : (eased + 1) % 1;
+    }
 
     // Audio drives.
     const low = 0.5 * features[F.bands]! + 0.5 * features[F.bands + 1]!;

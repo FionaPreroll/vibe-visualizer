@@ -45,6 +45,18 @@ describe('morphing looks (PR-02)', () => {
     expect(sanitizeKaleido(early)).toEqual(early);
   });
 
+  it('morphs the Kaleidoscope behind with the Logo Spectrum look, or changes it halfway', () => {
+    const [mandala, ember] = ['Mandala Core', 'Ember Record'].map(
+      (name) => BUILT_IN_PRESETS.find((preset) => preset.name === name)!.settings,
+    );
+    const between = morphLogoSpectrum(mandala!, ember!, 0.3);
+    expect(between.layerLook).toEqual(morphKaleido(mandala!.layerLook!, ember!.layerLook!, 0.3));
+    expect(sanitizeSettings(between)).toEqual(between);
+    // Without a look of its own on one side, the one behind changes halfway.
+    expect(morphLogoSpectrum(classic!, ember!, 0.4).layerLook).toBeNull();
+    expect(morphLogoSpectrum(classic!, ember!, 0.6).layerLook).toBe(ember!.layerLook);
+  });
+
   it('moves to a target over time, frame by frame, and says when nothing changed', () => {
     const morph = new SettingsMorph(morphLogoSpectrum, classic!);
     expect(morph.advance(1 / 60)).toBe(classic);

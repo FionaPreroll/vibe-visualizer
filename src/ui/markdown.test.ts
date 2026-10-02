@@ -15,6 +15,7 @@ describe('user guide', () => {
       'live-input',
       'exporting-videos',
       'dj-controller',
+      'backup',
       'keyboard-shortcuts',
       'about',
     ]);

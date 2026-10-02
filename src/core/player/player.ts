@@ -1195,6 +1195,21 @@ export class Player {
     this.dispatch({ type: 'kaleido/replaced', kaleido });
   }
 
+  /** The Kaleidoscope behind the Logo Spectrum (VE-08): another scene, with its look. */
+  setLayerScene(scene: KaleidoSceneId): void {
+    this.dispatch({ type: 'layer/scene', scene });
+  }
+
+  /** Changes one parameter of the Kaleidoscope behind the Logo Spectrum. */
+  setLayerParam(scope: 'common' | KaleidoSceneId, key: string, value: ParamValue): void {
+    this.dispatch({ type: 'layer/param', scope, key, value });
+  }
+
+  /** Puts a Kaleidoscope look (a preset) behind the Logo Spectrum. */
+  replaceLayer(kaleido: KaleidoSettings): void {
+    this.dispatch({ type: 'layer/replaced', kaleido });
+  }
+
   /**
    * Sets the in or out marker of the current track (TR-09), at the playback position unless
    * given, on the nearest beat when quantizing (`snap`: a dragged marker is snapped already);

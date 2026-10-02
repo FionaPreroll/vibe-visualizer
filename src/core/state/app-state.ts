@@ -13,7 +13,8 @@ import { DEFAULT_AUTO_PRESETS, type AutoPresets } from '../render/preset-directo
 import {
   DEFAULT_KALEIDO,
   sanitizeKaleido,
-  sceneDefaults,
+  withKaleidoParam,
+  withKaleidoScene,
   type KaleidoSceneId,
   type KaleidoSettings,
   type ParamValue,
@@ -306,6 +307,10 @@ export type AppAction =
   /** One parameter: a common one or one of a scene. */
   | { type: 'kaleido/param'; scope: 'common' | KaleidoSceneId; key: string; value: ParamValue }
   | { type: 'kaleido/replaced'; kaleido: KaleidoSettings }
+  /** The Kaleidoscope behind the Logo Spectrum (VE-08): another scene, a parameter, a look. */
+  | { type: 'layer/scene'; scene: KaleidoSceneId }
+  | { type: 'layer/param'; scope: 'common' | KaleidoSceneId; key: string; value: ParamValue }
+  | { type: 'layer/replaced'; kaleido: KaleidoSettings }
   | { type: 'sound/changed'; changes: Partial<SoundSettings> }
   /** A sound preset was applied (FX-10): all sound settings at once. */
   | { type: 'sound/replaced'; sound: SoundSettings }
@@ -578,8 +583,14 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return state.error === action.message ? state : { ...state, error: action.message };
     case 'settings/changed':
       return { ...state, settings: { ...state.settings, ...action.changes } };
-    case 'visuals/changed':
-      return { ...state, visuals: sanitizeSettings({ ...state.visuals, ...action.changes }) };
+    case 'visuals/changed': {
+      const changes = { ...action.changes };
+      // The Kaleidoscope behind starts as the Kaleidoscope is set up, and is its own from then.
+      if (changes.backgroundSource === 'kaleidoscope' && !state.visuals.layerLook) {
+        changes.layerLook = state.kaleido;
+      }
+      return { ...state, visuals: sanitizeSettings({ ...state.visuals, ...changes }) };
+    }
     case 'visuals/replaced':
       return { ...state, visuals: sanitizeSettings(action.visuals) };
     case 'sound/changed': {
@@ -595,32 +606,32 @@ export function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, sound: sanitizeSound(action.sound) };
     case 'kaleido/scene': {
       if (action.scene === state.kaleido.scene) return state;
-      const look = sceneDefaults(action.scene).common;
-      return {
-        ...state,
-        kaleido: sanitizeKaleido({
-          ...state.kaleido,
-          scene: action.scene,
-          common: { ...state.kaleido.common, ...look },
-        }),
-      };
+      return { ...state, kaleido: withKaleidoScene(state.kaleido, action.scene) };
     }
     case 'kaleido/param': {
       const { scope, key, value } = action;
-      const kaleido =
-        scope === 'common'
-          ? { ...state.kaleido, common: { ...state.kaleido.common, [key]: value } }
-          : {
-              ...state.kaleido,
-              scenes: {
-                ...state.kaleido.scenes,
-                [scope]: { ...state.kaleido.scenes[scope], [key]: value },
-              },
-            };
-      return { ...state, kaleido: sanitizeKaleido(kaleido) };
+      return { ...state, kaleido: withKaleidoParam(state.kaleido, scope, key, value) };
     }
     case 'kaleido/replaced':
       return { ...state, kaleido: sanitizeKaleido(action.kaleido) };
+    // The look behind starts from the Kaleidoscope's own where it has none yet.
+    case 'layer/scene': {
+      const look = state.visuals.layerLook ?? state.kaleido;
+      if (action.scene === look.scene && state.visuals.layerLook) return state;
+      const layerLook = withKaleidoScene(look, action.scene);
+      return { ...state, visuals: { ...state.visuals, layerLook } };
+    }
+    case 'layer/param': {
+      const { scope, key, value } = action;
+      const look = state.visuals.layerLook ?? state.kaleido;
+      const layerLook = withKaleidoParam(look, scope, key, value);
+      return { ...state, visuals: { ...state.visuals, layerLook } };
+    }
+    case 'layer/replaced':
+      return {
+        ...state,
+        visuals: { ...state.visuals, layerLook: sanitizeKaleido(action.kaleido) },
+      };
     case 'live/starting':
       return { ...state, live: { ...state.live, status: 'starting', error: null } };
     case 'live/started':

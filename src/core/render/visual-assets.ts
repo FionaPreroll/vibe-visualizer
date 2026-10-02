@@ -15,7 +15,8 @@ export interface StoredImage {
 
 export type StoredImages = Record<ImageKind, StoredImage | null>;
 
-const DIRECTORY = 'visual-assets';
+/** The directory of the images in the Origin Private File System, a file per kind. */
+export const ASSET_DIRECTORY = 'visual-assets';
 const NAMES_KEY = 'vibe-visualizer:assets:v1';
 /** Larger images are scaled down: GPUs limit texture sizes, and it saves memory. */
 const MAX_SIZE = 4096;
@@ -129,7 +130,7 @@ function readNames(): Record<ImageKind, string | null> {
 
 async function assetDirectory(): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(DIRECTORY, { create: true });
+  return root.getDirectoryHandle(ASSET_DIRECTORY, { create: true });
 }
 
 function typeForName(name: string): string {
