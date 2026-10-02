@@ -46,16 +46,19 @@ export const OUTPUT_FILE = 'output';
 export const CANCELLED = 'The export was cancelled.';
 
 /**
- * The visuals of the video: a mode, its settings (at the start), and the automatic preset
- * switching (PR-02) with the presets that take part, if it is on.
+ * The visuals of the video: a mode, its settings (at the start), the automatic preset
+ * switching (PR-02) with the presets that take part if it is on, and reduce flashing (VE-06).
  */
-export type ExportVisuals =
+export type ExportVisuals = (
   | {
       mode: 'logoSpectrum';
       settings: LogoSpectrumSettings;
       auto?: ExportSwitching<LogoSpectrumSettings>;
+      /** The Kaleidoscope behind, when a look of the video shows it (VE-08). */
+      layer?: KaleidoSettings;
     }
-  | { mode: 'kaleidoscope'; settings: KaleidoSettings; auto?: ExportSwitching<KaleidoSettings> };
+  | { mode: 'kaleidoscope'; settings: KaleidoSettings; auto?: ExportSwitching<KaleidoSettings> }
+) & { reduceFlashing?: boolean };
 
 export interface ExportSwitching<S> {
   config: AutoPresets;

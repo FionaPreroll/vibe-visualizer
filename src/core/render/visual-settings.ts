@@ -26,9 +26,13 @@ export const RING_STYLES: readonly RingStyle[] = ['blob', 'bars', 'lines', 'dots
 /** Which way the spectrum grows from the ring. */
 export type RingDirection = 'outward' | 'inward' | 'both';
 export const RING_DIRECTIONS: readonly RingDirection[] = ['outward', 'inward', 'both'];
+/** What the background shows (VE-08): the image (or the default), or the Kaleidoscope, live. */
+export type BackgroundSource = 'image' | 'kaleidoscope';
+export const BACKGROUND_SOURCES: readonly BackgroundSource[] = ['image', 'kaleidoscope'];
 
 export interface LogoSpectrumSettings {
-  // Background (LS-01…03)
+  // Background (LS-01…03, VE-08)
+  backgroundSource: BackgroundSource;
   backgroundFit: 'cover' | 'contain';
   /** 0…1 */
   backgroundBlur: number;
@@ -137,6 +141,7 @@ export interface LogoSpectrumSettings {
 
 /** The look the presets start from. */
 const CLASSIC: LogoSpectrumSettings = {
+  backgroundSource: 'image',
   backgroundFit: 'cover',
   backgroundBlur: 0.15,
   backgroundDim: 0.35,
@@ -387,6 +392,9 @@ export function sanitizeSettings(value: unknown): LogoSpectrumSettings {
       if (typeof stored !== 'string') continue;
       if (key === 'palette' && !(PALETTE_NAMES as string[]).includes(stored)) continue;
       if (key === 'backgroundFit' && stored !== 'cover' && stored !== 'contain') continue;
+      if (key === 'backgroundSource' && !(BACKGROUND_SOURCES as string[]).includes(stored)) {
+        continue;
+      }
       if (key === 'ringStyle' && !(RING_STYLES as string[]).includes(stored)) continue;
       if (key === 'ringDirection' && !(RING_DIRECTIONS as string[]).includes(stored)) continue;
       if (

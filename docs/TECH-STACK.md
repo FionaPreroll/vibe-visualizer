@@ -113,9 +113,9 @@ src/
                  and its cache, folder reading, the stored queue
     render/      renderer facade and render worker (OffscreenCanvas, WebGL2), scenes (Logo
                  Spectrum; Kaleidoscope with Vortex, Crystal Mandala and Neon Ribbons), spectrum
-                 shaping, automatic preset switching and morphs,
-                 fixed-step feedback, post-processing (bloom, dithering), settings, parameter specs
-                 and presets, image storage
+                 shaping, automatic preset switching and morphs, fixed-step feedback, the
+                 Kaleidoscope as a layer, post-processing (bloom, dithering, reduce flashing),
+                 auto-quality, settings, parameter specs and presets, image storage
     export/      export worker (audio pass, video pass, join), formats and presets, job plan,
                  stored analysis replay, job storage in the Origin Private File System, Exporter
                  facade

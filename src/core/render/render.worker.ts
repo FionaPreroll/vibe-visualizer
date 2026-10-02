@@ -5,7 +5,7 @@ import { KaleidoscopeScene } from './kaleidoscope';
 import { LogoSpectrumScene } from './logo-spectrum';
 import { PresetAutomation, SWITCHING_SEEDS } from './preset-automation';
 import type { RenderEvent, RenderRequest, SceneKind } from './render-protocol';
-import type { Scene } from './scene';
+import type { Scene, SceneInput } from './scene';
 import { morphKaleido, morphLogoSpectrum } from './settings-morph';
 import { DEFAULT_LOGO_SPECTRUM } from './visual-settings';
 
@@ -42,6 +42,9 @@ let frames = 0;
 let statsStart = 0;
 let statsFrames = 0;
 let lost = false;
+let reduceFlashing = false;
+/** The Kaleidoscope look last given to it as the Logo Spectrum's layer (VE-08). */
+let layerLook: unknown = null;
 const features = new Float32Array(F.size);
 /** Settings of each mode, with the automatic preset switching (PR-02). */
 const logoSpectrumAuto = new PresetAutomation(
@@ -83,7 +86,9 @@ function frame(now: number): void {
   else features.fill(0);
   applySettings(dt);
   try {
-    scene.render({ time: (now - startTime) / 1000, dt, features });
+    const input = { time: (now - startTime) / 1000, dt, features };
+    if (active === 'logoSpectrum') drawLayer(input);
+    scene.render(input);
   } catch (error) {
     running = false;
     post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
@@ -110,6 +115,25 @@ function applySettings(dt: number): void {
     if (settings) kaleidoscope?.setSettings(settings);
     if (switched) post({ type: 'preset', scene: 'kaleidoscope', settings: switched });
   }
+}
+
+/**
+ * The Kaleidoscope behind the Logo Spectrum (VE-08), when its settings ask for it: drawn first,
+ * with its own settings, into a picture the Logo Spectrum's background shows.
+ */
+function drawLayer(input: SceneInput): void {
+  if (!logoSpectrum || !kaleidoscope || !canvas) return;
+  if (!logoSpectrum.wantsLayer) {
+    logoSpectrum.setBackgroundLayer(null);
+    return;
+  }
+  kaleidoscope.resize(canvas.width, canvas.height);
+  const look = kaleidoscopeAuto.current;
+  if (look !== layerLook) {
+    kaleidoscope.setSettings(look);
+    layerLook = look;
+  }
+  logoSpectrum.setBackgroundLayer(kaleidoscope.renderLayer(input));
 }
 
 function setRunning(value: boolean): void {
@@ -169,6 +193,8 @@ scope.addEventListener('message', (event) => {
         // Both scenes live as long as the worker: switching keeps their state and images.
         logoSpectrum = new LogoSpectrumScene(gl);
         kaleidoscope = new KaleidoscopeScene(gl);
+        logoSpectrum.setReduceFlashing(reduceFlashing);
+        kaleidoscope.setReduceFlashing(reduceFlashing);
         activate(active);
         post({ type: 'ready', floatTargets: logoSpectrum.floatTargets });
         setRunning(running);
@@ -193,6 +219,11 @@ scope.addEventListener('message', (event) => {
       case 'autoPresets':
         logoSpectrumAuto.setAuto(message.config, message.logoSpectrum);
         kaleidoscopeAuto.setAuto(message.config, message.kaleidoscope);
+        break;
+      case 'reduceFlashing':
+        reduceFlashing = message.on;
+        logoSpectrum?.setReduceFlashing(message.on);
+        kaleidoscope?.setReduceFlashing(message.on);
         break;
       case 'image':
         logoSpectrum?.setImage(message.kind, message.image);

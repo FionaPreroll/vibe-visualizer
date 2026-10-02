@@ -28,11 +28,16 @@ test('the first start shows the welcome, with the warning about flashing visuals
     'href',
     /^mailto:fipreroll\+app@gmail\.com\?subject=/,
   );
+  // Reduce flashing can be switched on right there (VE-06).
+  await page.getByTestId('welcome-reduce-flashing').check();
   await page.getByTestId('welcome-start').click();
   await expect(dialog).toHaveCount(0);
   await page.reload();
   await expect(page.getByTestId('visual-stage')).toBeVisible();
   await expect(dialog).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByText('Display', { exact: true }).click();
+  await expect(page.getByTestId('reduce-flashing')).toBeChecked();
 });
 
 test('Logo Spectrum renders in a worker and moves with the music', async ({ page }) => {
@@ -289,5 +294,83 @@ test('the presets switch with the music, in the preview and the export (PR-02)',
   await expect(page.getByTestId('auto-presets')).toBeChecked();
   await page.getByTestId('export-button').click();
   await expect(page.getByTestId('export-switching')).toHaveText('(switching presets every 5 s)');
+  expect(errors).toEqual([]);
+});
+
+test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'Clicks.wav',
+    mimeType: 'audio/wav',
+    buffer: createWav(20, 44100),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const stored = () =>
+    page.evaluate(() => JSON.parse(localStorage.getItem('vibe-visualizer:visuals:v1') ?? '{}'));
+
+  await page.getByText('Background', { exact: true }).click();
+  await page
+    .getByRole('radiogroup', { name: 'Background shows' })
+    .getByRole('radio', { name: 'Kaleidoscope' })
+    .click();
+  await expect.poll(async () => (await stored()).backgroundSource).toBe('kaleidoscope');
+  // No image to pick for it; a word on what it shows.
+  await expect(page.getByTestId('background-layer-hint')).toBeVisible();
+  await expect(page.getByTestId('background-input')).toHaveCount(0);
+
+  await page.getByTestId('play-button').click();
+  await expect
+    .poll(async () => Number(await stage.getAttribute('data-fps')), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  const first = await stage.screenshot();
+  await page.waitForTimeout(700);
+  expect(first.equals(await stage.screenshot())).toBe(false);
+
+  // To the Kaleidoscope and back: the layer goes on.
+  await page.getByRole('button', { name: 'Kaleidoscope', exact: true }).click();
+  await expect(stage).toHaveAttribute('data-scene', 'kaleidoscope');
+  await page.getByRole('button', { name: 'Logo Spectrum' }).click();
+  await expect(stage).toHaveAttribute('data-scene', 'logoSpectrum');
+  await expect(stage).toHaveAttribute('data-status', 'running');
+  const back = await stage.screenshot();
+  await page.waitForTimeout(700);
+  expect(back.equals(await stage.screenshot())).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('the display settings: resolution, auto-quality and reduce flashing (VE-06, VE-07)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByText('Display', { exact: true }).click();
+  const settings = () =>
+    page.evaluate(() => JSON.parse(localStorage.getItem('vibe-visualizer:settings:v1') ?? '{}'));
+
+  // Half the resolution: the stage draws at half its pixels, and says so.
+  await page.getByTestId('auto-quality').uncheck();
+  await page.getByRole('slider', { name: 'Resolution', exact: true }).focus();
+  await page.keyboard.press('Home');
+  await expect(stage).toHaveAttribute('data-scale', '0.500');
+  await expect(page.getByTestId('live-scale')).toContainText('Drawn at 50 %');
+  await expect.poll(async () => (await settings()).renderScale).toBe(0.5);
+  await expect.poll(async () => (await settings()).autoQuality).toBe(false);
+
+  await page.getByTestId('reduce-flashing').check();
+  await expect.poll(async () => (await settings()).reduceFlashing).toBe(true);
+  await page.reload();
+  await expect(stage).toHaveAttribute('data-scale', '0.500');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByText('Display', { exact: true }).click();
+  await expect(page.getByTestId('reduce-flashing')).toBeChecked();
   expect(errors).toEqual([]);
 });

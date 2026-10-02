@@ -61,6 +61,12 @@ test('screenshots for the README', async ({ page }) => {
     buffer: wav(mix.left, mix.right, mix.sampleRate),
   };
 
+  // Software rendering is slow: the screenshots keep the full resolution (VE-07).
+  await page.addInitScript(() => {
+    const key = 'vibe-visualizer:settings:v1';
+    if (!localStorage.getItem(key))
+      localStorage.setItem(key, JSON.stringify({ autoQuality: false }));
+  });
   // The welcome of the first start, once its logo is drawn.
   await page.goto('/');
   const welcome = page.getByTestId('welcome');

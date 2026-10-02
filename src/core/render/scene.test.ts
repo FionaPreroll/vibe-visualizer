@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { decodeSnapshot, encodeSnapshot, FixedStepper } from './scene';
+import {
+  decodeSnapshot,
+  encodeSnapshot,
+  FixedStepper,
+  joinSnapshots,
+  splitSnapshot,
+  type SceneSnapshot,
+} from './scene';
 
 describe('FixedStepper', () => {
   it.each([30, 60, 90, 144])('runs 60 steps per second at %i frames per second', (fps) => {
@@ -42,5 +49,30 @@ describe('scene snapshots', () => {
       Uint8Array,
     ]);
     expect(() => decodeSnapshot(new ArrayBuffer(16))).toThrow('Not a scene snapshot');
+  });
+});
+
+describe('layered snapshots (VE-08)', () => {
+  it('join two scenes and split them again, through the file format', () => {
+    const front: SceneSnapshot = {
+      values: { frameCount: 12, calm: true },
+      buffers: [new Float32Array([1, 2]), new Uint16Array([3]), new Uint8Array([4, 5, 6])],
+    };
+    const layer: SceneSnapshot = {
+      values: { frameCount: 40, kickPending: false, calm: false },
+      buffers: [new Uint16Array([7, 8, 9, 10]), new Uint16Array([11, 12, 13, 14])],
+    };
+    const joined = decodeSnapshot(encodeSnapshot(joinSnapshots(front, layer, 'layer.')).buffer);
+    const [a, b] = splitSnapshot(joined, 'layer.');
+    expect(a).toEqual(front);
+    expect(b).toEqual(layer);
+    // A layer without buffers, and a snapshot without the layer.
+    const [c, d] = splitSnapshot(
+      joinSnapshots(front, { values: {}, buffers: [] }, 'layer.'),
+      'layer.',
+    );
+    expect(c).toEqual(front);
+    expect(d).toEqual({ values: {}, buffers: [] });
+    expect(() => splitSnapshot(front, 'layer.')).toThrow();
   });
 });

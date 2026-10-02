@@ -69,6 +69,11 @@ export class Renderer {
     this.send({ type: 'autoPresets', config, logoSpectrum, kaleidoscope });
   }
 
+  /** Reduce flashing (VE-06). */
+  setReduceFlashing(on: boolean): void {
+    this.send({ type: 'reduceFlashing', on });
+  }
+
   /** Hands an image to the worker (the bitmap is transferred and must not be used afterwards). */
   setImage(kind: ImageKind, image: ImageBitmap | null): void {
     this.send({ type: 'image', kind, image }, image ? [image] : []);

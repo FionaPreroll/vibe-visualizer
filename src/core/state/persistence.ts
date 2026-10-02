@@ -12,6 +12,7 @@ import {
   type VisualPreset,
 } from '../render/visual-settings';
 import { isAspectRatio, sanitizeExportOptions, type ExportOptions } from '../export/video-format';
+import { RENDER_SCALE_RANGE } from '../render/auto-quality';
 import { sanitizeAutoPresets } from '../render/preset-director';
 import {
   CUE_COUNT,
@@ -160,6 +161,9 @@ export function loadSettings(): Settings {
     settings.syncOffset = Number.isFinite(settings.syncOffset)
       ? Math.max(SYNC_OFFSET_RANGE.min, Math.min(SYNC_OFFSET_RANGE.max, settings.syncOffset))
       : DEFAULT_SETTINGS.syncOffset;
+    settings.renderScale = Number.isFinite(settings.renderScale)
+      ? Math.max(RENDER_SCALE_RANGE.min, Math.min(RENDER_SCALE_RANGE.max, settings.renderScale))
+      : DEFAULT_SETTINGS.renderScale;
     settings.autoPresets = sanitizeAutoPresets(stored['autoPresets']);
     settings.favourites = sanitizeFavourites(stored['favourites']);
   } catch {

@@ -264,28 +264,50 @@
   </Section>
 
   <Section title="Background">
-    <ImagePicker
-      label="Background image"
-      image={$assets.background}
-      testid="background"
-      onpick={(file) => pickImage('background', file)}
-    />
     <div class="color-row">
-      <span class="label">Fit</span>
-      <div class="quick" role="radiogroup" aria-label="Background fit">
-        {#each ['cover', 'contain'] as const as fit (fit)}
+      <span class="label">Shows</span>
+      <div class="quick" role="radiogroup" aria-label="Background shows">
+        {#each [['image', 'Image'], ['kaleidoscope', 'Kaleidoscope']] as const as [source, label] (source)}
           <button
             role="radio"
-            aria-checked={v.backgroundFit === fit}
-            class:on={v.backgroundFit === fit}
-            onclick={() => set({ backgroundFit: fit })}
+            aria-checked={v.backgroundSource === source}
+            class:on={v.backgroundSource === source}
+            onclick={() => set({ backgroundSource: source })}
           >
-            {fit === 'cover' ? 'Fill' : 'Fit inside'}
+            {label}
           </button>
         {/each}
       </div>
     </div>
-    <Slider {...slider('backgroundBlur', 'Blur', percent)} />
+    {#if v.backgroundSource === 'kaleidoscope'}
+      <p class="hint" data-testid="background-layer-hint">
+        The Kaleidoscope, live behind the ring, as it is set up in its own mode. Darken and tint
+        apply to it; it costs about as much as the Kaleidoscope itself.
+      </p>
+    {:else}
+      <ImagePicker
+        label="Background image"
+        image={$assets.background}
+        testid="background"
+        onpick={(file) => pickImage('background', file)}
+      />
+      <div class="color-row">
+        <span class="label">Fit</span>
+        <div class="quick" role="radiogroup" aria-label="Background fit">
+          {#each ['cover', 'contain'] as const as fit (fit)}
+            <button
+              role="radio"
+              aria-checked={v.backgroundFit === fit}
+              class:on={v.backgroundFit === fit}
+              onclick={() => set({ backgroundFit: fit })}
+            >
+              {fit === 'cover' ? 'Fill' : 'Fit inside'}
+            </button>
+          {/each}
+        </div>
+      </div>
+      <Slider {...slider('backgroundBlur', 'Blur', percent)} />
+    {/if}
     <Slider {...slider('backgroundDim', 'Darken', percent)} />
     <div class="color-row">
       <label for="background-tint">Tint</label>

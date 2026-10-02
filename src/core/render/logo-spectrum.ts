@@ -38,6 +38,9 @@ export type ImageKind = 'background' | 'logo';
 const BACKGROUND = `${FRAGMENT_HEADER}
 uniform sampler2D image;
 uniform int hasImage;
+/** The Kaleidoscope behind (VE-08): the picture's size, rows bottom first. */
+uniform sampler2D layer;
+uniform int hasLayer;
 uniform vec2 scale;
 uniform vec2 pan;
 uniform float dim;
@@ -48,7 +51,10 @@ uniform float tintAmount;
 
 void main() {
   vec3 col;
-  if (hasImage == 1) {
+  if (hasLayer == 1) {
+    vec2 c = (uv - 0.5) * scale + 0.5 + pan * 0.5 * max(1.0 - scale, 0.0);
+    col = texture(layer, c).rgb;
+  } else if (hasImage == 1) {
     // pan moves the visible window within the part of the image that is cropped away.
     vec2 c = (uv - 0.5) * scale + 0.5 + pan * 0.5 * max(1.0 - scale, 0.0);
     bool outside = any(lessThan(c, vec2(0.0))) || any(greaterThan(c, vec2(1.0)));
@@ -345,6 +351,8 @@ export class LogoSpectrumScene implements Scene {
   private frameCount = 0;
 
   private background: { texture: WebGLTexture; width: number; height: number } | null = null;
+  /** The picture of the layer behind (VE-08), for this frame. */
+  private layer: WebGLTexture | null = null;
   private blurred: Target | null = null;
   private blurredFor = -1;
   private logo: { texture: WebGLTexture; width: number; height: number } | null = null;
@@ -396,6 +404,21 @@ export class LogoSpectrumScene implements Scene {
     gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0);
     gl.vertexAttribDivisor(1, 1);
     gl.bindVertexArray(null);
+  }
+
+  /** Reduce flashing (VE-06): sudden jumps in brightness are damped. */
+  setReduceFlashing(on: boolean): void {
+    this.post.setReduceFlashing(on);
+  }
+
+  /** True when the settings show the Kaleidoscope behind (VE-08). */
+  get wantsLayer(): boolean {
+    return this.settings.backgroundSource === 'kaleidoscope';
+  }
+
+  /** The picture of the layer behind for the next frame (null: none). */
+  setBackgroundLayer(texture: WebGLTexture | null): void {
+    this.layer = texture;
   }
 
   setSettings(settings: LogoSpectrumSettings): void {
@@ -463,12 +486,16 @@ export class LogoSpectrumScene implements Scene {
     bindTarget(gl, scene, this.width, this.height);
     const drift = backgroundDrift(s.drift, input.time);
     const zoom = (1 + 0.05 * s.backgroundPulse * bass) * drift.zoom;
-    const [sx, sy] = this.backgroundScale();
+    const layered = this.wantsLayer && this.layer !== null;
+    // The layer has the picture's size: it fills it as it is.
+    const [sx, sy] = layered ? [1, 1] : this.backgroundScale();
     const [tintR, tintG, tintB] = parseColor(s.backgroundTint);
     this.programs.background
       .use()
       .texture('image', this.backgroundTexture(), 0)
+      .texture('layer', layered ? this.layer : null, 1)
       .int('hasImage', this.background ? 1 : 0)
+      .int('hasLayer', layered ? 1 : 0)
       .vec2('scale', sx / zoom, sy / zoom)
       .vec2(
         'pan',
@@ -567,11 +594,13 @@ export class LogoSpectrumScene implements Scene {
       this.height,
       this.frameCount,
       cameraShake(s.shake, features[F.kick]!, input.time, this.width / this.height),
+      input.dt,
     );
     gl.bindVertexArray(null);
   }
 
   saveState(): SceneSnapshot {
+    const calm = this.post.saveState();
     return {
       values: {
         frameCount: this.frameCount,
@@ -579,14 +608,20 @@ export class LogoSpectrumScene implements Scene {
         energy: this.energy.value,
         particleCount: this.particleCount,
         random: this.random.state,
+        calm: calm !== null,
       },
-      buffers: [...this.shaper.saveState(), this.particleState.slice(), this.particleData.slice()],
+      buffers: [
+        ...this.shaper.saveState(),
+        this.particleState.slice(),
+        this.particleData.slice(),
+        ...(calm ? [calm] : []),
+      ],
     };
   }
 
   restoreState(snapshot: SceneSnapshot): void {
     const { values, buffers } = snapshot;
-    const [curves, bands, particleState, particleData] = buffers;
+    const [curves, bands, particleState, particleData, calm] = buffers;
     if (
       !(particleState instanceof Float32Array) ||
       !(particleData instanceof Float32Array) ||
@@ -603,6 +638,7 @@ export class LogoSpectrumScene implements Scene {
     this.energy.value = Number(values['energy']);
     this.particleCount = Number(values['particleCount']);
     this.random.state = Number(values['random']);
+    this.post.restoreState(values['calm'] === true ? calm : null);
   }
 
   dispose(): void {

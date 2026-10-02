@@ -31,7 +31,15 @@ import { KaleidoscopeScene } from '../render/kaleidoscope';
 import { LogoSpectrumScene } from '../render/logo-spectrum';
 import { PresetAutomation, SWITCHING_SEEDS } from '../render/preset-automation';
 import { sanitizeAutoPresets } from '../render/preset-director';
-import { decodeSnapshot, encodeSnapshot, type Scene, type SceneSnapshot } from '../render/scene';
+import {
+  decodeSnapshot,
+  encodeSnapshot,
+  joinSnapshots,
+  splitSnapshot,
+  type Scene,
+  type SceneInput,
+  type SceneSnapshot,
+} from '../render/scene';
 import { morphKaleido, morphLogoSpectrum } from '../render/settings-morph';
 import { sanitizeSettings } from '../render/visual-settings';
 import { exposeWorker } from '../util/worker-rpc';
@@ -499,6 +507,50 @@ function createSwitching<T>(
   };
 }
 
+/**
+ * The Logo Spectrum with the Kaleidoscope behind it (VE-08): drawn as in the preview, with one
+ * snapshot for both (the layer's values prefixed, its buffers last).
+ */
+class LayeredScene implements Scene {
+  constructor(
+    private readonly front: LogoSpectrumScene,
+    private readonly layer: KaleidoscopeScene,
+  ) {}
+
+  get floatTargets(): boolean {
+    return this.front.floatTargets;
+  }
+
+  resize(width: number, height: number): void {
+    this.front.resize(width, height);
+    this.layer.resize(width, height);
+  }
+
+  setReduceFlashing(on: boolean): void {
+    this.front.setReduceFlashing(on);
+  }
+
+  render(input: SceneInput): void {
+    this.front.setBackgroundLayer(this.front.wantsLayer ? this.layer.renderLayer(input) : null);
+    this.front.render(input);
+  }
+
+  saveState(): SceneSnapshot {
+    return joinSnapshots(this.front.saveState(), this.layer.saveState(), 'layer.');
+  }
+
+  restoreState(snapshot: SceneSnapshot): void {
+    const [front, layer] = splitSnapshot(snapshot, 'layer.');
+    this.front.restoreState(front);
+    this.layer.restoreState(layer);
+  }
+
+  dispose(): void {
+    this.front.dispose();
+    this.layer.dispose();
+  }
+}
+
 function createScene(
   gl: WebGL2RenderingContext,
   visuals: ExportVisuals,
@@ -506,11 +558,17 @@ function createScene(
 ): { scene: Scene; switching: Switching | null } {
   const config = visuals.auto?.config.on ? sanitizeAutoPresets(visuals.auto.config) : null;
   if (visuals.mode === 'logoSpectrum') {
-    const scene = new LogoSpectrumScene(gl);
+    const front = new LogoSpectrumScene(gl);
     const settings = sanitizeSettings(visuals.settings);
-    scene.setSettings(settings);
-    scene.setImage('background', images.background);
-    scene.setImage('logo', images.logo);
+    front.setSettings(settings);
+    front.setImage('background', images.background);
+    front.setImage('logo', images.logo);
+    let scene: Scene = front;
+    if (visuals.layer) {
+      const layer = new KaleidoscopeScene(gl);
+      layer.setSettings(sanitizeKaleido(visuals.layer));
+      scene = new LayeredScene(front, layer);
+    }
     if (!config || !visuals.auto) return { scene, switching: null };
     const automation = new PresetAutomation(
       morphLogoSpectrum,
@@ -518,7 +576,7 @@ function createScene(
       SWITCHING_SEEDS.logoSpectrum,
     );
     automation.setAuto(config, visuals.auto.presets.map(sanitizeSettings));
-    return { scene, switching: createSwitching(automation, (next) => scene.setSettings(next)) };
+    return { scene, switching: createSwitching(automation, (next) => front.setSettings(next)) };
   }
   const scene = new KaleidoscopeScene(gl);
   const settings = sanitizeKaleido(visuals.settings);
@@ -558,6 +616,7 @@ async function videoPass(
   const { scene, switching } = createScene(gl, manifest.visuals, images);
   try {
     scene.resize(format.width, format.height);
+    scene.setReduceFlashing(manifest.visuals.reduceFlashing === true);
     const analysis = await store.file('features.bin');
     const feed = new FeatureFeed(async (index, count) => {
       const bytes = FEATURE_FIELDS * 4;

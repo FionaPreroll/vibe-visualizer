@@ -180,6 +180,7 @@
         mode,
         settings: $app.kaleido,
         auto: config.on ? { config, presets } : undefined,
+        reduceFlashing: $app.settings.reduceFlashing,
       };
     }
     const presets = switchingPool(
@@ -188,7 +189,16 @@
       favourites.logoSpectrum,
       config.pool,
     );
-    return { mode, settings: $app.visuals, auto: config.on ? { config, presets } : undefined };
+    // The Kaleidoscope behind (VE-08), if a look of the video shows it.
+    const looks = config.on ? [$app.visuals, ...presets] : [$app.visuals];
+    const layered = looks.some((look) => look.backgroundSource === 'kaleidoscope');
+    return {
+      mode,
+      settings: $app.visuals,
+      auto: config.on ? { config, presets } : undefined,
+      reduceFlashing: $app.settings.reduceFlashing,
+      layer: layered ? $app.kaleido : undefined,
+    };
   }
 
   /** How the presets switch, for the summary. */
@@ -510,6 +520,9 @@
               <span data-testid="export-switching"
                 >({switchingSummary($app.settings.autoPresets)})</span
               >
+            {/if}
+            {#if $app.settings.reduceFlashing}
+              <span data-testid="export-calm">(flashing reduced)</span>
             {/if}
           {/if}
         </dd>

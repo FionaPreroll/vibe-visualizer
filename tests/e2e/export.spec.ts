@@ -71,6 +71,7 @@ test('exports the range between the markers as a video file', async ({ page }) =
   const errors = collectErrors(page);
   await page.goto('/');
   await addTrack(page, 10);
+  await page.getByRole('button', { name: 'Kaleidoscope', exact: true }).click();
   // Load the track, then pause it (waiting for each state, so the second click is a pause).
   const play = page.getByTestId('play-button');
   await play.click();
@@ -114,12 +115,19 @@ test('exports the range between the markers as a video file', async ({ page }) =
 });
 
 test('an interrupted export resumes after a reload', async ({ page }) => {
+  // Two scenes per frame in software rendering: about 80 s here, half as much again in CI.
+  test.setTimeout(240_000);
   const errors = collectErrors(page);
   await page.goto('/');
   await addTrack(page, 8);
-  await page.getByRole('button', { name: 'Kaleidoscope', exact: true }).click();
-  // The presets switch every 5 s (PR-02): the resumed part goes on switching where it was.
+  // The Logo Spectrum with the Kaleidoscope behind it (VE-08): both scenes carry over.
   await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByText('Background', { exact: true }).click();
+  await page
+    .getByRole('radiogroup', { name: 'Background shows' })
+    .getByRole('radio', { name: 'Kaleidoscope' })
+    .click();
+  // The presets switch every 5 s (PR-02): the resumed part goes on switching where it was.
   await page.getByText('Preset switching', { exact: true }).click();
   await page.getByTestId('auto-presets').check();
   await page
@@ -128,8 +136,12 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
     .click();
   await page.getByRole('slider', { name: 'Seconds', exact: true }).focus();
   await page.keyboard.press('Home');
+  // Reduce flashing (VE-06) too: its settled level carries over as well.
+  await page.getByText('Display', { exact: true }).click();
+  await page.getByTestId('reduce-flashing').check();
   await page.getByTestId('export-button').click();
   await expect(page.getByTestId('export-switching')).toHaveText('(switching presets every 5 s)');
+  await expect(page.getByTestId('export-calm')).toHaveText('(flashing reduced)');
   await chooseSmallFormat(page);
   await page.getByTestId('export-start').click();
 
@@ -137,7 +149,7 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
   const button = page.getByTestId('export-button');
   await expect
     .poll(async () => Number(/(\d+) %/.exec((await button.textContent()) ?? '')?.[1] ?? 0), {
-      timeout: 60_000,
+      timeout: 120_000,
     })
     .toBeGreaterThan(45);
   await page.reload();
@@ -147,7 +159,7 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
   await page.getByTestId('export-note').click();
   await expect(page.getByTestId('export-interrupted')).toContainText('% rendered');
   await page.getByTestId('export-resume').click();
-  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 100_000 });
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 180_000 });
 
   const file = await download(page);
   expect(file.name).toMatch(/^Clicks\.(mp4|webm)$/);
