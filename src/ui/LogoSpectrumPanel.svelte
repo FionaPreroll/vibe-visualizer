@@ -8,6 +8,7 @@
     PALETTE_NAMES,
     PALETTES,
     RANGES,
+    RECORD_SPEEDS,
     RESPONSIVENESS,
     RING_DIRECTIONS,
     RING_STYLES,
@@ -96,6 +97,12 @@
     inward: 'Inward',
     both: 'Both',
   };
+  /** The record speed shown: the one nearest to the setting (LS-16). */
+  const recordSpeed = $derived(
+    RECORD_SPEEDS.reduce((best, speed) =>
+      Math.abs(speed.rpm - v.logoSpin) < Math.abs(best.rpm - v.logoSpin) ? speed : best,
+    ).rpm,
+  );
   const swatch = (name: PaletteName) =>
     `linear-gradient(90deg, ${(name === 'custom' ? v.customColors : PALETTES[name]).join(', ')})`;
 </script>
@@ -273,6 +280,24 @@
     </div>
     <Slider {...slider('logoShadow', 'Shadow', percent)} />
     <Slider {...slider('bassPulse', 'Bass pulse', percent)} />
+    <div class="color-row">
+      <label for="logo-spin">Spin like a record</label>
+      <select
+        id="logo-spin"
+        value={recordSpeed}
+        onchange={(event) => set({ logoSpin: Number(event.currentTarget.value) })}
+        data-testid="logo-spin"
+      >
+        {#each RECORD_SPEEDS as speed (speed.rpm)}
+          <option value={speed.rpm}>{speed.label}</option>
+        {/each}
+      </select>
+    </div>
+    {#if v.logoSpin > 0}
+      <p class="hint">
+        It turns with the music: it stands while paused, and turns faster or slower with the tempo.
+      </p>
+    {/if}
     <Slider {...slider('centerX', 'Ring position X', percent)} />
     <Slider {...slider('centerY', 'Ring position Y', percent)} />
   </Section>

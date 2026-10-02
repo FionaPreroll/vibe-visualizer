@@ -71,6 +71,12 @@ let coverToken = -1;
 let coverLogo = false;
 /** Pictures asked for (EX-10): taken from the next frame drawn. */
 const captures: { id: number; width: number; height: number }[] = [];
+/** The file and position heard at the last frame, and for how many frames it stood still. */
+const lastHeard = { token: -1, seconds: 0, still: 0 };
+/** A step of the position heard this long or longer is a jump (a seek), not the music. */
+const JUMP_SECONDS = 0.25;
+/** Frames the position may stand still while playing (an analysis frame lasts ~10 ms). */
+const STILL_FRAMES = 6;
 /** Settings of each mode, with the automatic preset switching (PR-02). */
 const logoSpectrumAuto = new PresetAutomation(
   morphLogoSpectrum,
@@ -99,6 +105,25 @@ function audibleFrame(now: number): number | null {
   return (clock.contextTime + (epoch - clock.performanceTime) / 1000) * sampleRate;
 }
 
+/**
+ * Seconds of the music played since the last frame, for what turns with it (LS-16): the tempo
+ * while it plays on, nothing while paused, the steps of the jog wheel, the tempo again across a
+ * seek or into the next file. Live input plays on.
+ */
+function playedSince(dt: number, sampled: boolean, live: boolean): number {
+  if (live) return sampled ? dt : 0;
+  if (!sampled) return 0;
+  const step = heard.seconds - lastHeard.seconds;
+  const sameFile = heard.token === lastHeard.token;
+  lastHeard.token = heard.token;
+  lastHeard.seconds = heard.seconds;
+  if (!sameFile || Math.abs(step) >= JUMP_SECONDS) return dt * overlayRate;
+  if (step === 0) return ++lastHeard.still > STILL_FRAMES ? 0 : dt * overlayRate;
+  lastHeard.still = 0;
+  // Playing on: at the tempo, without the steps of the analysis frames.
+  return step > 0 && step < 3 * dt * overlayRate + 0.03 ? dt * overlayRate : step;
+}
+
 function frame(now: number): void {
   request = 0;
   if (!running || !scene || lost) return;
@@ -112,8 +137,9 @@ function frame(now: number): void {
   // Live input comes from no file.
   const token = sampled && !clock?.live ? heard.token : 0;
   applySettings(dt);
+  const played = playedSince(dt, sampled, clock?.live === true);
   try {
-    const input = { time: (now - startTime) / 1000, dt, features };
+    const input = { time: (now - startTime) / 1000, dt, features, played };
     if (active === 'logoSpectrum') {
       showCover(token);
       drawLayer(input);

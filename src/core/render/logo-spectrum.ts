@@ -241,6 +241,8 @@ uniform vec3 rimColor;
 uniform vec2 imageScale;
 uniform vec2 pan;
 uniform float shadow;
+// How far the logo has turned (radians), clockwise like a record (LS-16).
+uniform float turn;
 
 // Neutral placeholder: a four-pointed star on a dark disc.
 vec3 placeholder(vec2 q) {
@@ -259,7 +261,8 @@ void main() {
   float wOuter = outer - rho;
   float disc = clamp(0.5 + wDisc / max(fwidth(wDisc), 1e-3), 0.0, 1.0);
   float covered = clamp(0.5 + wOuter / max(fwidth(wOuter), 1e-3), 0.0, 1.0);
-  vec2 q = p / radius;
+  // The picture turns clockwise: each point shows what lies the turn further on.
+  vec2 q = mat2(cos(turn), sin(turn), -sin(turn), cos(turn)) * (p / radius);
   vec3 inner;
   if (hasLogo == 1) {
     vec2 c = 0.5 + q * imageScale * 0.5 + pan * 0.5 * (1.0 - imageScale);
@@ -366,6 +369,8 @@ export class LogoSpectrumScene implements Scene {
   /** The cover art of the track playing, and whether it takes the logo's place (LS-15). */
   private cover: { texture: WebGLTexture; width: number; height: number } | null = null;
   private coverLogo = false;
+  /** How far the logo has turned with the music (LS-16), in turns (0…1). */
+  private logoTurns = 0;
 
   private readonly bass = new Follower(0.015, 0.22);
   private readonly energy = new Follower(0.05, 0.5);
@@ -487,6 +492,9 @@ export class LogoSpectrumScene implements Scene {
     const scene = this.scene;
     if (!scene) return;
     this.frameCount++;
+    // The logo turns with the music like a record: it stands while paused (LS-16).
+    const played = Math.min(Math.max(input.played ?? dt, -0.5), 0.5);
+    this.logoTurns = (((this.logoTurns + (played * s.logoSpin) / 60) % 1) + 1) % 1;
 
     // Audio drives.
     const low = 0.5 * features[F.bands]! + 0.5 * features[F.bands + 1]!;
@@ -609,7 +617,8 @@ export class LogoSpectrumScene implements Scene {
       .vec3('rimColor', lr, lg, lb)
       .vec2('imageScale', ix / logoZoom, iy / logoZoom)
       .vec2('pan', cover ? 0 : s.logoPanX, cover ? 0 : s.logoPanY)
-      .float('shadow', s.logoShadow);
+      .float('shadow', s.logoShadow)
+      .float('turn', this.logoTurns * Math.PI * 2);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disable(gl.BLEND);
 
@@ -634,6 +643,7 @@ export class LogoSpectrumScene implements Scene {
         energy: this.energy.value,
         particleCount: this.particleCount,
         random: this.random.state,
+        logoTurns: this.logoTurns,
         calm: calm !== null,
       },
       buffers: [
@@ -664,6 +674,8 @@ export class LogoSpectrumScene implements Scene {
     this.energy.value = Number(values['energy']);
     this.particleCount = Number(values['particleCount']);
     this.random.state = Number(values['random']);
+    // Snapshots of before the logo turned have none.
+    this.logoTurns = Number(values['logoTurns'] ?? 0);
     this.post.restoreState(values['calm'] === true ? calm : null);
   }
 

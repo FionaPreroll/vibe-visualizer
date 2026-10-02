@@ -767,7 +767,9 @@ async function videoPass(
         shownPart = heard.index;
         logo?.setCover(covers[heard.index] ?? null);
       }
-      scene.render({ time: (frame + timing.preRollFrames) / fps, dt: 1 / fps, features });
+      // The music plays on in a video: what turns with it turns at the tempo (LS-16).
+      const played = manifest.sound.rate / fps;
+      scene.render({ time: (frame + timing.preRollFrames) / fps, dt: 1 / fps, features, played });
       overlay?.draw(tracks[heard.index]!, heard.seconds, manifest.sound.rate);
       fade?.draw(fadeAt(manifest.fade, frame / fps, seconds), format.width, format.height);
     };
