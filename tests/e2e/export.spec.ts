@@ -286,6 +286,55 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
   expect(errors).toEqual([]);
 });
 
+test('the picture on the stage is saved as a PNG thumbnail (EX-10)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    const settings = { coverLogo: true, overlay: { on: true } };
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+  });
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(8, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  const play = page.getByTestId('play-button');
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Pause');
+  await expect.poll(() => elapsed(page)).toBeGreaterThan(2);
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Play');
+
+  const save = async (action: () => Promise<void>) => {
+    const [file] = await Promise.all([page.waitForEvent('download'), action()]);
+    const data = await readFile(await file.path());
+    // The size from the PNG's header.
+    return {
+      name: file.suggestedFilename(),
+      data,
+      width: data.readUInt32BE(16),
+      height: data.readUInt32BE(20),
+    };
+  };
+  // YouTube's thumbnail size, named after the track, with the cover and the title.
+  const picture = await save(() => page.getByTestId('picture-button').click());
+  expect(picture).toMatchObject({ name: 'The Testers - Sunrise.png', width: 1280, height: 720 });
+  expect(picture.data.length).toBeLessThan(2 * 1024 * 1024);
+  const [title, ...quarters] = await measure(page, picture.data, [
+    { x: 0.04, y: 0.74, width: 0.5, height: 0.22 },
+    ...logoQuarters({ width: 1280, height: 720 }),
+  ]);
+  expect(title!.bright).toBeGreaterThan(0.01);
+  expect(showsCover(quarters)).toBe(true);
+
+  // In the stage's aspect ratio; C saves it too.
+  await page.getByTestId('aspect-select').selectOption('9:16');
+  const upright = await save(() => page.keyboard.press('c'));
+  expect(upright).toMatchObject({ width: 720, height: 1280 });
+  expect(errors).toEqual([]);
+});
+
 test('an interrupted export resumes after a reload', async ({ page }) => {
   // Two scenes per frame in software rendering: about 80 s here, half as much again in CI.
   test.setTimeout(240_000);

@@ -69,6 +69,8 @@ let overlayRate = 1;
 const covers = new Map<number, ImageBitmap>();
 let coverToken = -1;
 let coverLogo = false;
+/** Pictures asked for (EX-10): taken from the next frame drawn. */
+const captures: { id: number; width: number; height: number }[] = [];
 /** Settings of each mode, with the automatic preset switching (PR-02). */
 const logoSpectrumAuto = new PresetAutomation(
   morphLogoSpectrum,
@@ -118,6 +120,7 @@ function frame(now: number): void {
     }
     scene.render(input);
     drawOverlay(now, token);
+    if (captures.length > 0) takeCaptures();
   } catch (error) {
     running = false;
     post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
@@ -179,6 +182,27 @@ function drawOverlay(now: number, token: number): void {
   const track = overlayTracks.get(token) ?? null;
   if (track) overlay.draw(track, heard.seconds, overlayRate, preview);
   else if (preview > 0) overlay.draw(SAMPLE_TRACK, SAMPLE_POSITION, 1, preview);
+}
+
+/**
+ * Copies the frame just drawn for the pictures asked for, while it is still in the drawing
+ * buffer; each is scaled and encoded as a PNG after that.
+ */
+function takeCaptures(): void {
+  const source = canvas!;
+  for (const { id, width, height } of captures.splice(0)) {
+    createImageBitmap(source, { resizeWidth: width, resizeHeight: height, resizeQuality: 'high' })
+      .then(async (bitmap) => {
+        const picture = new OffscreenCanvas(width, height);
+        picture.getContext('2d')!.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        post({ type: 'capture', id, png: await picture.convertToBlob({ type: 'image/png' }) });
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        post({ type: 'capture', id, png: null, message });
+      });
+  }
 }
 
 function setRunning(value: boolean): void {
@@ -324,6 +348,11 @@ scope.addEventListener('message', (event) => {
         break;
       case 'running':
         setRunning(message.running);
+        break;
+      case 'capture':
+        if (running && scene && !lost) captures.push(message);
+        else
+          post({ type: 'capture', id: message.id, png: null, message: 'The visuals are paused.' });
         break;
       case 'dispose':
         setRunning(false);

@@ -43,6 +43,7 @@ export const SHORTCUTS: readonly { title: string; keys: readonly [string[], stri
       [['V'], 'Next visual mode'],
       [['[', ']'], 'Previous or next preset'],
       [['F'], 'Fullscreen'],
+      [['C'], 'Save the picture as a PNG, e.g. as a thumbnail'],
     ],
   },
   {

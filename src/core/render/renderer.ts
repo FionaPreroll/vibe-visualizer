@@ -4,6 +4,8 @@ import type { ImageKind } from './logo-spectrum';
 import type { OverlaySettings, OverlayTrack } from './overlay-settings';
 import type { AutoPresets } from './preset-director';
 import type { RenderEvent, RenderRequest, SceneKind } from './render-protocol';
+
+type CaptureEvent = Extract<RenderEvent, { type: 'capture' }>;
 import RenderWorker from './render.worker.ts?worker';
 import type { LogoSpectrumSettings } from './visual-settings';
 
@@ -16,8 +18,11 @@ export class Renderer {
   private readonly engine: AudioEngine;
   private readonly clockTimer: ReturnType<typeof setInterval>;
   private disposed = false;
-  /** Called for every event of the worker (ready, stats, errors). */
-  onEvent: ((event: RenderEvent) => void) | null = null;
+  private captureId = 0;
+  /** Pictures asked for (EX-10), by id. */
+  private readonly captures = new Map<number, (event: CaptureEvent) => void>();
+  /** Called for the other events of the worker (ready, stats, presets, errors). */
+  onEvent: ((event: Exclude<RenderEvent, CaptureEvent>) => void) | null = null;
 
   constructor(canvas: HTMLCanvasElement, engine: AudioEngine, width: number, height: number) {
     this.engine = engine;
@@ -25,7 +30,9 @@ export class Renderer {
     offscreen.width = Math.max(1, width);
     offscreen.height = Math.max(1, height);
     this.worker.addEventListener('message', (event: MessageEvent<RenderEvent>) => {
-      this.onEvent?.(event.data);
+      const data = event.data;
+      if (data.type === 'capture') this.captures.get(data.id)?.(data);
+      else this.onEvent?.(data);
     });
     this.worker.addEventListener('error', (event) => {
       this.onEvent?.({ type: 'error', message: event.message || 'The render worker failed.' });
@@ -102,6 +109,24 @@ export class Renderer {
 
   setRunning(running: boolean): void {
     this.send({ type: 'running', running });
+  }
+
+  /** The picture of the next frame, scaled to `width` × `height`, as a PNG (EX-10). */
+  capture(width: number, height: number): Promise<Blob> {
+    const id = ++this.captureId;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.captures.delete(id);
+        reject(new Error('The visuals did not draw a frame.'));
+      }, 10_000);
+      this.captures.set(id, (event) => {
+        clearTimeout(timer);
+        this.captures.delete(id);
+        if (event.png) resolve(event.png);
+        else reject(new Error(event.message ?? 'The picture could not be taken.'));
+      });
+      this.send({ type: 'capture', id, width: Math.round(width), height: Math.round(height) });
+    });
   }
 
   /** Stops the worker; `now` when the page goes away and there is no moment left to wait. */

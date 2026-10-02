@@ -42,6 +42,8 @@ export type RenderRequest =
    */
   | { type: 'clock'; contextTime: number; performanceTime: number; live: boolean }
   | { type: 'running'; running: boolean }
+  /** The picture of the next frame, scaled to `width` × `height`, as a PNG (EX-10). */
+  | { type: 'capture'; id: number; width: number; height: number }
   | { type: 'dispose' };
 
 /** Messages from the render worker. */
@@ -59,4 +61,6 @@ export type RenderEvent =
       scene: 'kaleidoscope';
       settings: KaleidoSettings;
     }
+  /** The picture asked for with the same `id`; null and why if there is none. */
+  | { type: 'capture'; id: number; png: Blob | null; message?: string }
   | { type: 'error'; message: string };

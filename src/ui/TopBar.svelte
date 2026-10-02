@@ -5,18 +5,22 @@
   import { useExporter } from './exporter-context';
   import Icon, { type IconName } from './Icon.svelte';
   import { usePlayer } from './player-context';
+  import { useCapture } from './stage-capture';
 
   interface Props {
     onFullscreen: () => void;
+    /** Saves the picture on the stage (EX-10). */
+    onPicture: () => void;
     onExport: () => void;
     onHelp: () => void;
     onController: () => void;
   }
-  let { onFullscreen, onExport, onHelp, onController }: Props = $props();
+  let { onFullscreen, onPicture, onExport, onHelp, onController }: Props = $props();
 
   const player = usePlayer();
   const app = player.store;
   const exporter = useExporter();
+  const captureReady = useCapture().ready;
   const controllers = useControllers();
   const controllerOn = $derived(
     $controllers.status === 'on' && $controllers.devices.some((device) => device.profile),
@@ -131,6 +135,16 @@
     </button>
     <button class="toggle" onclick={onFullscreen} title="Fullscreen (F)">
       <Icon name="fullscreen" size={18} />
+    </button>
+    <button
+      class="toggle"
+      onclick={onPicture}
+      disabled={!$captureReady || $exporter.status === 'running'}
+      title="Save the picture as a PNG, e.g. as a thumbnail (C)"
+      aria-label="Save the picture"
+      data-testid="picture-button"
+    >
+      <Icon name="camera" size={18} />
     </button>
     <button
       class="toggle"

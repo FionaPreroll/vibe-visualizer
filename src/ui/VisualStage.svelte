@@ -13,6 +13,7 @@
   import { kaleidoPresets, logoSpectrumPresets } from './preset-store';
   import { liveScale } from './render-quality';
   import SafeAreas from './SafeAreas.svelte';
+  import { useCapture } from './stage-capture';
   import { StreamInfo } from './stream-info';
   import { useAssets } from './visuals-context';
 
@@ -35,6 +36,7 @@
 
   const player = usePlayer();
   const assets = useAssets();
+  const capture = useCapture();
   const app = player.store;
   let canvas: HTMLCanvasElement;
   let renderer: Renderer | null = $state(null);
@@ -121,8 +123,11 @@
     // The first frame already shows the right scene (the effect takes over after mounting).
     instance.setScene(mode);
     instance.onEvent = (event) => {
-      if (event.type === 'ready') status = 'running';
-      else if (event.type === 'stats') {
+      if (event.type === 'ready') {
+        status = 'running';
+        // A picture of the stage can be taken now (EX-10).
+        capture.attach(instance);
+      } else if (event.type === 'stats') {
         fps = event.fps;
         if (autoQuality && quality.update(event.fps)) autoScale = quality.scale;
       } else if (event.type === 'preset') {
@@ -132,6 +137,7 @@
       } else {
         status = 'failed';
         message = event.message;
+        capture.attach(null);
       }
     };
 
@@ -198,6 +204,7 @@
 
     return () => {
       renderer = null;
+      capture.attach(null);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
       unsubscribeSettings();

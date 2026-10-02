@@ -39,6 +39,7 @@
     starOutline: 'M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z',
     import: 'M12 20V9M7 14l5-5 5 5M5 4h14',
     pencil: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
+    camera: 'M3 8h4l2-3h6l2 3h4v11H3zM12 10a3.5 3.5 0 110 7 3.5 3.5 0 010-7z',
   } as const;
   /** Icons drawn as lines instead of filled shapes. */
   const STROKED: readonly string[] = [
@@ -58,6 +59,7 @@
     'starOutline',
     'import',
     'pencil',
+    'camera',
   ];
   export type IconName = keyof typeof ICONS;
 </script>
