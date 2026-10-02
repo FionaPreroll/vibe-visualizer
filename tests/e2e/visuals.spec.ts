@@ -446,3 +446,46 @@ test('a track can be named, and the visuals show its title and cover art (LS-15,
   await expect(item).toContainText('The Testers');
   expect(errors).toEqual([]);
 });
+
+test('the cover art turns like a record while the music plays (LS-16)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.addInitScript(() =>
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify({ coverLogo: true })),
+  );
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(30, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByText('Logo', { exact: true }).click();
+  await page.getByTestId('logo-spin').selectOption({ label: '45 rpm' });
+
+  // The colours of the cover's quarters, and how far they moved between two looks.
+  const quarters = logoQuarters((await stage.boundingBox())!);
+  const look = async () =>
+    (await measure(page, await stage.screenshot(), quarters)).flatMap((quarter) => quarter.mean);
+  const moved = (a: number[], b: number[]) =>
+    a.reduce((sum, value, i) => sum + Math.abs(value - b[i]!), 0);
+  const play = page.getByTestId('play-button');
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Pause');
+  await expect.poll(look).not.toEqual(Array(12).fill(0));
+  // Playing, it turns: at 45 rpm, 0.3 s is about 80°.
+  const a = await look();
+  await page.waitForTimeout(300);
+  expect(moved(a, await look())).toBeGreaterThan(150);
+  // Paused, it stands.
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Play');
+  await page.waitForTimeout(800);
+  const b = await look();
+  await page.waitForTimeout(500);
+  expect(moved(b, await look())).toBeLessThan(20);
+  expect(errors).toEqual([]);
+});
