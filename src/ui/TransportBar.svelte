@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { beatBefore } from '../core/analysis/beat-grid';
   import { tempoSections } from '../core/analysis/tempo-sections';
-  import { REPEAT_MODES, type RepeatMode } from '../core/state/app-state';
+  import { REPEAT_MODES, shownArtist, shownTitle, type RepeatMode } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
   import LiveTempo from './LiveTempo.svelte';
@@ -183,8 +183,10 @@
         <div class="cover-placeholder"><Icon name="music" /></div>
       {/if}
       <div class="titles">
-        <span class="title" data-testid="now-title">{current?.title ?? 'Nothing playing'}</span>
-        <span class="artist">{current?.artist ?? ''}</span>
+        <span class="title" data-testid="now-title"
+          >{current ? shownTitle(current) : 'Nothing playing'}</span
+        >
+        <span class="artist">{current ? (shownArtist(current) ?? '') : ''}</span>
       </div>
     {/if}
   </div>

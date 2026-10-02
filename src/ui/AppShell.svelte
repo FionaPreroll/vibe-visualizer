@@ -3,6 +3,7 @@
   import { isClean } from '../core/audio/dsp/sound-settings';
   import { ControllerService } from '../core/control/controller-service';
   import { REPEAT_MODES } from '../core/state/app-state';
+  import { errorMessage } from '../core/util/format';
   import { Exporter } from '../core/export/exporter';
   import { Player } from '../core/player/player';
   import { VisualAssets } from '../core/render/visual-assets';
@@ -17,9 +18,11 @@
   import LivePanel from './LivePanel.svelte';
   import { provideExporter } from './exporter-context';
   import Icon from './Icon.svelte';
+  import { savePicture } from './picture';
   import { providePlayer } from './player-context';
   import QueuePanel from './QueuePanel.svelte';
   import { nextVisualMode, stepPreset } from './shortcuts';
+  import { provideCapture, StageCapture } from './stage-capture';
   import SoundPanel from './SoundPanel.svelte';
   import TopBar from './TopBar.svelte';
   import TransportBar from './TransportBar.svelte';
@@ -36,6 +39,9 @@
   provideExporter(exporter);
   const controllers = new ControllerService(player);
   provideControllers(controllers);
+  const capture = new StageCapture();
+  provideCapture(capture);
+  const captureReady = capture.ready;
   const app = player.store;
   let exportOpen = $state(false);
   let helpOpen = $state(false);
@@ -98,6 +104,14 @@
   function toggleFullscreen() {
     if (document.fullscreenElement) void document.exitFullscreen();
     else void stage.requestFullscreen();
+  }
+
+  /** Saves the picture on the stage as a PNG (EX-10); not while an export renders. */
+  function takePicture() {
+    if (!$captureReady || $exporter.status === 'running') return;
+    savePicture(player, capture).catch((error: unknown) =>
+      player.reportError(`The picture could not be saved: ${errorMessage(error)}`),
+    );
   }
 
   /** Keys a focused slider takes for itself. */
@@ -200,6 +214,9 @@
         case 'f':
           toggleFullscreen();
           break;
+        case 'c':
+          takePicture();
+          break;
         case 'w':
           player.updateSettings({ detailWaveform: !player.state.settings.detailWaveform });
           break;
@@ -293,6 +310,7 @@
 <div class="shell" class:panel-open={$app.settings.panelOpen}>
   <TopBar
     onFullscreen={toggleFullscreen}
+    onPicture={takePicture}
     onExport={() => (exportOpen = true)}
     onHelp={() => (helpOpen = true)}
     onController={() => (controllerOpen = true)}
@@ -339,7 +357,7 @@
           {#if $exporter.status === 'interrupted'}
             An export was interrupted. Resume it…
           {:else if $exporter.status === 'done'}
-            Your video is ready.
+            {$exporter.videos.length > 1 ? 'Your videos are ready.' : 'Your video is ready.'}
           {:else}
             The export stopped. Details…
           {/if}

@@ -48,3 +48,48 @@ export function createBeatWav(
   }
   return buffer;
 }
+
+/**
+ * A WAV file as {@link createWav}, with an ID3v2.3 tag in an "id3 " chunk (as many tools write
+ * it): a title, an artist, and a PNG as the front cover.
+ */
+export function createTaggedWav(
+  seconds: number,
+  tags: { title?: string; artist?: string; cover?: Buffer },
+): Buffer {
+  const frame = (id: string, body: Buffer) => {
+    const header = Buffer.alloc(10);
+    header.write(id, 0, 'latin1');
+    header.writeUInt32BE(body.length, 4);
+    return Buffer.concat([header, body]);
+  };
+  // Encoding 0 (ISO-8859-1) and the text.
+  const text = (value: string) => Buffer.concat([Buffer.from([0]), Buffer.from(value, 'latin1')]);
+  const frames: Buffer[] = [];
+  if (tags.title) frames.push(frame('TIT2', text(tags.title)));
+  if (tags.artist) frames.push(frame('TPE1', text(tags.artist)));
+  if (tags.cover) {
+    // Encoding, MIME type, picture type 3 (front cover), an empty description, the image.
+    const head = Buffer.concat([
+      Buffer.from([0]),
+      Buffer.from('image/png\0', 'latin1'),
+      Buffer.from([3, 0]),
+    ]);
+    frames.push(frame('APIC', Buffer.concat([head, tags.cover])));
+  }
+  const body = Buffer.concat(frames);
+  const id3 = Buffer.alloc(10);
+  id3.write('ID3', 0, 'latin1');
+  id3[3] = 3;
+  // The size in four bytes of seven bits.
+  for (let i = 0; i < 4; i++) id3[9 - i] = (body.length >> (7 * i)) & 0x7f;
+  const tag = Buffer.concat([id3, body]);
+  const chunk = Buffer.alloc(8);
+  chunk.write('id3 ', 0, 'latin1');
+  chunk.writeUInt32LE(tag.length, 4);
+  const wav = createWav(seconds);
+  const padding = tag.length % 2 ? Buffer.from([0]) : Buffer.alloc(0);
+  const file = Buffer.concat([wav, chunk, tag, padding]);
+  file.writeUInt32LE(file.length - 8, 4);
+  return file;
+}

@@ -7,6 +7,12 @@ export interface SceneInput {
   dt: number;
   /** Analysis values at the moment being shown (layout F). */
   features: Float32Array;
+  /**
+   * Seconds of the music played since the previous frame: 0 while paused, more or less than
+   * `dt` at another tempo, backwards while scratching. What turns with the music (a record,
+   * LS-16) follows it; not given, the music plays on (`dt`).
+   */
+  played?: number;
 }
 
 export interface Scene {

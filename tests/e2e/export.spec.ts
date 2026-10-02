@@ -1,13 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 import { ALL_FORMATS, BufferSource, EncodedPacketSink, Input } from 'mediabunny';
 import { readFile } from 'node:fs/promises';
-import { createWav } from './wav';
+import { COVER, logoQuarters, measure, showsCover, videoFrame } from './pixels';
+import { createPng } from './png';
+import { createTaggedWav, createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('vibe-visualizer:welcome:v1', '1');
-    // Headless browsers cannot show the save dialog: the video is downloaded at the end.
+    // Headless browsers cannot show the save dialogs: the videos are downloaded instead.
     delete (window as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as { showDirectoryPicker?: unknown }).showDirectoryPicker;
   });
 });
 
@@ -114,12 +117,360 @@ test('exports the range between the markers as a video file', async ({ page }) =
   expect(errors).toEqual([]);
 });
 
+test('the video shows the track overlay and the cover art (LS-15, LS-18, LS-19)', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    // The overlay with its progress and time, and the cover art as the logo.
+    const settings = { coverLogo: true, overlay: { on: true, progress: true, time: true } };
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+  });
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(4, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await expect(page.getByTestId('export-overlay')).toHaveText("(with the track's title)");
+  await expect(page.getByTestId('export-cover')).toHaveText('(its cover art as the logo)');
+  await page.getByTestId('export-start').click();
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 150_000 });
+
+  const file = await download(page);
+  expect(file.name).toMatch(/^The Testers - Sunrise\.(mp4|webm)$/);
+  expect(await inspect(file.data)).toMatchObject({ width: 720, height: 720, frames: 96 });
+  // In the middle: the cover in the logo, and the text at the bottom left.
+  const frame = await videoFrame(page, file.data, 2);
+  test.skip(!frame, 'This browser cannot play the video it made.');
+  const text = { x: 0.04, y: 0.74, width: 0.5, height: 0.22 };
+  const [overlay, ...quarters] = await measure(page, frame!, [
+    text,
+    ...logoQuarters({ width: 720, height: 720 }),
+  ]);
+  expect(overlay!.bright).toBeGreaterThan(0.03);
+  expect(showsCover(quarters)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+/**
+ * The level (RMS of the left channel) of the video's sound over 50 ms from each of `times`,
+ * decoded by the page; null if this browser cannot decode it.
+ */
+async function soundLevels(page: Page, data: Buffer, times: number[]): Promise<number[] | null> {
+  return page.evaluate(
+    async ({ bytes, times }) => {
+      const binary = atob(bytes);
+      const array = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+      try {
+        const buffer = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(array.buffer);
+        const channel = buffer.getChannelData(0);
+        return times.map((seconds) => {
+          const from = Math.round(seconds * buffer.sampleRate);
+          const to = Math.min(channel.length, from + Math.round(0.05 * buffer.sampleRate));
+          let sum = 0;
+          for (let i = from; i < to; i++) sum += channel[i]! ** 2;
+          return Math.sqrt(sum / Math.max(1, to - from));
+        });
+      } catch {
+        return null;
+      }
+    },
+    { bytes: data.toString('base64'), times },
+  );
+}
+
+test('tracks of the queue become one video with chapters and fades (EX-05, EX-14, EX-16)', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    // Each track's title over its part, and its cover art as the logo.
+    const settings = { coverLogo: true, overlay: { on: true } };
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+  });
+  await page.goto('/');
+  const cyan = createPng(64, 64, () => [30, 220, 230]);
+  const tagged = (title: string, artist: string, cover?: Buffer) => ({
+    name: `${title}.wav`,
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(3, { title, artist, cover }),
+  });
+  await page
+    .getByTestId('file-input')
+    .setInputFiles([
+      tagged('One', 'Alpha', COVER),
+      tagged('Two', 'Beta'),
+      tagged('Three', 'Gamma', cyan),
+    ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items).toHaveCount(3);
+  for (const item of await items.all()) await expect(item).toHaveAttribute('data-status', 'ready');
+
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await page.getByTestId('export-range-tracks').check();
+  const choices = page.getByTestId('export-track-choice');
+  await expect(choices).toHaveCount(3);
+  // Without the second track the video is shorter; all three again.
+  await choices.nth(1).uncheck();
+  await expect(page.getByTestId('export-track')).toHaveText('2 tracks, from One');
+  await expect(page.getByTestId('export-length')).toContainText('0:06');
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(page.getByTestId('export-track')).toHaveText('3 tracks, from One');
+  await expect(page.getByTestId('export-length')).toContainText('0:09');
+  await page.getByTestId('export-fade').selectOption('1');
+  await expect(page.getByTestId('export-fades')).toHaveText('(fading in and out over 1 s)');
+  await page.getByTestId('export-start').click();
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });
+
+  // The chapters for YouTube, where each track starts; three seconds are too short for YouTube.
+  const chapters = '0:00 Alpha – One\n0:03 Beta – Two\n0:06 Gamma – Three';
+  expect(await page.getByTestId('export-chapters').textContent()).toBe(chapters);
+  await expect(page.getByTestId('export-done')).toContainText('at least 10 s long');
+  const [text] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('export-chapters-save').click(),
+  ]);
+  expect(text.suggestedFilename()).toMatch(/^Alpha - One and 2 more - chapters\.txt$/);
+  expect(await readFile(await text.path(), 'utf8')).toBe(`${chapters}\n`);
+
+  const file = await download(page);
+  expect(file.name).toMatch(/^Alpha - One and 2 more\.(mp4|webm)$/);
+  const video = await inspect(file.data);
+  expect(video).toMatchObject({ width: 720, height: 720, frames: 216 });
+  expect(video.audioDuration).toBeCloseTo(9, 1);
+
+  // Black at the start and the end; in between, each track with its cover (the second has
+  // none: the logo) and its title.
+  const shots: Buffer[] = [];
+  for (const seconds of [0, 1.5, 4.5, 7.5, 8.98]) {
+    const frame = await videoFrame(page, file.data, seconds);
+    test.skip(!frame, 'This browser cannot play the video it made.');
+    shots.push(frame!);
+  }
+  const whole = { x: 0, y: 0, width: 1, height: 1 };
+  const title = { x: 0.04, y: 0.74, width: 0.5, height: 0.22 };
+  const look = async (frame: Buffer) => {
+    const [all, overlay, ...quarters] = await measure(page, frame, [
+      whole,
+      title,
+      ...logoQuarters({ width: 720, height: 720 }),
+    ]);
+    const brightness = all!.mean.reduce((sum, value) => sum + value, 0) / 3;
+    return { brightness, text: overlay!.bright, quarters };
+  };
+  const [start, one, two, three, end] = await Promise.all(shots.map(look));
+  expect(start!.brightness).toBeLessThan(2);
+  expect(end!.brightness).toBeLessThan(5);
+  expect(showsCover(one!.quarters)).toBe(true);
+  expect(showsCover(two!.quarters)).toBe(false);
+  const isCyan = (quarter: { mean: [number, number, number] }) =>
+    quarter.mean[0] < 90 && quarter.mean[1] > 180 && quarter.mean[2] > 180;
+  expect(two!.quarters.some(isCyan)).toBe(false);
+  expect(three!.quarters.every(isCyan)).toBe(true);
+  for (const part of [one, two, three]) expect(part!.text).toBeGreaterThan(0.01);
+
+  // The sound fades in and out with the picture.
+  const levels = await soundLevels(page, file.data, [0, 1.5, 8.9]);
+  if (levels) {
+    expect(levels[0]).toBeLessThan(0.01);
+    expect(levels[1]).toBeGreaterThan(0.15);
+    expect(levels[2]).toBeLessThan(0.02);
+  }
+  expect(errors).toEqual([]);
+});
+
+/** Three tagged tracks of `seconds` in the queue; the third has the name of the first. */
+async function addBatchTracks(page: Page, seconds: number) {
+  const tagged = (file: string, title: string, artist: string) => ({
+    name: file,
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(seconds, { title, artist }),
+  });
+  await page
+    .getByTestId('file-input')
+    .setInputFiles([
+      tagged('one.wav', 'One', 'Alpha'),
+      tagged('two.wav', 'Two', 'Beta'),
+      tagged('again.wav', 'One', 'Alpha'),
+    ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items).toHaveCount(3);
+  for (const item of await items.all()) await expect(item).toHaveAttribute('data-status', 'ready');
+}
+
+test('a video of each track, waiting in browser storage (EX-09)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await addBatchTracks(page, 3);
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await page.getByTestId('export-range-tracks').check();
+  await page.getByTestId('export-per-track').check();
+  await expect(page.getByTestId('export-track')).toHaveText('3 videos, one of each track');
+  await expect(page.getByTestId('export-length')).toContainText('0:09 in all');
+  await page.getByTestId('export-start').click();
+  // One after the other, and the top bar counts them.
+  await expect(page.getByTestId('export-file')).toContainText('Video 1 of 3');
+  await expect(page.getByTestId('export-button')).toContainText('1/3');
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });
+  await expect(page.getByTestId('export-done')).toContainText('Your 3 videos are ready.');
+
+  // Each named after its track; the second of the same name gets a number.
+  const links = page.getByTestId('export-video-download');
+  await expect(links).toHaveCount(3);
+  const names: string[] = [];
+  for (const link of await links.all()) {
+    const [file] = await Promise.all([page.waitForEvent('download'), link.click()]);
+    names.push(file.suggestedFilename());
+    const video = await inspect(await readFile(await file.path()));
+    expect(video).toMatchObject({ width: 720, height: 720, frames: 72 });
+    expect(video.audioDuration).toBeCloseTo(3, 1);
+  }
+  expect(names).toEqual([
+    expect.stringMatching(/^Alpha - One\.(mp4|webm)$/),
+    expect.stringMatching(/^Beta - Two\.(mp4|webm)$/),
+    expect.stringMatching(/^Alpha - One \(2\)\.(mp4|webm)$/),
+  ]);
+  // Deleted from browser storage, they are gone.
+  await page.getByRole('button', { name: 'Delete from browser storage' }).click();
+  await expect(page.getByTestId('export-start')).toBeVisible();
+  const kept = await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const names: string[] = [];
+    for await (const name of (root as unknown as { keys(): AsyncIterable<string> }).keys()) {
+      names.push(name);
+    }
+    return names;
+  });
+  expect(kept).not.toContain('export-videos');
+  expect(errors).toEqual([]);
+});
+
+test('a video of each track, into a folder you pick (EX-09)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    // The folder you would pick: one in the Origin Private File System.
+    (window as unknown as { showDirectoryPicker: () => Promise<unknown> }).showDirectoryPicker =
+      async () =>
+        (await navigator.storage.getDirectory()).getDirectoryHandle('picked', { create: true });
+  });
+  await page.goto('/');
+  await addBatchTracks(page, 2);
+  // A video of that name is already in the folder: it stays.
+  await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const folder = await root.getDirectoryHandle('picked', { create: true });
+    for (const name of ['Beta - Two.mp4', 'Beta - Two.webm']) {
+      const file = await folder.getFileHandle(name, { create: true });
+      const writable = await file.createWritable();
+      await writable.write('old');
+      await writable.close();
+    }
+  });
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await page.getByTestId('export-range-tracks').check();
+  await page.getByTestId('export-per-track').check();
+  await page.getByTestId('export-start').click();
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });
+  await expect(page.getByTestId('export-done')).toContainText('Saved into the folder you chose.');
+  await expect(page.getByTestId('export-video-download')).toHaveCount(0);
+
+  const files = await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const folder = await root.getDirectoryHandle('picked');
+    const found: { name: string; data: string }[] = [];
+    const entries = folder as unknown as { values(): AsyncIterable<FileSystemFileHandle> };
+    for await (const handle of entries.values()) {
+      const bytes = new Uint8Array(await (await handle.getFile()).arrayBuffer());
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      found.push({ name: handle.name, data: btoa(binary) });
+    }
+    return found.sort((a, b) => a.name.localeCompare(b.name));
+  });
+  const videos = files.filter((file) => file.data !== btoa('old'));
+  expect(videos.map((file) => file.name)).toEqual([
+    expect.stringMatching(/^Alpha - One \(2\)\.(mp4|webm)$/),
+    expect.stringMatching(/^Alpha - One\.(mp4|webm)$/),
+    expect.stringMatching(/^Beta - Two \(2\)\.(mp4|webm)$/),
+  ]);
+  for (const file of videos) {
+    expect(await inspect(Buffer.from(file.data, 'base64'))).toMatchObject({ frames: 48 });
+  }
+  expect(errors).toEqual([]);
+});
+
+test('the picture on the stage is saved as a PNG thumbnail (EX-10)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    const settings = { coverLogo: true, overlay: { on: true } };
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+  });
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(8, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  const play = page.getByTestId('play-button');
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Pause');
+  await expect.poll(() => elapsed(page)).toBeGreaterThan(2);
+  await play.click();
+  await expect(play).toHaveAttribute('aria-label', 'Play');
+
+  const save = async (action: () => Promise<void>) => {
+    const [file] = await Promise.all([page.waitForEvent('download'), action()]);
+    const data = await readFile(await file.path());
+    // The size from the PNG's header.
+    return {
+      name: file.suggestedFilename(),
+      data,
+      width: data.readUInt32BE(16),
+      height: data.readUInt32BE(20),
+    };
+  };
+  // YouTube's thumbnail size, named after the track, with the cover and the title.
+  const picture = await save(() => page.getByTestId('picture-button').click());
+  expect(picture).toMatchObject({ name: 'The Testers - Sunrise.png', width: 1280, height: 720 });
+  expect(picture.data.length).toBeLessThan(2 * 1024 * 1024);
+  const [title, ...quarters] = await measure(page, picture.data, [
+    { x: 0.04, y: 0.74, width: 0.5, height: 0.22 },
+    ...logoQuarters({ width: 1280, height: 720 }),
+  ]);
+  expect(title!.bright).toBeGreaterThan(0.01);
+  expect(showsCover(quarters)).toBe(true);
+
+  // In the stage's aspect ratio; C saves it too.
+  await page.getByTestId('aspect-select').selectOption('9:16');
+  const upright = await save(() => page.keyboard.press('c'));
+  expect(upright).toMatchObject({ width: 720, height: 1280 });
+  expect(errors).toEqual([]);
+});
+
 test('an interrupted export resumes after a reload', async ({ page }) => {
   // Two scenes per frame in software rendering: about 80 s here, half as much again in CI.
   test.setTimeout(240_000);
   const errors = collectErrors(page);
   await page.goto('/');
-  await addTrack(page, 8);
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(8, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
   // The Logo Spectrum with the Kaleidoscope behind it (VE-08): both scenes carry over.
   await page.getByRole('tab', { name: 'Visuals' }).click();
   await page.getByText('Background', { exact: true }).click();
@@ -139,6 +490,11 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
   // Reduce flashing (VE-06) too: its settled level carries over as well.
   await page.getByText('Display', { exact: true }).click();
   await page.getByTestId('reduce-flashing').check();
+  // The cover art as the logo (LS-15) is kept with the job, the overlay (LS-18) in its plan.
+  await page.getByText('Logo', { exact: true }).click();
+  await page.getByTestId('cover-logo').check();
+  await page.getByText('Track info', { exact: true }).click();
+  await page.getByTestId('overlay-on').check();
   await page.getByTestId('export-button').click();
   await expect(page.getByTestId('export-switching')).toHaveText('(switching presets every 5 s)');
   await expect(page.getByTestId('export-calm')).toHaveText('(flashing reduced)');
@@ -162,11 +518,17 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
   await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 180_000 });
 
   const file = await download(page);
-  expect(file.name).toMatch(/^Clicks\.(mp4|webm)$/);
+  expect(file.name).toMatch(/^The Testers - Sunrise\.(mp4|webm)$/);
   const video = await inspect(file.data);
   expect(video).toMatchObject({ width: 720, height: 720, frames: 192 });
   expect(video.duration).toBeCloseTo(8, 1);
   expect(video.audioDuration).toBeCloseTo(8, 1);
+  // The resumed part still shows the cover art in the logo.
+  const frame = await videoFrame(page, file.data, 7);
+  if (frame) {
+    const quarters = await measure(page, frame, logoQuarters({ width: 720, height: 720 }));
+    expect(showsCover(quarters)).toBe(true);
+  }
   expect(errors).toEqual([]);
 });
 

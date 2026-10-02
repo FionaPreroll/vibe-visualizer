@@ -9,10 +9,11 @@
     pickFolder,
   } from '../core/library/folder-reader';
   import { sameGrid } from '../core/library/analysis-cache';
-  import type { Track } from '../core/state/app-state';
+  import { shownArtist, shownTitle, type Track } from '../core/state/app-state';
   import { errorMessage, formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
+  import TrackNameDialog from './TrackNameDialog.svelte';
   import TrackTempo from './TrackTempo.svelte';
 
   const player = usePlayer();
@@ -42,6 +43,8 @@
   let folderInput: HTMLInputElement;
   let dragIndex = $state<number | null>(null);
   let dropIndex = $state<number | null>(null);
+  /** The track being named (LS-18). */
+  let naming = $state<Track | null>(null);
 
   const totalDuration = $derived(
     $app.tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0),
@@ -111,8 +114,11 @@
   }
 
   function onKey(event: KeyboardEvent, index: number, track: Track) {
+    // Keys on the buttons of the entry are theirs.
+    if (event.target !== event.currentTarget) return;
     const id = track.id;
     if (event.key === 'Enter') play(track);
+    else if (event.key === 'F2') naming = track;
     else if (event.key === 'Delete' || event.key === 'Backspace') void player.remove(id);
     else if (event.altKey && event.key === 'ArrowUp' && index > 0) player.move(index, index - 1);
     else if (event.altKey && event.key === 'ArrowDown') player.move(index, index + 1);
@@ -236,7 +242,7 @@
             <span class="cover-placeholder"><Icon name="music" size={16} /></span>
           {/if}
           <span class="text">
-            <span class="title">{track.title}</span>
+            <span class="title">{shownTitle(track)}</span>
             <span class="artist">
               {#if track.status === 'unsupported'}
                 <Icon name="alert" size={12} /> {track.reason}
@@ -245,7 +251,7 @@
               {:else if track.status === 'missing'}
                 <Icon name="alert" size={12} /> File not available
               {:else}
-                {track.artist ?? track.fileName}
+                {shownArtist(track) ?? track.fileName}
               {/if}
             </span>
           </span>
@@ -262,9 +268,18 @@
             {/if}
           </span>
           <button
+            class="rename ghost"
+            onclick={() => (naming = track)}
+            aria-label="Title and artist of {shownTitle(track)}"
+            title="Title and artist (F2)"
+            data-testid="queue-rename"
+          >
+            <Icon name="pencil" size={15} />
+          </button>
+          <button
             class="remove ghost"
             onclick={() => player.remove(track.id)}
-            aria-label="Remove {track.title}"
+            aria-label="Remove {shownTitle(track)}"
           >
             <Icon name="close" size={16} />
           </button>
@@ -272,6 +287,7 @@
       {/each}
     </ol>
   {/if}
+  <TrackNameDialog track={naming} onclose={() => (naming = null)} />
 </section>
 
 <style>
@@ -329,7 +345,7 @@
   }
   li {
     display: grid;
-    grid-template-columns: 16px 36px 1fr auto 28px;
+    grid-template-columns: 16px 36px 1fr auto 28px 28px;
     align-items: center;
     gap: 10px;
     padding: 6px 8px;
@@ -430,7 +446,8 @@
     font-size: 12px;
     color: var(--muted);
   }
-  .remove {
+  .remove,
+  .rename {
     display: grid;
     place-items: center;
     width: 28px;
@@ -439,7 +456,9 @@
     opacity: 0;
   }
   li:hover .remove,
-  li:focus-within .remove {
+  li:focus-within .remove,
+  li:hover .rename,
+  li:focus-within .rename {
     opacity: 1;
   }
 </style>

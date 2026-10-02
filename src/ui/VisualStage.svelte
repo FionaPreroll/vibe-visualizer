@@ -13,6 +13,8 @@
   import { kaleidoPresets, logoSpectrumPresets } from './preset-store';
   import { liveScale } from './render-quality';
   import SafeAreas from './SafeAreas.svelte';
+  import { useCapture } from './stage-capture';
+  import { StreamInfo } from './stream-info';
   import { useAssets } from './visuals-context';
 
   /**
@@ -34,6 +36,7 @@
 
   const player = usePlayer();
   const assets = useAssets();
+  const capture = useCapture();
   const app = player.store;
   let canvas: HTMLCanvasElement;
   let renderer: Renderer | null = $state(null);
@@ -79,6 +82,22 @@
     renderer?.setReduceFlashing(reduceFlashing);
   });
 
+  // The track overlay (LS-18, LS-19) and the cover art as the logo (LS-15): the worker learns
+  // the tracks of the files in the stream, and shows the one the music heard comes from.
+  const overlay = $derived($app.settings.overlay);
+  $effect(() => {
+    renderer?.setOverlay(overlay);
+  });
+  const coverLogo = $derived($app.settings.coverLogo);
+  $effect(() => {
+    renderer?.setCoverLogo(coverLogo);
+  });
+  const stream = player.stream;
+  const streamInfo = $derived(renderer ? new StreamInfo(renderer) : null);
+  $effect(() => {
+    streamInfo?.update($stream, $app.tracks, $app.sound.rate, coverLogo);
+  });
+
   // Automatic preset switching: its settings and the presets of each mode that take part.
   const autoPresets = $derived($app.settings.autoPresets);
   const favourites = $derived($app.settings.favourites);
@@ -104,8 +123,11 @@
     // The first frame already shows the right scene (the effect takes over after mounting).
     instance.setScene(mode);
     instance.onEvent = (event) => {
-      if (event.type === 'ready') status = 'running';
-      else if (event.type === 'stats') {
+      if (event.type === 'ready') {
+        status = 'running';
+        // A picture of the stage can be taken now (EX-10).
+        capture.attach(instance);
+      } else if (event.type === 'stats') {
         fps = event.fps;
         if (autoQuality && quality.update(event.fps)) autoScale = quality.scale;
       } else if (event.type === 'preset') {
@@ -115,6 +137,7 @@
       } else {
         status = 'failed';
         message = event.message;
+        capture.attach(null);
       }
     };
 
@@ -181,6 +204,7 @@
 
     return () => {
       renderer = null;
+      capture.attach(null);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
       unsubscribeSettings();

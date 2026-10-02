@@ -5,18 +5,22 @@
   import { useExporter } from './exporter-context';
   import Icon, { type IconName } from './Icon.svelte';
   import { usePlayer } from './player-context';
+  import { useCapture } from './stage-capture';
 
   interface Props {
     onFullscreen: () => void;
+    /** Saves the picture on the stage (EX-10). */
+    onPicture: () => void;
     onExport: () => void;
     onHelp: () => void;
     onController: () => void;
   }
-  let { onFullscreen, onExport, onHelp, onController }: Props = $props();
+  let { onFullscreen, onPicture, onExport, onHelp, onController }: Props = $props();
 
   const player = usePlayer();
   const app = player.store;
   const exporter = useExporter();
+  const captureReady = useCapture().ready;
   const controllers = useControllers();
   const controllerOn = $derived(
     $controllers.status === 'on' && $controllers.devices.some((device) => device.profile),
@@ -134,6 +138,16 @@
     </button>
     <button
       class="toggle"
+      onclick={onPicture}
+      disabled={!$captureReady || $exporter.status === 'running'}
+      title="Save the picture as a PNG, e.g. as a thumbnail (C)"
+      aria-label="Save the picture"
+      data-testid="picture-button"
+    >
+      <Icon name="camera" size={18} />
+    </button>
+    <button
+      class="toggle"
       class:on={$app.settings.panelOpen}
       onclick={() => player.updateSettings({ panelOpen: !$app.settings.panelOpen })}
       aria-pressed={$app.settings.panelOpen}
@@ -155,8 +169,10 @@
     <button class="primary export" onclick={onExport} data-testid="export-button">
       <Icon name="export" size={18} />
       {#if $exporter.status === 'running'}
-        {$exporter.job.paused ? 'Paused' : 'Exporting'}
-        {Math.floor($exporter.job.progress * 100)} %
+        {@const job = $exporter.job}
+        {job.paused ? 'Paused' : 'Exporting'}
+        {#if job.batch}{job.batch.index + 1}/{job.batch.count} ·{/if}
+        {Math.floor(job.progress * 100)} %
       {:else}
         Export
       {/if}

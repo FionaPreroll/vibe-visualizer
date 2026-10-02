@@ -126,6 +126,11 @@ export interface LogoSpectrumSettings {
   logoShadow: number;
   /** 0…1: how much the logo (and the ring) grows with the bass. */
   bassPulse: number;
+  /**
+   * Turns per minute of the logo (or the cover art) with the music, like a record (LS-16): it
+   * stands while paused and turns faster or slower with the tempo; 0: it does not turn.
+   */
+  logoSpin: number;
 
   // Particles (LS-17)
   /** Number of particles (0 = off). */
@@ -188,6 +193,7 @@ const CLASSIC: LogoSpectrumSettings = {
   rimColor: '#ffffff',
   logoShadow: 0.5,
   bassPulse: 0.5,
+  logoSpin: 0,
   particles: 220,
   particleSize: 1,
   particleSpeed: 1,
@@ -357,6 +363,7 @@ export const RANGES: Record<NumericKey, readonly [number, number]> = {
   rimWidth: [0, 0.15],
   logoShadow: [0, 1],
   bassPulse: [0, 1],
+  logoSpin: [0, 78],
   particles: [0, 600],
   particleSize: [0.3, 3],
   particleSpeed: [0, 4],
@@ -415,6 +422,14 @@ export function sanitizeSettings(value: unknown): LogoSpectrumSettings {
   if (result.maxFrequency < result.minFrequency * 2) result.maxFrequency = result.minFrequency * 2;
   return result;
 }
+
+/** The speeds of a record (LS-16), in turns per minute; 0: the logo does not turn. */
+export const RECORD_SPEEDS: readonly { rpm: number; label: string }[] = [
+  { rpm: 0, label: 'Off' },
+  { rpm: 100 / 3, label: '33⅓ rpm' },
+  { rpm: 45, label: '45 rpm' },
+  { rpm: 78, label: '78 rpm' },
+];
 
 /** The layer colours, from the layer next to the top layer to the back. */
 export function layerColors(settings: LogoSpectrumSettings): readonly string[] {

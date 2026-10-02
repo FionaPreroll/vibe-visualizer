@@ -47,6 +47,10 @@ export const EXPORT_PRESETS: readonly {
   { id: 'tiktok', label: 'TikTok / Shorts 1080×1920', aspect: '9:16', resolution: 1080, fps: 30 },
 ];
 
+/** Seconds a video can fade in at the start and out at the end (EX-16); 0: no fades. */
+export const FADE_CHOICES = [0, 1, 2, 3, 5] as const;
+export type FadeSeconds = (typeof FADE_CHOICES)[number];
+
 /** What the export dialog remembers. */
 export interface ExportOptions {
   preset: PresetId | 'custom';
@@ -54,8 +58,14 @@ export interface ExportOptions {
   resolution: Resolution;
   fps: FrameRate;
   quality: Quality;
-  /** Whole track, or the in/out range when both markers are set (TR-09). */
-  range: 'track' | 'marks';
+  /**
+   * The whole track, its in/out range when a marker is set (TR-09), or tracks of the queue as
+   * one video, each between its markers (EX-05).
+   */
+  range: 'track' | 'marks' | 'tracks';
+  /** Tracks of the queue as a video of each, not one video (EX-09). */
+  perTrack: boolean;
+  fade: FadeSeconds;
 }
 
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
@@ -64,6 +74,8 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   fps: 60,
   quality: 'standard',
   range: 'marks',
+  perTrack: false,
+  fade: 0,
 };
 
 /** A concrete video format. */
@@ -212,7 +224,13 @@ export function sanitizeExportOptions(value: unknown): ExportOptions {
       QUALITIES.map((entry) => entry.id),
       DEFAULT_EXPORT_OPTIONS.quality,
     ),
-    range: pick(input['range'], ['track', 'marks'] as const, DEFAULT_EXPORT_OPTIONS.range),
+    range: pick(
+      input['range'],
+      ['track', 'marks', 'tracks'] as const,
+      DEFAULT_EXPORT_OPTIONS.range,
+    ),
+    perTrack: input['perTrack'] === true,
+    fade: pick(input['fade'], FADE_CHOICES, DEFAULT_EXPORT_OPTIONS.fade),
   };
 }
 

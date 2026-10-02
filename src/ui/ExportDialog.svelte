@@ -1,18 +1,32 @@
 <script lang="ts">
+  import { SvelteSet } from 'svelte/reactivity';
   import { isClean, type SoundSettings } from '../core/audio/dsp/sound-settings';
   import {
-    exportFileName,
-    exportSeconds,
+    chapterProblem,
+    chapterText,
+    partChapters,
+    partLayout,
+    partsSeconds,
+    videoFileName,
     type ExportCodecs,
     type ExportManifest,
+    type ExportPart,
     type ExportVisuals,
   } from '../core/export/export-job';
-  import { canPickFile, pickFile } from '../core/export/exporter';
+  import {
+    canPickFile,
+    canPickFolder,
+    pickFile,
+    pickFolder,
+    type BatchVideo,
+    type RequestPart,
+  } from '../core/export/exporter';
   import { readManifest } from '../core/export/job-store';
   import {
     ASPECT_RATIOS,
     estimateBytes,
     EXPORT_PRESETS,
+    FADE_CHOICES,
     fitOptions,
     frameSize,
     FRAME_RATES,
@@ -21,11 +35,12 @@
     resolveFormat,
     type AspectRatio,
     type ExportOptions,
+    type FadeSeconds,
   } from '../core/export/video-format';
   import { BUILT_IN_KALEIDO_PRESETS } from '../core/render/kaleido-settings';
   import { switchingPool, type AutoPresets } from '../core/render/preset-director';
   import { BUILT_IN_PRESETS } from '../core/render/visual-settings';
-  import { trackRange } from '../core/state/app-state';
+  import { shownArtist, shownTitle, trackRange, type Track } from '../core/state/app-state';
   import { loadExportOptions, saveExportOptions } from '../core/state/persistence';
   import { errorMessage, formatBytes, formatDuration } from '../core/util/format';
   import { useExporter } from './exporter-context';
@@ -35,8 +50,9 @@
   import { useAssets } from './visuals-context';
 
   /**
-   * The export (EX-03…06): format, range and quality; then progress with a preview, pause and
-   * cancel; the finished file; and resuming an interrupted export (EX-15).
+   * The export (EX-03…06): format, range and quality, one track or several (EX-05) with fades
+   * (EX-16); then progress with a preview, pause and cancel; the finished file with its chapters
+   * (EX-14); and resuming an interrupted export (EX-15).
    */
   interface Props {
     open: boolean;
@@ -54,6 +70,9 @@
   let options = $state<ExportOptions>(loadExportOptions());
   let codecs = $state<ExportCodecs | null>(null);
   let problem = $state<string | null>(null);
+  /** Tracks of the queue left out of a video of several; those added later are in. */
+  const skipped = new SvelteSet<string>();
+  let copied = $state(false);
 
   $effect(() => {
     if (!dialog) return;
@@ -73,10 +92,36 @@
       null,
   );
   const marked = $derived(track !== null && (track.marks.in !== null || track.marks.out !== null));
-  const range = $derived(track ? trackRange(track, marked && fitted.range === 'marks') : null);
+  /** The tracks a video of several can play, in the order of the queue. */
+  const ready = $derived(
+    $app.tracks.filter((entry) => entry.status === 'ready' && entry.duration !== null),
+  );
+  /** What the video plays: the choice, where it is possible. */
+  const choice = $derived.by((): ExportOptions['range'] => {
+    if (fitted.range === 'tracks' && ready.length > 1) return 'tracks';
+    return fitted.range !== 'track' && marked ? 'marks' : 'track';
+  });
+  const chosen = $derived(
+    choice === 'tracks' ? ready.filter((entry) => !skipped.has(entry.id)) : track ? [track] : [],
+  );
+  const parts = $derived(chosen.map((entry) => exportPart(entry, choice !== 'track')));
+  /** A video of each track (EX-09), rather than one of them all. */
+  const perTrack = $derived(choice === 'tracks' && fitted.perTrack);
   const sound = $derived($app.sound);
-  /** Length of the video: the range at the tempo of the sound. */
-  const seconds = $derived(range ? exportSeconds(range, sound) : 0);
+  /** Length of the video (of all of them, for a video of each): the parts at the tempo. */
+  const seconds = $derived(
+    perTrack
+      ? parts.reduce((sum, part) => sum + partsSeconds([part], sound), 0)
+      : parts.length > 0
+        ? partsSeconds(parts, sound)
+        : 0,
+  );
+  /** Where the tracks will start in the video (EX-14). */
+  const chapters = $derived(
+    choice === 'tracks' && !perTrack && parts.length > 1
+      ? partChapters(parts, { partStarts: partLayout(parts).starts }, sound)
+      : [],
+  );
 
   // Which codecs this browser will use (EX-04), checked whenever the format changes.
   $effect(() => {
@@ -96,10 +141,14 @@
     return () => (stale = true);
   });
 
-  // The latest preview frame of a running export.
+  // The latest preview frame of a running export (none yet: the next video of a batch).
   $effect(() => {
     const bitmap = $exporter.status === 'running' ? $exporter.job.preview : null;
-    if (!preview || !bitmap) return;
+    if (!preview) return;
+    if (!bitmap) {
+      preview.getContext('2d')?.clearRect(0, 0, preview.width, preview.height);
+      return;
+    }
     try {
       preview.width = bitmap.width;
       preview.height = bitmap.height;
@@ -127,42 +176,101 @@
     return pickFile(fileName, container);
   }
 
+  /**
+   * The part of `entry` a video plays: all of it, or the play range between its markers, as the
+   * player plays it from the queue (TR-09).
+   */
+  function exportPart(entry: Track, useMarks: boolean): ExportPart {
+    const duration = entry.duration ?? 0;
+    const range = trackRange(entry, useMarks) ?? { start: 0, end: duration };
+    return {
+      source: {
+        name: entry.fileName,
+        size: entry.size,
+        lastModified: player.fileFor(entry.id)?.lastModified ?? 0,
+        title: shownTitle(entry),
+        artist: shownArtist(entry),
+      },
+      range,
+      cut: range.end < duration,
+    };
+  }
+
   async function start() {
     problem = null;
-    if (!track || !range || !codecs || mode === 'analysis') return;
-    const file = player.fileFor(track.id);
-    if (!file) return;
-    const whole = range.start <= 0 && range.end >= (track.duration ?? range.end);
-    const source = { title: track.title, artist: track.artist };
-    const fileName = exportFileName(source, whole ? null : range, codecs.container, sound);
-    let destination: FileSystemFileHandle | null;
+    if (parts.length === 0 || !codecs || mode === 'analysis') return;
+    const tracks = chosen;
+    const planned = parts;
+    const files = tracks.map((entry) => player.fileFor(entry.id));
+    const unread = tracks.filter((_, index) => !files[index]).map((entry) => shownTitle(entry));
+    if (unread.length > 0) {
+      problem = `${namesOf(unread)} cannot be read; add the file to the queue again.`;
+      return;
+    }
+    // The track overlay names each track over the part the video plays (LS-18, LS-19).
+    const overlay = $app.settings.overlay;
+    const visuals: ExportVisuals = {
+      ...visualsOf(mode),
+      overlay: overlay.on ? overlay : undefined,
+    };
+    const covered = mode === 'logoSpectrum' && $app.settings.coverLogo;
+    const container = codecs.container;
+    const each = perTrack;
+    const fileName = videoFileName(planned, container, sound);
+    // Where the video goes: a file you pick (Chromium) or a download; for a video of each
+    // track, a folder you pick (Chromium) or browser storage.
+    let destination: FileSystemFileHandle | null = null;
+    let folder: FileSystemDirectoryHandle | null = null;
     try {
-      destination = await saveTarget(fileName, codecs.container);
+      if (each) folder = canPickFolder() ? await pickFolder() : null;
+      else destination = await saveTarget(fileName, container);
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         problem = errorMessage(error);
       }
       return;
     }
+    // The cover art as the logo (LS-15); read after the save dialog, which needs the click.
+    const covers = await Promise.all(
+      tracks.map((entry) =>
+        covered && entry.coverUrl
+          ? fetch(entry.coverUrl)
+              .then((response) => response.blob())
+              .catch(() => null)
+          : null,
+      ),
+    );
+    const requested: RequestPart[] = tracks.map((entry, index) => ({
+      part: planned[index]!,
+      file: files[index]!,
+      grid: player.analysisOf(entry)?.grid ?? null,
+      cover: covers[index] ?? null,
+    }));
     player.pause();
-    const started = exporter.start({
-      file,
-      source: {
-        ...source,
-        name: file.name,
-        size: file.size,
-        lastModified: file.lastModified,
-      },
-      range,
-      format,
-      visuals: visualsOf(mode),
-      sound,
-      grid: player.analysisOf(track)?.grid ?? null,
-      images: assets.shown,
-      destination,
-      fileName,
-    });
+    const common = { format, visuals, sound, fade: fitted.fade, images: assets.shown };
+    const started = each
+      ? exporter.startBatch(
+          requested.map((part) => ({
+            ...common,
+            parts: [part],
+            fileName: videoFileName([part.part], container, sound),
+          })),
+          folder,
+        )
+      : exporter.start({ ...common, parts: requested, destination, fileName });
     started.catch((error: unknown) => (problem = errorMessage(error)));
+  }
+
+  /** "Your video is ready.", or how many of a batch's videos are. */
+  function readyText(count: number, planned: number): string {
+    if (count < planned) return `${count} of ${planned} videos are ready.`;
+    return count === 1 ? 'Your video is ready.' : `Your ${count} videos are ready.`;
+  }
+
+  /** "A", "A and B", "A, B and C". */
+  function namesOf(names: readonly string[]): string {
+    if (names.length < 2) return names[0] ?? '';
+    return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
   }
 
   /** The visuals of the video: the current settings, and the preset switching if it is on. */
@@ -215,20 +323,28 @@
     problem = null;
     const manifest: ExportManifest | null = await readManifest();
     if (!manifest || manifest.progress.finished) return;
-    let file: File | null = null;
+    let files: (File | null)[] = manifest.parts.map(() => null);
     if (!manifest.progress.audioDone) {
-      const match = $app.tracks.find(
-        (entry) => entry.fileName === manifest.source.name && entry.size === manifest.source.size,
-      );
-      file = match ? player.fileFor(match.id) : null;
-      if (!file) {
-        problem = `Add ${manifest.source.name} to the queue first, then resume.`;
+      // The audio pass starts again: it needs the files of the tracks, from the queue.
+      files = manifest.parts.map(({ source }) => {
+        const match = $app.tracks.find(
+          (entry) => entry.fileName === source.name && entry.size === source.size,
+        );
+        return match ? player.fileFor(match.id) : null;
+      });
+      const missing = manifest.parts
+        .filter((_, index) => !files[index])
+        .map(({ source }) => source.name);
+      if (missing.length > 0) {
+        problem = `Add ${namesOf([...new Set(missing)])} to the queue first, then resume.`;
         return;
       }
     }
-    let destination: FileSystemFileHandle | null;
+    let destination: FileSystemFileHandle | null = null;
     try {
-      destination = await saveTarget(manifest.fileName, manifest.codecs.container);
+      // A video of a batch goes into the batch's folder, without asking again.
+      const intoFolder = manifest.destination === 'file' && exporter.batchFolder !== null;
+      if (!intoFolder) destination = await saveTarget(manifest.fileName, manifest.codecs.container);
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         problem = errorMessage(error);
@@ -236,7 +352,37 @@
       return;
     }
     player.pause();
-    exporter.resume(file, destination).catch((error: unknown) => (problem = errorMessage(error)));
+    exporter.resume(files, destination).catch((error: unknown) => (problem = errorMessage(error)));
+  }
+
+  /** Puts the chapter list on the clipboard, for the video's description (EX-14). */
+  async function copyChapters(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+      setTimeout(() => (copied = false), 1500);
+    } catch {
+      // Clipboard blocked: the list stays readable and selectable on screen.
+    }
+  }
+
+  /** Saves the chapter list as a text file named after the video. */
+  function saveChapters(text: string, fileName: string) {
+    const url = URL.createObjectURL(new Blob([`${text}\n`], { type: 'text/plain' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${fileName.replace(/\.[^.]+$/, '')} - chapters.txt`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /** The play range of `entry` in a few words: its length, and where it is if it is marked. */
+  function rangeLabel(entry: Track): string {
+    const duration = entry.duration ?? 0;
+    const range = trackRange(entry, true) ?? { start: 0, end: duration };
+    const length = formatDuration(range.end - range.start);
+    if (range.start <= 0 && range.end >= duration) return length;
+    return `${length} (${formatDuration(range.start)}–${formatDuration(range.end)})`;
   }
 
   const PHASES = {
@@ -273,6 +419,26 @@
   }
 </script>
 
+{#snippet videoList(videos: BatchVideo[])}
+  <ul class="videos" data-testid="export-videos">
+    {#each videos as video, index (index)}
+      <li>
+        <span class="file">{video.fileName} · {formatBytes(video.bytes)}</span>
+        {#if video.url}
+          <a
+            class="button small"
+            href={video.url}
+            download={video.fileName}
+            data-testid="export-video-download"
+          >
+            <Icon name="export" size={14} /> Download
+          </a>
+        {/if}
+      </li>
+    {/each}
+  </ul>
+{/snippet}
+
 <dialog
   bind:this={dialog}
   class="export"
@@ -295,7 +461,8 @@
         class="preview"
         style:aspect-ratio={job.format.width / job.format.height}
       ></canvas>
-      <p class="file">
+      <p class="file" data-testid="export-file">
+        {#if job.batch}Video {job.batch.index + 1} of {job.batch.count} ·{/if}
         {job.fileName} · {job.format.width}×{job.format.height} · {job.format.fps} fps
       </p>
       <div
@@ -334,10 +501,36 @@
   {:else if $exporter.status === 'done'}
     {@const done = $exporter}
     <section class="result" data-testid="export-done">
-      <p class="big">Your video is ready.</p>
-      <p class="file">{done.fileName} · {formatBytes(done.bytes)}</p>
+      <p class="big">{readyText(Math.max(1, done.videos.length), done.planned)}</p>
+      {#if done.videos.length > 0}
+        {@render videoList(done.videos)}
+      {:else}
+        <p class="file">{done.fileName} · {formatBytes(done.bytes)}</p>
+      {/if}
       {#if done.seconds !== null}
         <p class="hint">Rendered in {formatDuration(done.seconds)}.</p>
+      {/if}
+      {#if done.chapters.length > 1}
+        {@const text = chapterText(done.chapters)}
+        {@const issue = chapterProblem(done.chapters, done.duration)}
+        <div class="chapters">
+          <p class="hint">Chapters for the description on YouTube:</p>
+          <pre data-testid="export-chapters">{text}</pre>
+          {#if issue}
+            <p class="hint">{issue}</p>
+          {/if}
+          <div class="actions">
+            <button onclick={() => copyChapters(text)} data-testid="export-chapters-copy">
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            <button
+              onclick={() => saveChapters(text, done.fileName)}
+              data-testid="export-chapters-save"
+            >
+              Save as text
+            </button>
+          </div>
+        </div>
       {/if}
       <div class="actions">
         {#if done.url}
@@ -350,11 +543,18 @@
             <Icon name="export" size={16} /> Download
           </a>
           <button onclick={() => exporter.discard()}>Delete from browser storage</button>
+        {:else if done.videos.some((video) => video.url)}
+          <button onclick={() => exporter.discard()}>Delete from browser storage</button>
+        {:else if done.videos.length > 0}
+          <p class="hint">Saved into the folder you chose.</p>
         {:else}
           <p class="hint">Saved to the file you chose.</p>
         {/if}
         <button onclick={() => exporter.dismiss()}>New export</button>
       </div>
+      {#if done.videos.some((video) => video.url)}
+        <p class="hint">The videos stay in browser storage until the next export.</p>
+      {/if}
     </section>
   {:else if $exporter.status === 'interrupted' || ($exporter.status === 'failed' && $exporter.resumable)}
     <section class="result" data-testid="export-interrupted">
@@ -370,6 +570,15 @@
         </p>
       {/if}
       <p class="hint">It continues where it stopped.</p>
+      {#if $exporter.status === 'failed' && $exporter.videos.length > 0}
+        <p class="hint">
+          Finished before, from the same batch; resuming goes on with the rest.
+          {#if $exporter.videos.some((video) => video.url)}
+            Discard deletes these videos from browser storage too.
+          {/if}
+        </p>
+        {@render videoList($exporter.videos)}
+      {/if}
       <div class="actions">
         <button class="primary" onclick={resume} data-testid="export-resume">Resume</button>
         <button onclick={() => exporter.discard()} data-testid="export-discard">Discard</button>
@@ -378,6 +587,10 @@
   {:else}
     {#if $exporter.status === 'failed'}
       <p class="problem" role="alert">The export failed: {$exporter.message}</p>
+      {#if $exporter.videos.length > 0}
+        <p class="hint">Finished before, from the same batch:</p>
+        {@render videoList($exporter.videos)}
+      {/if}
     {/if}
     <section class="form">
       <fieldset>
@@ -469,27 +682,42 @@
           </select>
         </label>
         <span class="detail">{(format.videoBitrate / 1e6).toFixed(1)} Mbit/s video</span>
+        <label
+          title="The picture fades from and to black at the start and the end, and the sound with it"
+        >
+          Fade in and out
+          <select
+            value={options.fade}
+            onchange={(event) => (options.fade = Number(event.currentTarget.value) as FadeSeconds)}
+            data-testid="export-fade"
+          >
+            {#each FADE_CHOICES as fade (fade)}
+              <option value={fade}>{fade === 0 ? 'No fades' : `${fade} s`}</option>
+            {/each}
+          </select>
+        </label>
       </div>
 
       <fieldset>
         <legend>Range</legend>
-        <div class="choices two">
-          <label class="choice" class:on={!marked || fitted.range === 'track'}>
+        <div class="choices">
+          <label class="choice" class:on={choice === 'track'}>
             <input
               type="radio"
               name="range"
-              checked={!marked || fitted.range === 'track'}
+              checked={choice === 'track'}
               onchange={() => (options.range = 'track')}
+              data-testid="export-range-track"
             />
             <span class="name">Whole track</span>
             <span class="detail">{formatDuration(track?.duration ?? 0)}</span>
           </label>
-          <label class="choice" class:on={marked && fitted.range === 'marks'} class:off={!marked}>
+          <label class="choice" class:on={choice === 'marks'} class:off={!marked}>
             <input
               type="radio"
               name="range"
               disabled={!marked}
-              checked={marked && fitted.range === 'marks'}
+              checked={choice === 'marks'}
               onchange={() => (options.range = 'marks')}
               data-testid="export-range-marks"
             />
@@ -504,12 +732,110 @@
               {/if}
             </span>
           </label>
+          <label class="choice wide" class:on={choice === 'tracks'} class:off={ready.length < 2}>
+            <input
+              type="radio"
+              name="range"
+              disabled={ready.length < 2}
+              checked={choice === 'tracks'}
+              onchange={() => (options.range = 'tracks')}
+              data-testid="export-range-tracks"
+            />
+            <span class="name">Tracks of the queue</span>
+            <span class="detail">
+              {ready.length < 2
+                ? 'Several tracks: add more to the queue first'
+                : 'One video of them all, with chapters, or a video of each'}
+            </span>
+          </label>
         </div>
+        {#if choice === 'tracks'}
+          <div class="tracks-head">
+            <span>{chosen.length} of {ready.length} tracks</span>
+            <button onclick={() => skipped.clear()} disabled={chosen.length === ready.length}>
+              All
+            </button>
+            <button
+              onclick={() => ready.forEach((entry) => skipped.add(entry.id))}
+              disabled={chosen.length === 0}
+            >
+              None
+            </button>
+          </div>
+          <ul class="tracks" data-testid="export-tracks">
+            {#each ready as entry (entry.id)}
+              <li>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!skipped.has(entry.id)}
+                    onchange={(event) =>
+                      event.currentTarget.checked
+                        ? skipped.delete(entry.id)
+                        : skipped.add(entry.id)}
+                    data-testid="export-track-choice"
+                  />
+                  <span class="title">
+                    {shownTitle(entry)}
+                    {#if shownArtist(entry)}
+                      <span class="detail">· {shownArtist(entry)}</span>
+                    {/if}
+                  </span>
+                  <span class="detail">{rangeLabel(entry)}</span>
+                </label>
+              </li>
+            {/each}
+          </ul>
+          <div class="make" role="radiogroup" aria-label="Make">
+            <label>
+              <input
+                type="radio"
+                name="make"
+                checked={!fitted.perTrack}
+                onchange={() => (options.perTrack = false)}
+                data-testid="export-one-video"
+              />
+              One video of them all
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="make"
+                checked={fitted.perTrack}
+                onchange={() => (options.perTrack = true)}
+                data-testid="export-per-track"
+              />
+              A video of each
+            </label>
+          </div>
+          <p class="hint">
+            {#if perTrack}
+              Each between its markers, one video after the other, each named after its track, e.g.
+              to upload them one by one.
+            {:else}
+              In the order of the queue, each between its markers, joined as the player joins them.
+              {#if chapters.length > 0}
+                {chapterProblem(chapters, seconds) ??
+                  'The finished video comes with chapters for its description on YouTube.'}
+              {/if}
+            {/if}
+          </p>
+        {/if}
       </fieldset>
 
       <dl class="summary">
-        <dt>Track</dt>
-        <dd data-testid="export-track">{track?.title ?? 'Add a track to the queue first'}</dd>
+        <dt>{choice !== 'tracks' ? 'Track' : perTrack ? 'Videos' : 'Tracks'}</dt>
+        <dd data-testid="export-track">
+          {#if choice === 'tracks' && chosen.length === 0}
+            Choose them above
+          {:else if perTrack}
+            {chosen.length === 1 ? 'One video' : `${chosen.length} videos, one of each track`}
+          {:else if choice === 'tracks'}
+            {chosen.length} track{chosen.length === 1 ? '' : 's'}, from {shownTitle(chosen[0]!)}
+          {:else}
+            {track ? shownTitle(track) : 'Add a track to the queue first'}
+          {/if}
+        </dd>
         <dt>Visuals</dt>
         <dd>
           {#if mode === 'analysis'}
@@ -524,6 +850,21 @@
             {#if $app.settings.reduceFlashing}
               <span data-testid="export-calm">(flashing reduced)</span>
             {/if}
+            {#if $app.settings.overlay.on}
+              <span data-testid="export-overlay"
+                >({chosen.length > 1 ? 'with the titles' : "with the track's title"})</span
+              >
+            {/if}
+            {#if mode === 'logoSpectrum' && $app.settings.coverLogo && chosen.some((entry) => entry.coverUrl)}
+              <span data-testid="export-cover"
+                >({chosen.length > 1
+                  ? 'the cover art as the logo'
+                  : 'its cover art as the logo'})</span
+              >
+            {/if}
+            {#if fitted.fade > 0}
+              <span data-testid="export-fades">(fading in and out over {fitted.fade} s)</span>
+            {/if}
           {/if}
         </dd>
         <dt>Video</dt>
@@ -535,13 +876,21 @@
         <dd data-testid="export-sound">{soundSummary(sound)} (set in the Sound tab)</dd>
         <dt>Length</dt>
         <dd data-testid="export-length">
-          {formatDuration(seconds)} · about {formatBytes(estimateBytes(format, seconds))}
+          {formatDuration(seconds)}{perTrack && chosen.length > 1 ? ' in all' : ''} · about {formatBytes(
+            estimateBytes(format, seconds),
+          )}
         </dd>
         <dt>Saving</dt>
         <dd>
-          {canPickFile()
-            ? 'You choose a file; the video is written into it while rendering.'
-            : 'The video downloads when it is finished.'}
+          {#if perTrack}
+            {canPickFolder()
+              ? 'You choose a folder; each video is written into it while rendering.'
+              : 'The videos wait in browser storage; you download each when it is finished.'}
+          {:else}
+            {canPickFile()
+              ? 'You choose a file; the video is written into it while rendering.'
+              : 'The video downloads when it is finished.'}
+          {/if}
         </dd>
       </dl>
       {#if codecs?.video === 'vp9'}
@@ -554,7 +903,7 @@
         <button
           class="primary"
           onclick={start}
-          disabled={!track || !range || !codecs || mode === 'analysis' || seconds <= 0}
+          disabled={parts.length === 0 || !codecs || mode === 'analysis' || seconds <= 0}
           data-testid="export-start"
         >
           <Icon name="export" size={16} /> Start export
@@ -610,6 +959,9 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+  }
+  .choice.wide {
+    grid-column: 1 / -1;
   }
   .choice {
     display: grid;
@@ -668,9 +1020,104 @@
   }
   .row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 12px;
     margin-bottom: 14px;
+  }
+  .tracks-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 10px 0 6px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .tracks-head span {
+    margin-right: auto;
+  }
+  .tracks-head button {
+    padding: 2px 10px;
+    font-size: 12px;
+  }
+  .tracks {
+    max-height: 180px;
+    margin: 0;
+    padding: 4px 0;
+    overflow-y: auto;
+    list-style: none;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .tracks label {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .tracks input {
+    accent-color: var(--accent);
+  }
+  .tracks .title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .chapters pre {
+    max-height: 160px;
+    margin: 6px 0 0;
+    padding: 8px 10px;
+    overflow: auto;
+    border-radius: 8px;
+    background: var(--surface-2);
+    font-size: 13px;
+    white-space: pre-wrap;
+    user-select: text;
+  }
+  .chapters .actions {
+    margin-top: 8px;
+  }
+  .make {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin-top: 10px;
+  }
+  .make label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .make input {
+    accent-color: var(--accent);
+  }
+  .videos {
+    max-height: 220px;
+    margin: 10px 0 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+  .videos li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .videos .file {
+    margin: 0;
+  }
+  .button.small {
+    flex: none;
+    padding: 3px 10px;
+    font-size: 13px;
   }
   .summary {
     display: grid;

@@ -8,6 +8,7 @@
     PALETTE_NAMES,
     PALETTES,
     RANGES,
+    RECORD_SPEEDS,
     RESPONSIVENESS,
     RING_DIRECTIONS,
     RING_STYLES,
@@ -96,6 +97,12 @@
     inward: 'Inward',
     both: 'Both',
   };
+  /** The record speed shown: the one nearest to the setting (LS-16). */
+  const recordSpeed = $derived(
+    RECORD_SPEEDS.reduce((best, speed) =>
+      Math.abs(speed.rpm - v.logoSpin) < Math.abs(best.rpm - v.logoSpin) ? speed : best,
+    ).rpm,
+  );
   const swatch = (name: PaletteName) =>
     `linear-gradient(90deg, ${(name === 'custom' ? v.customColors : PALETTES[name]).join(', ')})`;
 </script>
@@ -243,6 +250,20 @@
       testid="logo"
       onpick={(file) => pickImage('logo', file)}
     />
+    <label class="option">
+      <input
+        type="checkbox"
+        checked={$app.settings.coverLogo}
+        onchange={(event) => player.updateSettings({ coverLogo: event.currentTarget.checked })}
+        data-testid="cover-logo"
+      />
+      Show the cover art of the track playing
+    </label>
+    {#if $app.settings.coverLogo}
+      <p class="hint" data-testid="cover-logo-hint">
+        Tracks without cover art show the logo image. Zoom and position apply to the logo image.
+      </p>
+    {/if}
     <Slider {...slider('logoSize', 'Size', percent)} />
     <Slider {...slider('logoZoom', 'Zoom', (x) => `${x.toFixed(2)}×`)} />
     <Slider {...slider('logoPanX', 'Position X')} />
@@ -259,6 +280,24 @@
     </div>
     <Slider {...slider('logoShadow', 'Shadow', percent)} />
     <Slider {...slider('bassPulse', 'Bass pulse', percent)} />
+    <div class="color-row">
+      <label for="logo-spin">Spin like a record</label>
+      <select
+        id="logo-spin"
+        value={recordSpeed}
+        onchange={(event) => set({ logoSpin: Number(event.currentTarget.value) })}
+        data-testid="logo-spin"
+      >
+        {#each RECORD_SPEEDS as speed (speed.rpm)}
+          <option value={speed.rpm}>{speed.label}</option>
+        {/each}
+      </select>
+    </div>
+    {#if v.logoSpin > 0}
+      <p class="hint">
+        It turns with the music: it stands while paused, and turns faster or slower with the tempo.
+      </p>
+    {/if}
     <Slider {...slider('centerX', 'Ring position X', percent)} />
     <Slider {...slider('centerY', 'Ring position Y', percent)} />
   </Section>
@@ -445,6 +484,13 @@
   .quick button.on {
     border-color: var(--accent);
     background: var(--surface-2);
+  }
+  .option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    font-size: 13px;
   }
   .footer {
     display: flex;

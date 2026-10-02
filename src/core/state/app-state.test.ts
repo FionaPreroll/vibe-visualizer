@@ -9,6 +9,9 @@ import {
   newTrack,
   reducer,
   restoredTrack,
+  shownArtist,
+  shownTitle,
+  trackEdit,
   trackRange,
   type AppAction,
   type AppState,
@@ -69,6 +72,7 @@ describe('app state', () => {
           marks: { in: 10, out: 40 },
           tempo: 174,
           gridEdit: { shift: 0.02, downbeat: 1.5 },
+          edit: { title: 'Better title', artist: null },
         },
       },
     });
@@ -77,6 +81,7 @@ describe('app state', () => {
       marks: { in: 10, out: 40 },
       tempo: 174,
       gridEdit: { shift: 0.02, downbeat: 1.5 },
+      edit: { title: 'Better title', artist: null },
     });
     state = reducer(state, { type: 'tracks/cue', id: 't0', index: 1, seconds: 500 });
     expect(state.tracks[0]!.cues[1]).toBe(180);
@@ -85,6 +90,55 @@ describe('app state', () => {
     // Slots beyond the eight are ignored.
     const same = reducer(state, { type: 'tracks/cue', id: 't0', index: 8, seconds: 5 });
     expect(same.tracks[0]!.cues).toEqual(state.tracks[0]!.cues);
+  });
+
+  it('names a file as the user gives it, for every entry of that file (LS-18)', () => {
+    let state = withTracks('a.mp3', 'b.mp3', 'c.mp3');
+    state = {
+      ...state,
+      tracks: state.tracks.map((track, i) => ({
+        ...track,
+        fingerprint: i < 2 ? 'same' : 'other',
+        artist: 'DJ',
+      })),
+    };
+    const track = state.tracks[0]!;
+    // What the file has already is no edit.
+    expect(trackEdit(track, ' a ', 'DJ')).toBeNull();
+    const edit = trackEdit(track, '  Night Drive ', '');
+    expect(edit).toEqual({ title: 'Night Drive', artist: null });
+    state = reducer(state, { type: 'tracks/edited', id: 't0', edit });
+    expect(state.tracks.map(shownTitle)).toEqual(['Night Drive', 'Night Drive', 'c']);
+    expect(state.tracks.map(shownArtist)).toEqual([null, null, 'DJ']);
+    // Without a title, the file's stays.
+    expect(trackEdit(track, '   ', 'Someone')).toEqual({ title: 'a', artist: 'Someone' });
+    // A name given while the file is probed is kept when its tags come in.
+    let probing = withTracks('new.mp3');
+    probing = reducer(probing, {
+      type: 'tracks/edited',
+      id: 't0',
+      edit: { title: 'Mine', artist: null },
+    });
+    probing = reducer(probing, {
+      type: 'tracks/probed',
+      id: 't0',
+      info: {
+        status: 'ready',
+        reason: null,
+        title: 'Tagged',
+        artist: 'Someone',
+        album: null,
+        duration: 60,
+        sampleRate: 44100,
+        codec: 'mp3',
+        format: 'MP3',
+        coverUrl: null,
+        fingerprint: 'new',
+      },
+    });
+    expect(shownTitle(probing.tracks[0]!)).toBe('Mine');
+    state = reducer(state, { type: 'tracks/edited', id: 't1', edit: null });
+    expect(state.tracks.map(shownTitle)).toEqual(['a', 'b', 'c']);
   });
 
   it('sets the tempo and the grid correction of every entry of a file', () => {
@@ -127,6 +181,7 @@ describe('app state', () => {
           marks: { in: null, out: 20 },
           tempo: null,
           gridEdit: NO_GRID_EDIT,
+          edit: null,
         }),
         restoredTrack('r1', { ...info, fileName: 'Gone.mp3' }, 'missing'),
       ],

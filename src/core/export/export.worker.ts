@@ -21,14 +21,16 @@ import { FeatureSampler } from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
 import { GridBeats } from '../analysis/grid-beats';
 import { decodeGrid, encodeGrid } from '../library/analysis-cache';
-import { decodeAtRate, openInput } from '../audio/decode-stream';
+import { openInput } from '../audio/decode-stream';
 import { DspCore } from '../audio/dsp/dsp-core';
 import type { SoundSettings } from '../audio/dsp/sound-settings';
-import { Resampler } from '../audio/resampler';
 import { SignalsmithStretch } from '../audio/stretch/signalsmith-stretch';
+import { PictureFade } from '../render/fade';
 import { sanitizeKaleido } from '../render/kaleido-settings';
 import { KaleidoscopeScene } from '../render/kaleidoscope';
 import { LogoSpectrumScene } from '../render/logo-spectrum';
+import { TrackOverlay } from '../render/overlay';
+import { sanitizeOverlay } from '../render/overlay-settings';
 import { PresetAutomation, SWITCHING_SEEDS } from '../render/preset-automation';
 import { sanitizeAutoPresets } from '../render/preset-director';
 import {
@@ -45,17 +47,27 @@ import { sanitizeSettings } from '../render/visual-settings';
 import { exposeWorker } from '../util/worker-rpc';
 import {
   CANCELLED,
+  coverFile,
   EXPORT_RATE,
+  fadeAt,
   FEATURE_FIELDS,
+  gridFile,
+  JOB_IMAGES,
   OUTPUT_FILE,
+  partAt,
+  partChapters,
+  partTrack,
+  planParts,
   frameTime,
-  planTiming,
+  type Chapter,
+  type JobImage,
   type ExportCodecs,
   type ExportManifest,
-  type ExportSource,
+  type ExportPart,
   type ExportVisuals,
 } from './export-job';
 import { DecodedSource } from './decoded-source';
+import { joinedStream } from './joined-stream';
 import { FeatureFeed } from './feature-feed';
 import { clearJob, JobWriter, readJobFile, readManifest, RecordWriter } from './job-store';
 import { avcCodecString, type VideoFormat } from './video-format';
@@ -63,9 +75,10 @@ import { avcCodecString, type VideoFormat } from './video-format';
 /**
  * Renders an export (EX-01…07, EX-15) in a worker, independent of the screen:
  *
- * 1. Audio pass: decode the range (plus an analysis pre-roll), convert to 48 kHz and play it
- *    through the sound chain like the live engine (tempo and effects), analyse it and store the
- *    analysis, and encode the audio.
+ * 1. Audio pass: decode the parts of the tracks (plus an analysis pre-roll), joined as the
+ *    player joins the queue (EX-05), convert to 48 kHz and play them through the sound chain
+ *    like the live engine (tempo and effects), analyse them and store the analysis, and encode
+ *    the audio, with its fades (EX-16).
  * 2. Video pass: render frame n at time n / fps from the stored analysis, in segments. After
  *    each segment the scene's state is saved, so an interrupted export resumes exactly.
  * 3. Join: copy the segments and the audio into one MP4 (or WebM) without re-encoding, straight
@@ -80,27 +93,42 @@ export interface ImageInput {
 }
 
 export interface StartArgs {
-  file: File;
-  source: ExportSource;
-  range: { start: number; end: number };
+  /** The tracks of the video in order, and the file of each (EX-05). */
+  parts: ExportPart[];
+  files: File[];
   format: VideoFormat;
   visuals: ExportVisuals;
   sound: SoundSettings;
-  /** The file's beat grid (AN-07), if it has been analysed: the beats come from it. */
-  grid: BeatGrid | null;
-  images: { background: ImageInput | null; logo: ImageInput | null };
+  /** Seconds of the fades at the start and the end (EX-16); 0: none. */
+  fade: number;
+  /** Each part's beat grid (AN-07), if its file has been analysed: the beats come from it. */
+  grids: (BeatGrid | null)[];
+  /** The Logo Spectrum's images. */
+  images: Record<JobImage, ImageInput | null>;
+  /** Each part's cover art, shown as the logo (LS-15); null: the logo image. */
+  covers: (ImageInput | null)[];
   /** The file to write; null writes into browser storage for a download. */
   destination: FileSystemFileHandle | null;
   fileName: string;
+  /**
+   * For a video of a batch (EX-09): the folder its file goes into (Chromium), made only when
+   * it is written, so that a cancelled video leaves none; or else its file among the batch's
+   * videos in browser storage.
+   */
+  folder?: FileSystemDirectoryHandle | null;
+  output?: string | null;
   /** Shorter segments for tests. */
   segmentSeconds?: number;
 }
 
 export interface ResumeArgs {
-  /** The source file; only needed when the audio pass was not finished. */
-  file: File | null;
-  images: { background: ImageBitmap | null; logo: ImageBitmap | null };
+  /** The files of the parts; only needed when the audio pass was not finished. */
+  files: (File | null)[];
+  images: Record<JobImage, ImageBitmap | null>;
+  covers: (ImageBitmap | null)[];
   destination: FileSystemFileHandle | null;
+  /** The folder of a batch (EX-09), for its video that failed. */
+  folder?: FileSystemDirectoryHandle | null;
 }
 
 export interface ExportResult {
@@ -109,6 +137,16 @@ export interface ExportResult {
   destination: 'file' | 'download';
   /** Wall-clock seconds of this run. */
   seconds: number;
+  /** Where each track starts in the video (EX-14). */
+  chapters: Chapter[];
+  /** The video's file among a batch's videos in storage (EX-09); null: the job's own. */
+  output: string | null;
+}
+
+/** The pictures the video pass shows: the Logo Spectrum's images and each part's cover. */
+interface Pictures {
+  images: Record<JobImage, ImageBitmap | null>;
+  covers: (ImageBitmap | null)[];
 }
 
 export type ExportProgress =
@@ -130,8 +168,6 @@ const BLOCK = 128;
 const BLOCKS_PER_STEP = 16;
 /** Audio samples per encoded chunk. */
 const ENCODE_CHUNK = 8192;
-/** The beat grid stored with the job. */
-const GRID_FILE = 'beat-grid.bin';
 const PREVIEW_WIDTH = 480;
 const REPORT_INTERVAL_MS = 250;
 const PREVIEW_INTERVAL_MS = 1000;
@@ -227,51 +263,57 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
     await clearJob();
     const store = await JobWriter.open();
     const analyzer = new Analyzer(EXPORT_RATE);
+    const logoSpectrum = args.visuals.mode === 'logoSpectrum';
     const manifest: ExportManifest = {
-      version: 2,
+      version: 3,
       sequence: 0,
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
-      source: args.source,
-      range: args.range,
+      parts: args.parts,
       format: args.format,
       codecs: await probe(args.format),
       visuals: args.visuals,
       sound: args.sound,
+      fade: args.fade,
       images: {
         background: args.images.background?.blob.type ?? null,
         logo: args.images.logo?.blob.type ?? null,
+        covers: args.parts.map((_, i) => (logoSpectrum ? args.covers[i]?.blob.type : null) ?? null),
       },
-      timing: planTiming(
-        args.range,
-        args.format.fps,
-        analyzer.hop,
-        args.sound,
-        args.segmentSeconds,
-      ),
-      destination: args.destination ? 'file' : 'download',
+      timing: planParts(args.parts, args.format.fps, analyzer.hop, args.sound, args.segmentSeconds),
+      destination: args.destination || args.folder ? 'file' : 'download',
       fileName: args.fileName,
+      output: args.destination || args.folder ? null : (args.output ?? null),
       progress: { audioDone: false, segmentsDone: 0, finished: false, bytes: null },
       resumeCount: 0,
     };
-    if (args.visuals.mode === 'logoSpectrum') {
-      for (const kind of ['background', 'logo'] as const) {
+    if (logoSpectrum) {
+      for (const kind of JOB_IMAGES) {
         const image = args.images[kind];
         if (image) await store.writeFile(`image-${kind}`, image.blob);
       }
+      for (const [index, cover] of args.covers.entries()) {
+        if (cover) await store.writeFile(coverFile(index), cover.blob);
+      }
     }
     // Kept for a resume during the audio pass.
-    if (args.grid) await store.writeFile(GRID_FILE, new Uint8Array(encodeGrid(args.grid)));
+    for (const [index, grid] of args.grids.entries()) {
+      if (grid) await store.writeFile(gridFile(index), new Uint8Array(encodeGrid(grid)));
+    }
     await store.writeManifest(manifest);
-    const bitmaps = {
-      background: args.images.background?.bitmap ?? null,
-      logo: args.images.logo?.bitmap ?? null,
+    const pictures: Pictures = {
+      images: {
+        background: args.images.background?.bitmap ?? null,
+        logo: args.images.logo?.bitmap ?? null,
+      },
+      covers: args.parts.map((_, i) => (logoSpectrum ? args.covers[i]?.bitmap : null) ?? null),
     };
-    return await run(store, manifest, args.file, bitmaps, args.destination, progress, analyzer);
+    const target = { file: args.destination, folder: args.folder ?? null };
+    return await run(store, manifest, args.files, pictures, target, progress, analyzer);
   } finally {
     running = false;
-    args.images.background?.bitmap.close();
-    args.images.logo?.bitmap.close();
+    for (const kind of JOB_IMAGES) args.images[kind]?.bitmap.close();
+    for (const cover of args.covers) cover?.bitmap.close();
   }
 }
 
@@ -283,46 +325,65 @@ async function resume(args: ResumeArgs, progress: (update: ExportProgress) => vo
   try {
     const manifest = await readManifest();
     if (!manifest || manifest.progress.finished) throw new Error('There is no unfinished export.');
-    if (!manifest.progress.audioDone && !args.file) {
-      throw new Error(`To resume, add ${manifest.source.name} again.`);
+    if (!manifest.progress.audioDone) {
+      const missing = manifest.parts.filter((_, i) => !args.files[i]);
+      if (missing.length > 0) {
+        const names = [...new Set(missing.map((part) => part.source.name))].join(', ');
+        throw new Error(`To resume, add ${names} again.`);
+      }
     }
     const store = await JobWriter.open();
     manifest.resumeCount++;
-    manifest.destination = args.destination ? 'file' : 'download';
+    manifest.destination = args.destination || args.folder ? 'file' : 'download';
     await store.writeManifest(manifest);
-    return await run(store, manifest, args.file, args.images, args.destination, progress);
+    const pictures = { images: args.images, covers: args.covers };
+    const target = { file: args.destination, folder: args.folder ?? null };
+    return await run(store, manifest, args.files, pictures, target, progress);
   } finally {
     running = false;
-    args.images.background?.close();
-    args.images.logo?.close();
+    for (const kind of JOB_IMAGES) args.images[kind]?.close();
+    for (const cover of args.covers) cover?.close();
   }
 }
 
 async function run(
   store: JobWriter,
   manifest: ExportManifest,
-  file: File | null,
-  images: ResumeArgs['images'],
-  destination: FileSystemFileHandle | null,
+  files: (File | null)[],
+  pictures: Pictures,
+  target: { file: FileSystemFileHandle | null; folder: FileSystemDirectoryHandle | null },
   progress: (update: ExportProgress) => void,
   analyzer = new Analyzer(EXPORT_RATE),
 ): Promise<ExportResult> {
   const started = performance.now();
   if (manifest.codecs.aacEncoder === 'wasm') await ensureWasmAac();
   if (!manifest.progress.audioDone) {
-    const grid = await readJobFile(GRID_FILE)
-      .then(async (stored) => decodeGrid(await stored.arrayBuffer()))
-      .catch(() => null);
-    await audioPass(store, manifest, file!, analyzer, grid, progress);
+    const grids = await Promise.all(
+      manifest.parts.map((_, index) =>
+        readJobFile(gridFile(index))
+          .then(async (stored) => decodeGrid(await stored.arrayBuffer()))
+          .catch(() => null),
+      ),
+    );
+    await audioPass(store, manifest, files as File[], analyzer, grids, progress);
     manifest.progress.audioDone = true;
     await store.writeManifest(manifest);
   }
   if (manifest.progress.segmentsDone < manifest.timing.segments) {
-    await videoPass(store, manifest, images, progress);
+    await videoPass(store, manifest, pictures, progress);
   }
+  // The file of a batch's video in its folder is only made now (EX-09).
+  const destination =
+    target.file ??
+    (await target.folder?.getFileHandle(manifest.fileName, { create: true })) ??
+    null;
   const bytes = await join(store, manifest, destination, progress);
   // Only the finished file (for a download) and the manifest stay.
-  for (const name of ['audio.mp4', 'features.bin', 'image-background', 'image-logo', GRID_FILE]) {
+  const jobFiles = [
+    ...JOB_IMAGES.map((kind) => `image-${kind}`),
+    ...manifest.parts.flatMap((_, index) => [coverFile(index), gridFile(index)]),
+  ];
+  for (const name of ['audio.mp4', 'features.bin', ...jobFiles]) {
     await store.remove(name);
   }
   if (destination) {
@@ -337,40 +398,42 @@ async function run(
     bytes,
     destination: manifest.destination,
     seconds: (performance.now() - started) / 1000,
+    chapters: partChapters(manifest.parts, manifest.timing, manifest.sound),
+    output: destination ? null : (manifest.output ?? null),
   };
 }
 
 /**
- * Pass 1: decode, play through the sound chain, analyse (stored for the video pass) and encode
- * the audio. The chain runs in the live engine's blocks, with the analysis between the filter
- * and the delay, so the export sounds and reacts like playback.
+ * Pass 1: decode the parts, play them through the sound chain, analyse them (stored for the
+ * video pass) and encode the audio. The chain runs in the live engine's blocks, with the
+ * analysis between the filter and the delay, so the export sounds and reacts like playback.
+ * The parts are joined as the player joins them; where each one starts, as decoded, goes into
+ * the plan.
  */
 async function audioPass(
   store: JobWriter,
   manifest: ExportManifest,
-  file: File,
+  files: File[],
   analyzer: Analyzer,
-  grid: BeatGrid | null,
+  grids: (BeatGrid | null)[],
   progress: (update: ExportProgress) => void,
 ): Promise<void> {
-  const { timing, codecs, format, sound } = manifest;
-  // With the file's beat grid, the beats come from it, as during playback.
-  const gridBeats = new GridBeats();
-  gridBeats.set(grid);
-  const input = openInput(file);
+  const { timing, codecs, format, sound, parts } = manifest;
+  // With a file's beat grid, the beats come from it, as during playback.
+  const gridBeats = grids.map((grid) => {
+    const beats = new GridBeats();
+    beats.set(grid);
+    return beats;
+  });
+  // The frame of its file each part starts at, and where in the stream it starts.
+  const partFrom = parts.map((part, i) =>
+    i === 0 ? timing.sourceStart : Math.round(part.range.start * EXPORT_RATE),
+  );
+  const starts = [...timing.partStarts];
   const records = new RecordWriter(await store.open('features.bin'), FEATURE_FIELDS);
   let output: Output | null = null;
   let decoded: DecodedSource | null = null;
   try {
-    const track = await input.getPrimaryAudioTrack();
-    if (!track) throw new Error('The file contains no audio track.');
-    if (!(await track.canDecode())) {
-      throw new Error(`This browser cannot decode ${track.codec ?? 'this audio format'}.`);
-    }
-    const resampler =
-      track.sampleRate === EXPORT_RATE
-        ? null
-        : new Resampler(Math.min(2, track.numberOfChannels), track.sampleRate, EXPORT_RATE);
     output = new Output({
       format: new Mp4OutputFormat({ fastStart: false }),
       target: await store.target('audio.mp4'),
@@ -388,9 +451,15 @@ async function audioPass(
     dsp.setSettings(sound);
     dsp.snap();
     dsp.reset();
-    decoded = new DecodedSource(
-      decodeAtRate(track, resampler, timing.sourceStart)[Symbol.asyncIterator](),
+    const stream = joinedStream(
+      parts.map((part, i) => ({
+        file: files[i]!,
+        from: partFrom[i]!,
+        end: part.cut ? Math.round(part.range.end * EXPORT_RATE) : null,
+      })),
+      (index, frame) => (starts[index] = frame),
     );
+    decoded = new DecodedSource(stream[Symbol.asyncIterator]());
     // What one step of blocks can take from the source, with the key lock's look-ahead.
     const lookAhead = Math.ceil(BLOCK * BLOCKS_PER_STEP * sound.rate * 1.1) + 16384;
 
@@ -401,6 +470,18 @@ async function audioPass(
       timing.analysisStart + (timing.analysisFrames + 1) * timing.hop,
     );
     const pending = [new Float32Array(ENCODE_CHUNK), new Float32Array(ENCODE_CHUNK)];
+    // The sound fades in and out with the picture (EX-16).
+    const fadeFrames = Math.round(manifest.fade * EXPORT_RATE);
+    const length = timing.audioFrames / EXPORT_RATE;
+    const fadeEncoded = (start: number, count: number, at: number) => {
+      for (let i = 0; i < count; i++) {
+        const frame = at + i - encodeStart;
+        if (frame >= fadeFrames && frame < timing.audioFrames - fadeFrames) continue;
+        const gain = fadeAt(manifest.fade, frame / EXPORT_RATE, length);
+        pending[0]![start + i]! *= gain;
+        pending[1]![start + i]! *= gain;
+      }
+    };
     let pendingStart = encodeStart;
     let pendingFrames = 0;
     const flush = async () => {
@@ -426,10 +507,14 @@ async function audioPass(
     let rendered = 0;
     let reported = 0;
     const onFrame = (offset: number) => {
-      if (gridBeats.active) {
-        // Output frame o of the music plays file frame sourceStart + o × rate.
-        const source = timing.sourceStart + (rendered + offset) * sound.rate;
-        gridBeats.apply(analyzer.frame, source / EXPORT_RATE, sound.rate);
+      // Output frame o of the music plays stream frame o × rate, in the part that has it.
+      const at = (rendered + offset) * sound.rate;
+      let index = 0;
+      while (index + 1 < starts.length && starts[index + 1]! <= at) index++;
+      const beats = gridBeats[index];
+      if (beats?.active) {
+        const frame = partFrom[index]! + (index === 0 ? at : at - starts[index]!);
+        beats.apply(analyzer.frame, frame / EXPORT_RATE, sound.rate);
       }
       if (stored++ < timing.analysisFrames) records.add(analyzer.frame);
     };
@@ -449,6 +534,7 @@ async function audioPass(
           const offset = frame - rendered;
           pending[0]!.set(block[0]!.subarray(offset, offset + count), pendingFrames);
           pending[1]!.set(block[1]!.subarray(offset, offset + count), pendingFrames);
+          if (fadeFrames > 0) fadeEncoded(pendingFrames, count, frame);
           pendingFrames += count;
           frame += count;
           if (pendingFrames === ENCODE_CHUNK) await flush();
@@ -463,11 +549,12 @@ async function audioPass(
     await flush();
     await output.finalize();
     output = null;
+    // Where the parts start, as decoded: the overlay and the chapters follow them.
+    timing.partStarts = starts;
   } finally {
     records.close();
     await decoded?.close().catch(() => undefined);
     await output?.cancel().catch(() => undefined);
-    input.dispose();
   }
 }
 
@@ -551,11 +638,15 @@ class LayeredScene implements Scene {
   }
 }
 
+/**
+ * The scene of the video, its preset switching, and the Logo Spectrum (for the cover art of
+ * each part) when it shows that.
+ */
 function createScene(
   gl: WebGL2RenderingContext,
   visuals: ExportVisuals,
   images: ResumeArgs['images'],
-): { scene: Scene; switching: Switching | null } {
+): { scene: Scene; switching: Switching | null; logo: LogoSpectrumScene | null } {
   const config = visuals.auto?.config.on ? sanitizeAutoPresets(visuals.auto.config) : null;
   if (visuals.mode === 'logoSpectrum') {
     const front = new LogoSpectrumScene(gl);
@@ -569,29 +660,34 @@ function createScene(
       layer.setSettings(sanitizeKaleido(visuals.layer));
       scene = new LayeredScene(front, layer);
     }
-    if (!config || !visuals.auto) return { scene, switching: null };
+    if (!config || !visuals.auto) return { scene, switching: null, logo: front };
     const automation = new PresetAutomation(
       morphLogoSpectrum,
       settings,
       SWITCHING_SEEDS.logoSpectrum,
     );
     automation.setAuto(config, visuals.auto.presets.map(sanitizeSettings));
-    return { scene, switching: createSwitching(automation, (next) => front.setSettings(next)) };
+    const switching = createSwitching(automation, (next) => front.setSettings(next));
+    return { scene, switching, logo: front };
   }
   const scene = new KaleidoscopeScene(gl);
   const settings = sanitizeKaleido(visuals.settings);
   scene.setSettings(settings);
-  if (!config || !visuals.auto) return { scene, switching: null };
+  if (!config || !visuals.auto) return { scene, switching: null, logo: null };
   const automation = new PresetAutomation(morphKaleido, settings, SWITCHING_SEEDS.kaleidoscope);
   automation.setAuto(config, visuals.auto.presets.map(sanitizeKaleido));
-  return { scene, switching: createSwitching(automation, (next) => scene.setSettings(next)) };
+  const switching = createSwitching(automation, (next) => scene.setSettings(next));
+  return { scene, switching, logo: null };
 }
 
-/** Pass 2: render and encode the video in segments, from the stored analysis. */
+/**
+ * Pass 2: render and encode the video in segments, from the stored analysis. Over the scene
+ * come the track overlay of the part heard, and the fades.
+ */
 async function videoPass(
   store: JobWriter,
   manifest: ExportManifest,
-  images: ResumeArgs['images'],
+  pictures: Pictures,
   progress: (update: ExportProgress) => void,
 ): Promise<void> {
   const { format, timing, codecs } = manifest;
@@ -613,10 +709,29 @@ async function videoPass(
     powerPreference: 'high-performance',
   });
   if (!gl) throw new Error('WebGL2 is not available.');
-  const { scene, switching } = createScene(gl, manifest.visuals, images);
+  const { scene, switching, logo } = createScene(gl, manifest.visuals, pictures.images);
+  // Each part's cover art as the logo (LS-15); it goes with the job only when it is shown so.
+  const covers = pictures.covers;
+  logo?.setCoverLogo(covers.some((cover) => cover !== null));
+  let shownPart = -1;
+  // The track overlay (LS-18, LS-19), over the picture: it has no state of its own, its text
+  // follows from the frame's place in its part.
+  const overlaySettings = manifest.visuals.overlay
+    ? sanitizeOverlay(manifest.visuals.overlay)
+    : null;
+  const overlay = overlaySettings?.on ? new TrackOverlay(gl) : null;
+  const tracks = manifest.parts.map(partTrack);
+  // The picture fades in and out with the sound (EX-16).
+  const fade = manifest.fade > 0 ? new PictureFade(gl) : null;
+  const seconds = timing.frames / fps;
   try {
     scene.resize(format.width, format.height);
     scene.setReduceFlashing(manifest.visuals.reduceFlashing === true);
+    if (overlay && overlaySettings) {
+      overlay.setSettings(overlaySettings);
+      overlay.resize(format.width, format.height);
+      await overlay.ready();
+    }
     const analysis = await store.file('features.bin');
     const feed = new FeatureFeed(async (index, count) => {
       const bytes = FEATURE_FIELDS * 4;
@@ -647,7 +762,16 @@ async function videoPass(
       sampler.sample(at, features);
       // The switching counts from the first frame of the video, not in the pre-roll.
       if (frame >= 0) switching?.frame(1 / fps, features);
-      scene.render({ time: (frame + timing.preRollFrames) / fps, dt: 1 / fps, features });
+      const heard = partAt(manifest, fps, frame);
+      if (heard.index !== shownPart) {
+        shownPart = heard.index;
+        logo?.setCover(covers[heard.index] ?? null);
+      }
+      // The music plays on in a video: what turns with it turns at the tempo (LS-16).
+      const played = manifest.sound.rate / fps;
+      scene.render({ time: (frame + timing.preRollFrames) / fps, dt: 1 / fps, features, played });
+      overlay?.draw(tracks[heard.index]!, heard.seconds, manifest.sound.rate);
+      fade?.draw(fadeAt(manifest.fade, frame / fps, seconds), format.width, format.height);
     };
 
     // The pre-roll is rendered but not encoded: trails and motion are running at frame 0.
@@ -727,6 +851,8 @@ async function videoPass(
     }
   } finally {
     scene.dispose();
+    overlay?.dispose();
+    fade?.dispose();
     gl.getExtension('WEBGL_lose_context')?.loseContext();
   }
 }
@@ -764,6 +890,8 @@ async function join(
   // was written instead of leaving a broken video there.
   let abandon = false;
   let target: StreamTarget;
+  // A video of a batch waits among the others to be downloaded (EX-09).
+  const shelf = !destination && manifest.output ? await JobWriter.shelf() : null;
   if (destination) {
     const file = await destination.createWritable();
     target = new StreamTarget(
@@ -773,6 +901,8 @@ async function join(
         abort: () => file.abort(),
       }),
     );
+  } else if (shelf) {
+    target = await shelf.target(manifest.output!);
   } else {
     target = await store.target(OUTPUT_FILE);
   }
@@ -844,7 +974,10 @@ async function join(
   for (let segment = 0; segment < timing.segments; segment++) {
     await store.remove(`video-${segment}.mp4`);
   }
-  return destination ? (await destination.getFile()).size : (await store.file(OUTPUT_FILE)).size;
+  const written = destination
+    ? await destination.getFile()
+    : await (shelf ?? store).file(shelf ? manifest.output! : OUTPUT_FILE);
+  return written.size;
 }
 
 /** Deletes the job (after cancelling, or when you discard an unfinished export). */

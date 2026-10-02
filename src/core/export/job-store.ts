@@ -9,6 +9,8 @@ import { upgradeManifest, type ExportManifest } from './export-job';
  */
 
 const DIRECTORY = 'export-job';
+/** The videos of a batch that wait to be downloaded (EX-09), outside the job. */
+const SHELF = 'export-videos';
 const MANIFESTS = ['manifest-a.json', 'manifest-b.json'];
 
 // FileSystemSyncAccessHandle is only in the worker lib; the project compiles with the DOM lib.
@@ -24,9 +26,9 @@ type SyncFileHandle = FileSystemFileHandle & {
   createSyncAccessHandle(): Promise<SyncAccessHandle>;
 };
 
-async function directory(create: boolean): Promise<FileSystemDirectoryHandle> {
+async function directory(create: boolean, name = DIRECTORY): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(DIRECTORY, { create });
+  return root.getDirectoryHandle(name, { create });
 }
 
 /** The job's manifest, or null if there is none (or it cannot be read). */
@@ -61,12 +63,29 @@ export async function clearJob(): Promise<void> {
   await root.removeEntry(DIRECTORY, { recursive: true }).catch(() => undefined);
 }
 
+/** A finished video of a batch, kept in browser storage for downloading (EX-09). */
+export async function readShelfFile(name: string): Promise<File> {
+  const dir = await directory(false, SHELF);
+  return (await dir.getFileHandle(name)).getFile();
+}
+
+/** Deletes the videos of a batch kept in browser storage. */
+export async function clearShelf(): Promise<void> {
+  const root = await navigator.storage.getDirectory();
+  await root.removeEntry(SHELF, { recursive: true }).catch(() => undefined);
+}
+
 /** Writes in the job directory (dedicated workers only). */
 export class JobWriter {
   private constructor(private readonly dir: FileSystemDirectoryHandle) {}
 
   static async open(): Promise<JobWriter> {
     return new JobWriter(await directory(true));
+  }
+
+  /** Writes the videos of a batch that wait to be downloaded (EX-09). */
+  static async shelf(): Promise<JobWriter> {
+    return new JobWriter(await directory(true, SHELF));
   }
 
   /** Opens a file for synchronous writes, truncated unless `keep`. */

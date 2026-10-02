@@ -90,6 +90,10 @@ export function switchingPool<S>(
 
 /** Beats per bar (the switching counts in 4/4). */
 const BEATS_PER_BAR = 4;
+/** The tempo the bars are counted at where the music gives none, and the range believed. */
+const DEFAULT_BPM = 120;
+const MIN_BPM = 40;
+const MAX_BPM = 320;
 /** Below this level (RMS) there is no music: the seconds do not count. */
 const SILENCE_RMS = 0.003;
 /** Time constants of the drop detector: the low end now, and over the last stretch. */
@@ -115,7 +119,10 @@ export class PresetDirector {
   private current = -1;
   private readonly random: Prng;
   private music = 0;
+  /** Beats of the bars trigger: those heard, and between them the time at the tempo. */
   private beats = 0;
+  /** Beats heard since the count started. */
+  private hits = 0;
   private fast = 0;
   private slow = 0;
   private sinceDrop = 0;
@@ -141,6 +148,7 @@ export class PresetDirector {
   restart(): void {
     this.music = 0;
     this.beats = 0;
+    this.hits = 0;
     this.sinceDrop = 0;
   }
 
@@ -157,8 +165,7 @@ export class PresetDirector {
     if (config.trigger === 'seconds') {
       due = this.music >= config.seconds;
     } else if (config.trigger === 'bars') {
-      if (features[F.beatHit]! > 0) this.beats++;
-      due = this.beats >= config.bars * BEATS_PER_BAR;
+      due = this.barsDue(dt, features, playing);
     } else {
       due = playing && this.drop(dt, features);
     }
@@ -166,6 +173,26 @@ export class PresetDirector {
     this.restart();
     this.current = this.next();
     return this.current;
+  }
+
+  /**
+   * Counts the beats for the bars trigger: each beat heard, and between beats the time at the
+   * tempo, so a stretch where no beat is heard (a breakdown, an intro, past the end of a beat
+   * grid) counts as well. True once the bars are full: on the beat, or half a beat later where
+   * no beat comes.
+   */
+  private barsDue(dt: number, features: Float32Array, playing: boolean): boolean {
+    const bpm = features[F.bpm]!;
+    const beat = 60 / (bpm >= MIN_BPM && bpm <= MAX_BPM ? bpm : DEFAULT_BPM);
+    if (playing) this.beats += dt / beat;
+    const target = this.config.bars * BEATS_PER_BAR;
+    if (features[F.beatHit]! > 0) {
+      // A beat heard puts the count on the beat; each one counts at least once.
+      this.hits = Math.max(this.hits + 1, Math.round(this.beats));
+      this.beats = this.hits;
+      return this.beats >= target;
+    }
+    return this.beats >= target + 0.5;
   }
 
   /** True on a drop: the low end and the kick come back strong after a quieter stretch. */
@@ -201,6 +228,7 @@ export class PresetDirector {
       random: this.random.state,
       music: this.music,
       beats: this.beats,
+      hits: this.hits,
       fast: this.fast,
       slow: this.slow,
       sinceDrop: this.sinceDrop,
@@ -214,6 +242,8 @@ export class PresetDirector {
     this.random.state = number('random', this.random.state);
     this.music = number('music', 0);
     this.beats = number('beats', 0);
+    // Snapshots of before counted the beats heard only.
+    this.hits = number('hits', Math.round(this.beats));
     this.fast = number('fast', 0);
     this.slow = number('slow', 0);
     this.sinceDrop = number('sinceDrop', 0);

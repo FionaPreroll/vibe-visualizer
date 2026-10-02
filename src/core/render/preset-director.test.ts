@@ -83,6 +83,27 @@ describe('automatic preset switching (PR-02)', () => {
     ]);
   });
 
+  it('counts the bars on through a stretch without beats, at the tempo', () => {
+    // Two beats at 120 BPM, then none (a breakdown): one bar is full three and a half beats
+    // after the last one heard, at the tempo, half a beat late as no beat comes.
+    const auto = director({ trigger: 'bars', bars: 1 }, 3, 0);
+    expect(auto.update(FRAME, frame({ beatHit: 1, bpm: 120 }))).toBeNull();
+    for (let i = 0; i < 29; i++) auto.update(FRAME, frame({ bpm: 120 }));
+    expect(auto.update(FRAME, frame({ beatHit: 1, bpm: 120 }))).toBeNull();
+    let frames = 0;
+    while (auto.update(FRAME, frame({ bpm: 120 })) === null) frames++;
+    expect(frames / 30).toBeCloseTo(2.5, 1);
+    // Silence does not count, and a beat heard puts the count back on the beat.
+    const quiet = director({ trigger: 'bars', bars: 1 }, 3, 0);
+    for (let i = 0; i < 600; i++) expect(quiet.update(FRAME, frame({ rms: 0 }))).toBeNull();
+    const late = director({ trigger: 'bars', bars: 1 }, 3, 0);
+    for (let i = 0; i < 80; i++) late.update(FRAME, frame({ bpm: 120 }));
+    // 2.7 beats by the clock, then a beat: the count is on the third.
+    expect(late.update(FRAME, frame({ beatHit: 1, bpm: 120 }))).toBeNull();
+    for (let i = 0; i < 29; i++) expect(late.update(FRAME, frame({ bpm: 120 }))).toBeNull();
+    expect(late.update(FRAME, frame({ beatHit: 1, bpm: 120 }))).toBe(1);
+  });
+
   it('switches on a drop: the low end back after a quiet stretch, then rests', () => {
     const auto = director({ trigger: 'drops' });
     const switches: number[] = [];

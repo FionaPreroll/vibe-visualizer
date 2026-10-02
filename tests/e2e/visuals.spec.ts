@@ -1,7 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { COVER, logoQuarters, measure, showsCover, type Region } from './pixels';
 import { createPng } from './png';
-import { createWav } from './wav';
+import { createTaggedWav, createWav } from './wav';
 
 const ACK = 'vibe-visualizer:welcome:v1';
 
@@ -372,5 +373,76 @@ test('the display settings: resolution, auto-quality and reduce flashing (VE-06,
   await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
   await page.getByText('Display', { exact: true }).click();
   await expect(page.getByTestId('reduce-flashing')).toBeChecked();
+  expect(errors).toEqual([]);
+});
+
+/** Where the track overlay sits by default: at the bottom left. */
+const OVERLAY_TEXT: Region = { x: 0.04, y: 0.78, width: 0.4, height: 0.18 };
+
+test('a track can be named, and the visuals show its title and cover art (LS-15, LS-18)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  const file = {
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(30, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  };
+  await page.getByTestId('file-input').setInputFiles(file);
+  const item = page.getByTestId('queue-item');
+  await expect(item).toHaveAttribute('data-status', 'ready');
+  await expect(item).toContainText('The Testers');
+
+  // Named in the queue (✎): the queue, the transport and the overlay show the new name.
+  await item.hover();
+  await page.getByTestId('queue-rename').click();
+  await expect(page.getByTestId('track-name-file')).toHaveText(
+    'From the file: Sunrise · The Testers',
+  );
+  await page.getByTestId('track-name-title').fill('Sunrise (Radio Edit)');
+  await page.getByTestId('track-name-artist').fill('');
+  await page.getByTestId('track-name-save').click();
+  await expect(item).toContainText('Sunrise (Radio Edit)');
+  await expect(item).not.toContainText('The Testers');
+  await page.getByTestId('play-button').click();
+  await expect(page.getByTestId('now-title')).toHaveText('Sunrise (Radio Edit)');
+
+  // The overlay: white text at the bottom left, where there was hardly any before.
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const [before] = await measure(page, await stage.screenshot(), [OVERLAY_TEXT]);
+  await page.getByText('Track info', { exact: true }).click();
+  await page.getByTestId('overlay-on').check();
+  await expect(page.getByTestId('overlay-now')).toHaveText('Sunrise (Radio Edit)');
+  await expect
+    .poll(async () => (await measure(page, await stage.screenshot(), [OVERLAY_TEXT]))[0]!.bright, {
+      timeout: 10_000,
+    })
+    .toBeGreaterThan(before!.bright + 0.02);
+
+  // The cover art as the logo.
+  const quarters = logoQuarters((await stage.boundingBox())!);
+  expect(showsCover(await measure(page, await stage.screenshot(), quarters))).toBe(false);
+  await page.getByText('Logo', { exact: true }).click();
+  await page.getByTestId('cover-logo').check();
+  await expect
+    .poll(async () => showsCover(await measure(page, await stage.screenshot(), quarters)), {
+      timeout: 10_000,
+    })
+    .toBe(true);
+
+  // The name is kept for the file: it comes back with it after a reload.
+  await page.reload();
+  await page.getByRole('tab', { name: 'Queue' }).click();
+  await page.getByTestId('file-input').setInputFiles(file);
+  await expect(item).toHaveAttribute('data-status', 'ready');
+  await expect(item).toContainText('Sunrise (Radio Edit)');
+  await item.hover();
+  await page.getByTestId('queue-rename').click();
+  await page.getByTestId('track-name-reset').click();
+  await expect(item).toContainText('The Testers');
   expect(errors).toEqual([]);
 });

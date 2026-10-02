@@ -241,6 +241,8 @@ uniform vec3 rimColor;
 uniform vec2 imageScale;
 uniform vec2 pan;
 uniform float shadow;
+// How far the logo has turned (radians), clockwise like a record (LS-16).
+uniform float turn;
 
 // Neutral placeholder: a four-pointed star on a dark disc.
 vec3 placeholder(vec2 q) {
@@ -259,7 +261,8 @@ void main() {
   float wOuter = outer - rho;
   float disc = clamp(0.5 + wDisc / max(fwidth(wDisc), 1e-3), 0.0, 1.0);
   float covered = clamp(0.5 + wOuter / max(fwidth(wOuter), 1e-3), 0.0, 1.0);
-  vec2 q = p / radius;
+  // The picture turns clockwise: each point shows what lies the turn further on.
+  vec2 q = mat2(cos(turn), sin(turn), -sin(turn), cos(turn)) * (p / radius);
   vec3 inner;
   if (hasLogo == 1) {
     vec2 c = 0.5 + q * imageScale * 0.5 + pan * 0.5 * (1.0 - imageScale);
@@ -313,6 +316,13 @@ export function cameraShake(amount: number, kick: number, time: number, aspect: 
   };
 }
 
+/** Scale of a logo image inside the circle: its shorter side fills the diameter. */
+function imageScale(image: { width: number; height: number } | null): [number, number] {
+  if (!image) return [1, 1];
+  const aspect = image.width / image.height;
+  return aspect > 1 ? [1 / aspect, 1] : [1, aspect];
+}
+
 class Follower {
   value = 0;
   constructor(
@@ -356,6 +366,11 @@ export class LogoSpectrumScene implements Scene {
   private blurred: Target | null = null;
   private blurredFor = -1;
   private logo: { texture: WebGLTexture; width: number; height: number } | null = null;
+  /** The cover art of the track playing, and whether it takes the logo's place (LS-15). */
+  private cover: { texture: WebGLTexture; width: number; height: number } | null = null;
+  private coverLogo = false;
+  /** How far the logo has turned with the music (LS-16), in turns (0…1). */
+  private logoTurns = 0;
 
   private readonly bass = new Follower(0.015, 0.22);
   private readonly energy = new Follower(0.05, 0.5);
@@ -447,6 +462,19 @@ export class LogoSpectrumScene implements Scene {
     }
   }
 
+  /** The cover art of the track playing (null: none); it shows while {@link setCoverLogo}. */
+  setCover(image: ImageBitmap | null): void {
+    if (this.cover) this.gl.deleteTexture(this.cover.texture);
+    this.cover = image
+      ? { texture: createImageTexture(this.gl, image), width: image.width, height: image.height }
+      : null;
+  }
+
+  /** Shows the cover art of the track playing as the logo, where it has one (LS-15). */
+  setCoverLogo(on: boolean): void {
+    this.coverLogo = on;
+  }
+
   resize(width: number, height: number): void {
     if (width === this.width && height === this.height && this.scene) return;
     this.width = Math.max(1, Math.round(width));
@@ -464,6 +492,9 @@ export class LogoSpectrumScene implements Scene {
     const scene = this.scene;
     if (!scene) return;
     this.frameCount++;
+    // The logo turns with the music like a record: it stands while paused (LS-16).
+    const played = Math.min(Math.max(input.played ?? dt, -0.5), 0.5);
+    this.logoTurns = (((this.logoTurns + (played * s.logoSpin) / 60) % 1) + 1) % 1;
 
     // Audio drives.
     const low = 0.5 * features[F.bands]! + 0.5 * features[F.bands + 1]!;
@@ -569,21 +600,25 @@ export class LogoSpectrumScene implements Scene {
       .float('thickness', s.thickness);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    // Logo.
+    // Logo: the cover art fills the circle; zoom and pan are for the logo image.
+    const cover = this.coverLogo ? this.cover : null;
+    const logo = cover ?? this.logo;
+    const logoZoom = cover ? 1 : s.logoZoom;
     const logoRadius = radius * s.logoSize;
     const [lr, lg, lb] = parseColor(s.rimColor);
-    const [ix, iy] = this.logoScale();
+    const [ix, iy] = imageScale(logo);
     this.programs.logo
       .use()
-      .texture('logo', this.logo?.texture ?? null, 0)
-      .int('hasLogo', this.logo ? 1 : 0)
+      .texture('logo', logo?.texture ?? null, 0)
+      .int('hasLogo', logo ? 1 : 0)
       .vec2('center', cx, cy)
       .float('radius', logoRadius)
       .float('rim', s.rimWidth * logoRadius)
       .vec3('rimColor', lr, lg, lb)
-      .vec2('imageScale', ix / s.logoZoom, iy / s.logoZoom)
-      .vec2('pan', s.logoPanX, s.logoPanY)
-      .float('shadow', s.logoShadow);
+      .vec2('imageScale', ix / logoZoom, iy / logoZoom)
+      .vec2('pan', cover ? 0 : s.logoPanX, cover ? 0 : s.logoPanY)
+      .float('shadow', s.logoShadow)
+      .float('turn', this.logoTurns * Math.PI * 2);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disable(gl.BLEND);
 
@@ -608,6 +643,7 @@ export class LogoSpectrumScene implements Scene {
         energy: this.energy.value,
         particleCount: this.particleCount,
         random: this.random.state,
+        logoTurns: this.logoTurns,
         calm: calm !== null,
       },
       buffers: [
@@ -638,6 +674,8 @@ export class LogoSpectrumScene implements Scene {
     this.energy.value = Number(values['energy']);
     this.particleCount = Number(values['particleCount']);
     this.random.state = Number(values['random']);
+    // Snapshots of before the logo turned have none.
+    this.logoTurns = Number(values['logoTurns'] ?? 0);
     this.post.restoreState(values['calm'] === true ? calm : null);
   }
 
@@ -648,6 +686,7 @@ export class LogoSpectrumScene implements Scene {
     deleteTarget(gl, this.blurred);
     if (this.background) gl.deleteTexture(this.background.texture);
     if (this.logo) gl.deleteTexture(this.logo.texture);
+    if (this.cover) gl.deleteTexture(this.cover.texture);
     gl.deleteTexture(this.curveTexture);
   }
 
@@ -659,13 +698,6 @@ export class LogoSpectrumScene implements Scene {
     const cover = this.settings.backgroundFit === 'cover';
     if (image > canvas === cover) return [canvas / image, 1];
     return [1, image / canvas];
-  }
-
-  /** Scale of the logo image inside the circle: its shorter side fills the diameter. */
-  private logoScale(): [number, number] {
-    if (!this.logo) return [1, 1];
-    const aspect = this.logo.width / this.logo.height;
-    return aspect > 1 ? [1 / aspect, 1] : [1, aspect];
   }
 
   private backgroundTexture(): WebGLTexture | null {

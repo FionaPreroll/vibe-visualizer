@@ -9,10 +9,11 @@
   import { usePlayer } from './player-context';
   import { liveScale } from './render-quality';
   import SyncCalibration from './SyncCalibration.svelte';
+  import TrackInfoSection from './TrackInfoSection.svelte';
 
   /**
-   * The settings of the visual mode on the stage, and for all modes the display (VE-07) and
-   * the A/V sync (AN-06).
+   * The settings of the visual mode on the stage, and for all modes the track overlay (LS-18),
+   * the display (VE-07) and the A/V sync (AN-06).
    */
   const player = usePlayer();
   const app = player.store;
@@ -28,6 +29,10 @@
     The analysis view shows what the visuals react to. It has no settings; switch to Logo Spectrum
     or Kaleidoscope in the top bar to set up the visuals.
   </p>
+{/if}
+
+{#if $app.settings.visualMode !== 'analysis'}
+  <TrackInfoSection />
 {/if}
 
 <Section title="Display">
