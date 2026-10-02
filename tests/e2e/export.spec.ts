@@ -115,6 +115,8 @@ test('exports the range between the markers as a video file', async ({ page }) =
 });
 
 test('an interrupted export resumes after a reload', async ({ page }) => {
+  // Two scenes per frame in software rendering: about 80 s here, half as much again in CI.
+  test.setTimeout(240_000);
   const errors = collectErrors(page);
   await page.goto('/');
   await addTrack(page, 8);
@@ -147,7 +149,7 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
   const button = page.getByTestId('export-button');
   await expect
     .poll(async () => Number(/(\d+) %/.exec((await button.textContent()) ?? '')?.[1] ?? 0), {
-      timeout: 60_000,
+      timeout: 120_000,
     })
     .toBeGreaterThan(45);
   await page.reload();
@@ -157,7 +159,7 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
   await page.getByTestId('export-note').click();
   await expect(page.getByTestId('export-interrupted')).toContainText('% rendered');
   await page.getByTestId('export-resume').click();
-  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 100_000 });
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 180_000 });
 
   const file = await download(page);
   expect(file.name).toMatch(/^Clicks\.(mp4|webm)$/);
