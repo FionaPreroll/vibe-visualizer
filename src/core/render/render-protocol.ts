@@ -48,6 +48,8 @@ export type RenderRequest =
   | { type: 'cover'; token: number; image: ImageBitmap | null }
   /** The Logo Spectrum shows the cover art of the track heard as its logo (LS-15). */
   | { type: 'coverLogo'; on: boolean }
+  /** The visuals take the colours of the cover art of the track heard (VE-12). */
+  | { type: 'coverColors'; on: boolean }
   /**
    * The audio clock: `contextTime` is heard at `performanceTime` (epoch milliseconds). With
    * `live` input the newest analysis frame is shown instead.

@@ -148,6 +148,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | VE-09* | M | Aspect ratios 16:9, 9:16 (TikTok/Shorts/Reels), 1:1, 4:5, 21:9; the preview is letterboxed and shows safe-area guides, including the areas TikTok covers with its buttons |
 | VE-10* | C | Post effects: vignette, chromatic aberration on beats, film grain, beat flash |
 | VE-11* | C | FPS/performance overlay |
+| VE-12* | S | Colours from the cover art: the main colours of the cover of the track playing become the palette (the Logo Spectrum's colour layers, the Kaleidoscope's gradient, also behind the Logo Spectrum), blending into the next track's within about a second; live and in exports, the same from the same picture; tracks without cover art keep the look's palette |
 
 ### 3.9 Mode A — Kaleidoscope scenes (KA)
 

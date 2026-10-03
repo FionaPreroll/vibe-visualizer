@@ -1,5 +1,6 @@
 import { F } from '../analysis/features';
 import { Prng } from '../util/prng';
+import { coverBlend, type CoverColors } from './cover-palette';
 import {
   bindTarget,
   createFullscreenTriangle,
@@ -383,6 +384,8 @@ export class LogoSpectrumScene implements Scene {
   /** The cover art of the track playing, and whether it takes the logo's place (LS-15). */
   private cover: { texture: WebGLTexture; width: number; height: number } | null = null;
   private coverLogo = false;
+  /** The colours of the covers heard (VE-12) for the colour layers; null: the look's own. */
+  private coverColors: CoverColors | null = null;
   /** How far the logo has turned with the music (LS-16), in turns (0…1). */
   private logoTurns = 0;
 
@@ -494,6 +497,11 @@ export class LogoSpectrumScene implements Scene {
     this.coverLogo = on;
   }
 
+  /** The colour layers take the colours of the covers heard (VE-12); null: the look's own. */
+  setCoverColors(colors: CoverColors | null): void {
+    this.coverColors = colors;
+  }
+
   resize(width: number, height: number): void {
     if (width === this.width && height === this.height && this.scene) return;
     this.width = Math.max(1, Math.round(width));
@@ -602,7 +610,7 @@ export class LogoSpectrumScene implements Scene {
       gl.FLOAT,
       this.shaper.curves,
     );
-    const palette = layerColors(s);
+    const palette = coverBlend(this.coverColors, layerColors(s), (cover) => cover.layers);
     for (let i = 0; i < MAX_LAYERS; i++) {
       const [r, g, b] = parseColor(palette[i % palette.length]!);
       this.colors[i * 3] = r;

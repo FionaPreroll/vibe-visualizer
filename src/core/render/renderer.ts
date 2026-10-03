@@ -106,6 +106,11 @@ export class Renderer {
     this.send({ type: 'coverLogo', on });
   }
 
+  /** The visuals take the colours of the cover art of the track heard (VE-12). */
+  setCoverColors(on: boolean): void {
+    this.send({ type: 'coverColors', on });
+  }
+
   /** Hands an image to the worker (the bitmap is transferred and must not be used afterwards). */
   setImage(kind: ImageKind, image: ImageBitmap | null): void {
     this.send({ type: 'image', kind, image }, image ? [image] : []);

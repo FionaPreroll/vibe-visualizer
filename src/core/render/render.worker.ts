@@ -4,6 +4,12 @@ import {
   type HeardPosition,
 } from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
+import {
+  COVER_BLEND_SECONDS,
+  coverPalette,
+  type CoverColors,
+  type CoverPalette,
+} from './cover-palette';
 import { DEFAULT_KALEIDO } from './kaleido-settings';
 import { KaleidoscopeScene } from './kaleidoscope';
 import { LogoSpectrumScene } from './logo-spectrum';
@@ -77,6 +83,11 @@ let overlayRate = 1;
 const covers = new Map<number, ImageBitmap>();
 let coverToken = -1;
 let coverLogo = false;
+/** The colours of each cover (VE-12), by token, and whether the visuals take them. */
+const palettes = new Map<number, CoverPalette | null>();
+let coverColorsOn = false;
+/** The cover colours shown: blending from the last file's to the one heard (null: the look's). */
+const shownColors: CoverColors = { from: null, to: null, blend: 1 };
 /** Pictures asked for (EX-10): taken from the next frame drawn. */
 const captures: { id: number; width: number; height: number }[] = [];
 /** The file and position heard at the last frame, and how long it has stood still (s). */
@@ -155,6 +166,9 @@ function frame(now: number): void {
   motion = calm ? 0 : motion + (1 - motion) * (1 - Math.exp(-dt / MOTION_SECONDS));
   try {
     const input = { time: (now - startTime) / 1000, dt, features, played, motion };
+    const colors = coverColors(dt, token);
+    logoSpectrum?.setCoverColors(colors);
+    kaleidoscope?.setCoverColors(colors);
     if (active === 'logoSpectrum') {
       showCover(token);
       drawLayer(input);
@@ -212,6 +226,22 @@ function drawLayer(input: SceneInput): void {
     layerLook = look;
   }
   logoSpectrum.setBackgroundLayer(kaleidoscope.renderLayer(input));
+}
+
+/**
+ * The colours of the cover of the file heard (VE-12), blended in over a moment when another
+ * file is heard or the setting changes; null once they are the look's own.
+ */
+function coverColors(dt: number, token: number): CoverColors | null {
+  const target = coverColorsOn ? (palettes.get(token) ?? null) : null;
+  if (target !== shownColors.to) {
+    // A blend under way goes on from the nearer of its ends.
+    shownColors.from = shownColors.blend < 0.5 ? shownColors.from : shownColors.to;
+    shownColors.to = target;
+    shownColors.blend = 0;
+  }
+  shownColors.blend = Math.min(1, shownColors.blend + dt / COVER_BLEND_SECONDS);
+  return shownColors.blend >= 1 && !shownColors.to ? null : shownColors;
 }
 
 /** The cover art of the file heard, for the Logo Spectrum's logo (LS-15). */
@@ -379,13 +409,19 @@ scope.addEventListener('message', (event) => {
           if (message.tracks.some((entry) => entry.token === token)) continue;
           image.close();
           covers.delete(token);
+          palettes.delete(token);
         }
         break;
       }
       case 'cover':
         covers.get(message.token)?.close();
-        if (message.image) covers.set(message.token, message.image);
-        else covers.delete(message.token);
+        if (message.image) {
+          covers.set(message.token, message.image);
+          palettes.set(message.token, coverPalette(message.image));
+        } else {
+          covers.delete(message.token);
+          palettes.delete(message.token);
+        }
         // The file heard got its cover: it shows at once.
         if (message.token === coverToken) {
           coverToken = -1;
@@ -395,6 +431,9 @@ scope.addEventListener('message', (event) => {
       case 'coverLogo':
         coverLogo = message.on;
         logoSpectrum?.setCoverLogo(message.on);
+        break;
+      case 'coverColors':
+        coverColorsOn = message.on;
         break;
       case 'clock':
         clock = {
@@ -421,6 +460,7 @@ scope.addEventListener('message', (event) => {
         overlay?.dispose();
         for (const image of covers.values()) image.close();
         covers.clear();
+        palettes.clear();
         logoSpectrum = null;
         kaleidoscope = null;
         scene = null;

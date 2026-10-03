@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { measure } from './pixels';
-import { createWav } from './wav';
+import { createPng } from './png';
+import { createTaggedWav, createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('vibe-visualizer:welcome:v1', '1'));
@@ -140,5 +141,44 @@ test('Kaleidoscope controls come from the scene specs and survive a reload', asy
   await expect(page.getByRole('slider', { name: 'Segments' })).toHaveValue('6');
   await page.getByRole('button', { name: 'Reset Vortex' }).click();
   await expect(preset).toHaveValue('Vortex');
+  expect(errors).toEqual([]);
+});
+
+test('the colours can come from the cover art of the track playing (VE-12)', async ({ page }) => {
+  const errors = collectErrors(page);
+  const stage = await openKaleidoscope(page);
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'Blue.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(30, {
+      title: 'Blue',
+      artist: 'The Testers',
+      cover: createPng(32, 32, () => [30, 70, 235]),
+    }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('play-button').click();
+  await expect
+    .poll(async () => Number(await stage.getAttribute('data-fps')), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+
+  // The mean colour of the picture: the Vortex's palette has no blue to speak of.
+  const whole = { x: 0, y: 0, width: 1, height: 1 };
+  const blueness = async () => {
+    const [region] = await measure(page, await stage.screenshot(), [whole]);
+    const [red, green, blue] = region!.mean;
+    return blue - Math.max(red, green);
+  };
+  await page.waitForTimeout(1500);
+  expect(await blueness()).toBeLessThan(0);
+
+  // With the colours of the cover: blue, and the look's own again without them.
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const option = page.getByTestId('cover-colors');
+  await option.check();
+  await expect(page.getByTestId('cover-colors-hint')).toBeVisible();
+  await expect.poll(blueness, { timeout: 10_000 }).toBeGreaterThan(5);
+  await option.uncheck();
+  await expect.poll(blueness, { timeout: 10_000 }).toBeLessThan(0);
   expect(errors).toEqual([]);
 });

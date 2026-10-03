@@ -90,8 +90,9 @@
     renderer?.setReduceFlashing(reduceFlashing);
   });
 
-  // The track overlay (LS-18, LS-19) and the cover art as the logo (LS-15): the worker learns
-  // the tracks of the files in the stream, and shows the one the music heard comes from.
+  // The track overlay (LS-18, LS-19), the cover art as the logo (LS-15) and its colours
+  // (VE-12): the worker learns the tracks of the files in the stream, and shows the one the
+  // music heard comes from.
   const overlay = $derived($app.settings.overlay);
   $effect(() => {
     renderer?.setOverlay(overlay);
@@ -100,11 +101,15 @@
   $effect(() => {
     renderer?.setCoverLogo(coverLogo);
   });
+  const coverColors = $derived($app.settings.coverColors);
+  $effect(() => {
+    renderer?.setCoverColors(coverColors);
+  });
   const stream = player.stream;
   const analyses = player.analysis;
   const streamInfo = $derived(renderer ? new StreamInfo(renderer) : null);
   $effect(() => {
-    streamInfo?.update($stream, $app.tracks, $app.sound.rate, coverLogo, $analyses);
+    streamInfo?.update($stream, $app.tracks, $app.sound.rate, coverLogo || coverColors, $analyses);
   });
 
   // Automatic preset switching: its settings and the presets of each mode that take part.

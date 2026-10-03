@@ -289,6 +289,58 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
   expect(errors).toEqual([]);
 });
 
+test('a video of tracks takes the colours of the cover art of each (VE-12)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    const settings = { coverColors: true, visualMode: 'kaleidoscope' };
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+  });
+  await page.goto('/');
+  const tagged = (title: string, cover: Buffer) => ({
+    name: `${title}.wav`,
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(3, { title, artist: 'The Testers', cover }),
+  });
+  await page.getByTestId('file-input').setInputFiles([
+    tagged(
+      'Blue',
+      createPng(32, 32, () => [30, 70, 235]),
+    ),
+    tagged(
+      'Orange',
+      createPng(32, 32, () => [250, 120, 20]),
+    ),
+  ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items).toHaveCount(2);
+  for (const item of await items.all()) await expect(item).toHaveAttribute('data-status', 'ready');
+
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await page.getByTestId('export-range-tracks').check();
+  await expect(page.getByTestId('export-cover-colors')).toHaveText(
+    '(in the colours of the cover art)',
+  );
+  await page.getByTestId('export-start').click();
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });
+  const file = await download(page);
+
+  // Blue in the first track; orange in the second, once it has blended in.
+  const whole = { x: 0, y: 0, width: 1, height: 1 };
+  const colour = async (seconds: number) => {
+    const frame = await videoFrame(page, file.data, seconds);
+    test.skip(!frame, 'This browser cannot play the video it made.');
+    const [region] = await measure(page, frame!, [whole]);
+    return region!.mean;
+  };
+  const [r1, g1, b1] = await colour(2);
+  expect(b1).toBeGreaterThan(Math.max(r1, g1) + 5);
+  const [r2, g2, b2] = await colour(5.5);
+  expect(r2).toBeGreaterThan(Math.max(g2, b2) + 5);
+  expect(errors).toEqual([]);
+});
+
 /** Three tagged tracks of `seconds` in the queue; the third has the name of the first. */
 async function addBatchTracks(page: Page, seconds: number) {
   const tagged = (file: string, title: string, artist: string) => ({

@@ -30,6 +30,7 @@ import {
   type SceneSnapshot,
   type SnapshotBuffer,
 } from './scene';
+import { coverBlend, type CoverColors } from './cover-palette';
 import { parseColor } from './visual-settings';
 
 /**
@@ -537,6 +538,8 @@ export class KaleidoscopeScene implements Scene {
   private readonly paletteTexture: WebGLTexture;
   private readonly stepper = new FixedStepper(STEPS_PER_SECOND);
   private settings: KaleidoSettings = DEFAULT_KALEIDO;
+  /** The colours of the covers heard (VE-12) for the gradient; null: the look's own. */
+  private coverColors: CoverColors | null = null;
   private paletteKey = '';
   private width = 1;
   private height = 1;
@@ -598,6 +601,11 @@ export class KaleidoscopeScene implements Scene {
     this.settings = settings;
     this.updatePalette();
     if (sceneChanged) this.clear();
+  }
+
+  /** The gradient takes the colours of the covers heard (VE-12); null: the look's own. */
+  setCoverColors(colors: CoverColors | null): void {
+    this.coverColors = colors;
   }
 
   resize(width: number, height: number): void {
@@ -669,6 +677,8 @@ export class KaleidoscopeScene implements Scene {
     }
     if (features[F.kickHit] === 1) this.kickPending = true;
 
+    // The covers' colours blend from frame to frame.
+    this.updatePalette();
     gl.bindVertexArray(this.triangle);
     gl.disable(gl.BLEND);
     const count = this.stepper.advance(dt);
@@ -837,7 +847,11 @@ export class KaleidoscopeScene implements Scene {
 
   /** Renders the gradient into the palette texture when it changed. */
   private updatePalette(): void {
-    const colors = gradientColors(this.settings);
+    const colors = coverBlend(
+      this.coverColors,
+      gradientColors(this.settings),
+      (cover) => cover.gradient,
+    );
     const key = colors.join();
     if (key === this.paletteKey) return;
     this.paletteKey = key;

@@ -68,6 +68,13 @@ export type ExportVisuals = (
   reduceFlashing?: boolean;
   /** The track overlay over the video (LS-18, LS-19); it names each part. */
   overlay?: OverlaySettings;
+  /**
+   * The Logo Spectrum shows each part's cover art as its logo (LS-15); not given (a job of
+   * before VE-12): when the job has covers.
+   */
+  coverLogo?: boolean;
+  /** The colours come from each part's cover art (VE-12). */
+  coverColors?: boolean;
 };
 
 export interface ExportSwitching<S> {
@@ -146,7 +153,7 @@ export interface ExportManifest {
   fade: number;
   /**
    * Image files of the Logo Spectrum mode, stored with the job (their MIME types), and the cover
-   * art of each part, shown as the logo (LS-15).
+   * art of each part, shown as the logo (LS-15) or giving the colours (VE-12).
    */
   images: { background: string | null; logo: string | null; covers: (string | null)[] };
   timing: ExportTiming;
@@ -230,12 +237,15 @@ export function planParts(
   return { ...timing, partStarts: starts.map((start) => start + lead) };
 }
 
-/** The part heard at video frame `n`, and the second of its file heard then. */
+/**
+ * The part heard at video frame `n`, the second of its file heard then, and how long the part
+ * has been heard (seconds of the video; for the first part, since the stream began).
+ */
 export function partAt(
   manifest: Pick<ExportManifest, 'parts' | 'timing' | 'sound'>,
   fps: number,
   n: number,
-): { index: number; seconds: number } {
+): { index: number; seconds: number; since: number } {
   const { parts, timing, sound } = manifest;
   // What is heard left the sound chain the effects' delay earlier.
   const stream = (frameTime(timing, fps, n) - timing.analysisStart) * sound.rate;
@@ -246,7 +256,11 @@ export function partAt(
   const from =
     index === 0 ? timing.sourceStart : Math.round(parts[index]!.range.start * EXPORT_RATE);
   const offset = index === 0 ? stream : stream - starts[index]!;
-  return { index, seconds: (from + offset) / EXPORT_RATE };
+  return {
+    index,
+    seconds: (from + offset) / EXPORT_RATE,
+    since: offset / EXPORT_RATE / sound.rate,
+  };
 }
 
 /** The track overlay's view of `part` (LS-18): its names and its range. */

@@ -215,11 +215,16 @@
     }
     // The track overlay names each track over the part the video plays (LS-18, LS-19).
     const overlay = $app.settings.overlay;
+    // The cover art as the logo (LS-15), and its colours (VE-12).
+    const coverLogo = mode === 'logoSpectrum' && $app.settings.coverLogo;
+    const coverColors = $app.settings.coverColors;
     const visuals: ExportVisuals = {
       ...visualsOf(mode),
       overlay: overlay.on ? overlay : undefined,
+      coverLogo,
+      coverColors,
     };
-    const covered = mode === 'logoSpectrum' && $app.settings.coverLogo;
+    const covered = coverLogo || coverColors;
     const container = codecs.container;
     const each = perTrack;
     const fileName = videoFileName(planned, container, sound);
@@ -236,7 +241,7 @@
       }
       return;
     }
-    // The cover art as the logo (LS-15); read after the save dialog, which needs the click.
+    // The covers, read after the save dialog, which needs the click.
     const covers = await Promise.all(
       tracks.map((entry) => {
         const cover = covered ? shownCover(entry) : null;
@@ -867,6 +872,13 @@
                 >({chosen.length > 1
                   ? 'the cover art as the logo'
                   : 'its cover art as the logo'})</span
+              >
+            {/if}
+            {#if $app.settings.coverColors && chosen.some(shownCover)}
+              <span data-testid="export-cover-colors"
+                >({chosen.length > 1
+                  ? 'in the colours of the cover art'
+                  : 'in the colours of its cover art'})</span
               >
             {/if}
             {#if fitted.fade > 0}

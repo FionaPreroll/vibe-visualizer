@@ -21,6 +21,7 @@
   } from '../core/render/visual-settings';
   import AutoPresetsSection from './AutoPresetsSection.svelte';
   import { errorMessage } from '../core/util/format';
+  import CoverColorsOption from './CoverColorsOption.svelte';
   import { degrees, hertz, percent, perMinute, seconds } from './controls/format';
   import ImagePicker from './controls/ImagePicker.svelte';
   import PresetBar from './controls/PresetBar.svelte';
@@ -189,6 +190,7 @@
         </button>
       {/each}
     </div>
+    <CoverColorsOption />
     {#if v.palette === 'custom'}
       <div class="colors">
         {#each v.customColors as color, index (index)}

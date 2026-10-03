@@ -30,7 +30,7 @@ export function stillCalm(track: Track, analyses: TrackAnalyses): boolean {
 /**
  * Keeps the render worker told about the files of the engine's stream (the one heard and the
  * one that follows): their tracks for the overlay, whether the picture stays calm for them, and
- * their cover art for the logo (LS-15), each cover decoded once.
+ * their cover art for the logo (LS-15) and the colours (VE-12), each cover decoded once.
  */
 export class StreamInfo {
   private sent = '';
