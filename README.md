@@ -1,5 +1,7 @@
 # Vibe Visualizer
 
+[![Coverage](https://codecov.io/gh/FionaPreroll/vibe-visualizer/graph/badge.svg)](https://codecov.io/gh/FionaPreroll/vibe-visualizer)
+
 The app calls itself **FibeStation**; double-click the name in the top bar to give it another one.
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
@@ -52,6 +54,7 @@ Then open http://localhost:5173 in Chrome or Firefox. The dev server sends the c
 | `pnpm check` | Type check (Svelte and TypeScript) |
 | `pnpm lint`, `pnpm format` | ESLint, Prettier |
 | `pnpm test` | Unit tests (Vitest) |
+| `pnpm test:coverage` | Unit tests with their coverage (`coverage/lcov.info`; CI sends it to Codecov for the badge) |
 | `pnpm test:e2e` | End-to-end tests in Chromium (Playwright) |
 | `pnpm test:e2e:firefox` | The main paths in Firefox, the end-to-end tests tagged `@firefox` |
 | `pnpm test:soak` | The soak test: plays for 30 minutes (`SOAK_MINUTES`), and the memory must stay flat |

@@ -47,5 +47,13 @@ export default defineConfig({
       'tests/eval/**/*.test.ts',
     ],
     environment: 'node',
+    // `pnpm test:coverage`: the unit tests' coverage of the app's code (CI sends it to Codecov).
+    // The UI and the workers are tested end to end, which this does not count.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts', 'packages/*/src/**/*.ts'],
+      exclude: ['**/*.test.ts', '**/*.d.ts'],
+      reporter: ['text-summary', 'lcov'],
+    },
   },
 });

@@ -1,0 +1,13 @@
+# Codecov: the unit tests' coverage of the app's code, sent by CI (pnpm test:coverage). It
+# informs: its checks on a pull request never fail, and it comments only when coverage changes.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+comment:
+  layout: 'condensed_header, condensed_files, condensed_footer'
+  require_changes: true
