@@ -11,9 +11,12 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Ubuntu 24.04 rather than ubuntu-latest: the jobs install browsers and their system packages
+# (the Firefox job also a display and a sound server), which a new Ubuntu may change. Move on
+# to a newer one on purpose.
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -31,7 +34,7 @@ jobs:
 
   # The second browser (NF-02): the main paths, in a job of their own.
   firefox:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
