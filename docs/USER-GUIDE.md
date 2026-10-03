@@ -61,6 +61,7 @@ Double-click a slider's label to reset it. **V** switches to the next view, **[*
 - **Display:** in **Visuals → Display**, the resolution the visuals draw at (50–100 % of the screen's), which is lowered on its own while the visuals stutter and raised again once they run smoothly (exports always render at their own resolution); and **Reduce flashing**, which damps sudden jumps in brightness, in exports too. The welcome at the first start offers it as well.
 - **Aspect ratio:** the stage shows the visuals in the frame of your video, chosen in the top bar: 16:9 (YouTube), 9:16 (TikTok, Shorts, Reels), 1:1, 4:5 or 21:9. The frame button next to it shows the safe areas, and on 9:16 the parts the apps cover with their buttons and captions.
 - **Fullscreen:** **F**; only the visuals show, and the mouse cursor hides when you do not move it.
+- **Only the music:** the crossed-out eye in the top bar (or **B**) lets the visuals rest while the music plays on, for when you only listen: the stage keeps its last picture, dimmed, and the graphics card is spared. Exports are not affected.
 - **A/V sync:** if the visuals run ahead of the sound (Bluetooth headphones, a TV, or Chrome on a Mac), open **Visuals → A/V sync** and click **Calibrate…**: a tick plays every second and a circle flashes; move the slider until both come together. Exports are always in sync.
 
 ## Sound

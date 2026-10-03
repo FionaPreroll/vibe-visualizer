@@ -113,7 +113,7 @@
 
   /** Saves the picture on the stage as a PNG (EX-10); not while an export renders. */
   function takePicture() {
-    if (!$captureReady || $exporter.status === 'running') return;
+    if (!$captureReady || $exporter.status === 'running' || $app.settings.visualsPaused) return;
     savePicture(player, capture).catch((error: unknown) =>
       player.reportError(`The picture could not be saved: ${errorMessage(error)}`),
     );
@@ -239,6 +239,9 @@
         case 'v':
           nextVisualMode(player);
           break;
+        case 'b':
+          player.updateSettings({ visualsPaused: !player.state.settings.visualsPaused });
+          break;
         case '[':
           stepPreset(player, -1);
           break;
@@ -337,7 +340,8 @@
           mode={$app.settings.visualMode}
           aspect={$app.settings.aspect}
           safeAreas={$app.settings.safeAreas}
-          paused={$exporter.status === 'running'}
+          paused={$exporter.status === 'running' || $app.settings.visualsPaused}
+          resting={$app.settings.visualsPaused}
         />
       {/if}
     </Guard>

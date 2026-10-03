@@ -227,6 +227,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | DS-02* | C | Performance mode: visuals only, controlled by keyboard |
 | DS-03* | L | Separate output window for a second screen or projector; the controls stay on the main screen |
 | DS-04* | L | UI-less output view (via URL) for capturing in OBS |
+| DS-05* | S | Let the visuals rest while the music plays on, to listen only: a button and a key; the stage keeps its last picture, dimmed |
 
 ### 3.13 Offline render / video export (EX)
 

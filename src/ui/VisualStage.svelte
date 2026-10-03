@@ -31,10 +31,12 @@
     mode: SceneKind;
     aspect: AspectRatio;
     safeAreas: boolean;
-    /** Stops drawing (while an export needs the graphics card). */
+    /** Stops drawing (while an export needs the graphics card, or the visuals rest). */
     paused: boolean;
+    /** The visuals rest at the user's wish (DS-05): the stage says so. */
+    resting: boolean;
   }
-  let { mode, aspect, safeAreas, paused }: Props = $props();
+  let { mode, aspect, safeAreas, paused, resting }: Props = $props();
 
   const player = usePlayer();
   const assets = useAssets();
@@ -293,11 +295,21 @@
         data-scale={scale.toFixed(3)}
         data-scene={mode}
         data-generation={generation}
+        data-paused={paused}
+        class:resting
         aria-label={mode === 'kaleidoscope' ? 'Kaleidoscope visuals' : 'Logo Spectrum visuals'}
       ></canvas>
     {/key}
     {#if safeAreas}
       <SafeAreas {aspect} />
+    {/if}
+    {#if resting}
+      <div class="rest" data-testid="visuals-paused">
+        <p>The visuals rest; the music plays on.</p>
+        <button onclick={() => player.updateSettings({ visualsPaused: false })}
+          >Show the visuals (B)</button
+        >
+      </div>
     {/if}
   </div>
 </div>
@@ -330,6 +342,25 @@
     height: 100%;
     display: block;
     background: #07070c;
+  }
+  /* The last picture stays, dimmed, under a note. */
+  canvas.resting {
+    opacity: 0.25;
+  }
+  .rest {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .rest p {
+    margin: 0;
+    color: var(--text);
+    font-size: 15px;
   }
   .failed {
     position: absolute;

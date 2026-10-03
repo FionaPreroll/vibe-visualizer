@@ -175,6 +175,8 @@ export interface Settings {
   overlay: OverlaySettings;
   /** The Logo Spectrum shows the cover art of the track playing as its logo (LS-15). */
   coverLogo: boolean;
+  /** The visuals rest, to listen to the music only (DS-05): the stage draws nothing. */
+  visualsPaused: boolean;
   /** Automatic preset switching (PR-02), for the visual mode shown. */
   autoPresets: AutoPresets;
   /** Favourite presets by name, per visual mode (PR-03). */
@@ -348,6 +350,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reduceFlashing: false,
   overlay: DEFAULT_OVERLAY,
   coverLogo: false,
+  visualsPaused: false,
   autoPresets: DEFAULT_AUTO_PRESETS,
   favourites: { logoSpectrum: [], kaleidoscope: [] },
 };

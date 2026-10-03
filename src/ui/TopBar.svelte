@@ -139,8 +139,19 @@
     </button>
     <button
       class="toggle"
+      class:on={$app.settings.visualsPaused}
+      onclick={() => player.updateSettings({ visualsPaused: !$app.settings.visualsPaused })}
+      aria-pressed={$app.settings.visualsPaused}
+      title="Pause the visuals; the music plays on (B)"
+      aria-label="Pause the visuals"
+      data-testid="visuals-pause"
+    >
+      <Icon name="visualsOff" size={18} />
+    </button>
+    <button
+      class="toggle"
       onclick={onPicture}
-      disabled={!$captureReady || $exporter.status === 'running'}
+      disabled={!$captureReady || $exporter.status === 'running' || $app.settings.visualsPaused}
       title="Save the picture as a PNG, e.g. as a thumbnail (C)"
       aria-label="Save the picture"
       data-testid="picture-button"

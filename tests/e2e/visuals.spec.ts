@@ -70,6 +70,55 @@ test('Logo Spectrum renders in a worker and moves with the music @firefox', asyn
   expect(errors).toEqual([]);
 });
 
+test('the visuals can rest while the music plays on (DS-05)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'Clicks.wav',
+    mimeType: 'audio/wav',
+    buffer: createWav(12, 44100),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('play-button').click();
+  await expect
+    .poll(async () => Number(await stage.getAttribute('data-fps')), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  const elapsed = async () =>
+    Number(await page.getByTestId('elapsed').getAttribute('data-seconds'));
+
+  // Paused with the button: the stage keeps its last picture, dimmed, and says so.
+  await page.getByTestId('visuals-pause').click();
+  await expect(page.getByTestId('visuals-pause')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('visuals-paused')).toBeVisible();
+  await expect(stage).toHaveAttribute('data-paused', 'true');
+  await expect(page.getByTestId('picture-button')).toBeDisabled();
+  await page.waitForTimeout(300);
+  const first = await stage.screenshot();
+  const before = await elapsed();
+  await page.waitForTimeout(700);
+  expect((await stage.screenshot()).equals(first)).toBe(true);
+  // The music plays on.
+  expect(await elapsed()).toBeGreaterThan(before);
+  const stored = () =>
+    page.evaluate(
+      () => JSON.parse(localStorage.getItem('vibe-visualizer:settings:v1') ?? '{}').visualsPaused,
+    );
+  await expect.poll(stored).toBe(true);
+
+  // B shows them again, and they move.
+  await page.keyboard.press('b');
+  await expect(page.getByTestId('visuals-paused')).toBeHidden();
+  await expect(stage).toHaveAttribute('data-paused', 'false');
+  const moving = await stage.screenshot();
+  await page.waitForTimeout(700);
+  expect((await stage.screenshot()).equals(moving)).toBe(false);
+  await expect.poll(stored).toBe(false);
+  expect(errors).toEqual([]);
+});
+
 /** Loses the render worker's graphics context, as a reset of the graphics card does. */
 async function loseGraphicsContext(page: Page) {
   const worker = page
