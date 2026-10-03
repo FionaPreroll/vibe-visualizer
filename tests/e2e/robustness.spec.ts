@@ -105,3 +105,26 @@ test('the music pauses with a message when the sound stops by itself (NF-09)', a
   await expect(alert).toHaveText('The sound engine stopped. Reload the page to go on.');
   expect(errors).toEqual([]);
 });
+
+test('a browser without a feature the app needs says so instead (NF-02)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    delete (window as { AudioWorkletNode?: unknown }).AudioWorkletNode;
+    // Graphics acceleration turned off: WebGL 2 is refused.
+    const getContext = OffscreenCanvas.prototype.getContext;
+    OffscreenCanvas.prototype.getContext = function (
+      this: OffscreenCanvas,
+      ...args: Parameters<typeof getContext>
+    ) {
+      return args[0] === 'webgl2' ? null : getContext.apply(this, args);
+    } as typeof getContext;
+  });
+  await page.goto('/');
+  const unsupported = page.getByTestId('unsupported');
+  await expect(unsupported).toContainText('FibeStation cannot run in this browser');
+  await expect(unsupported).toContainText('AudioWorklet: the sound is played and analysed in it.');
+  await expect(unsupported).toContainText('WebGL 2: the visuals are drawn with it.');
+  await expect(unsupported).toContainText('turn on graphics acceleration');
+  await expect(page.getByTestId('visual-stage')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
