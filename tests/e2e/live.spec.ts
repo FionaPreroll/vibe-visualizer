@@ -129,8 +129,20 @@ test('the tempo of the live input can be corrected (TMP-06)', async ({ page }) =
   await expect(badge).toHaveText(/^12[0-2] BPM$/, { timeout: 20_000 });
   await badge.click();
   await expect(page.getByTestId('tempo-auto')).toBeDisabled();
-  await page.getByTestId('tempo-half').click();
-  await expect(badge).toHaveAttribute('title', /keeps close to 6[01] BPM/);
+  // The tracking's tempo moves a little from moment to moment (it was 124 BPM once by the time
+  // of the click), and halving takes it as it is then: the value on the button is read in the
+  // same step as the click.
+  const half = await page.getByTestId('tempo-half').evaluate((button: HTMLElement) => {
+    const value = Number.parseFloat(button.querySelector('.value')?.textContent ?? '');
+    button.click();
+    return value;
+  });
+  // Half of the clicks' 120 BPM, as the tracking has it.
+  expect(Math.abs(half - 60)).toBeLessThanOrEqual(3);
+  await expect(badge).toHaveAttribute('title', /keeps close to \d+ BPM/);
+  const held = Number(/keeps close to (\d+) BPM/.exec((await badge.getAttribute('title'))!)![1]);
+  // The same tempo: the button rounds it to whole BPM, the title after keeping it to hundredths.
+  expect(Math.abs(held - half)).toBeLessThanOrEqual(1);
   await expect(badge).toHaveText(/^6[01] BPM$/, { timeout: 15_000 });
   // Back to the tempo the tracking finds.
   await badge.click();
