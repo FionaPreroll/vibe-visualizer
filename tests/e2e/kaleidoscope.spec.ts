@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { measure } from './pixels';
 import { createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
@@ -64,6 +65,44 @@ test('Kaleidoscope renders, moves with the music and switches scenes and modes',
   await page.getByRole('button', { name: 'Kaleidoscope', exact: true }).click();
   await expect(stage).toHaveAttribute('data-scene', 'kaleidoscope');
   await expect(stage).toHaveAttribute('data-status', 'running');
+  expect(errors).toEqual([]);
+});
+
+test('the spin turns a round picture: no edge of a frame-shaped buffer turns into view', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const stage = await openKaleidoscope(page);
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'Clicks.wav',
+    mimeType: 'audio/wav',
+    buffer: createWav(30, 44100),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  // The Vortex at the fastest spin: a turn in 6 s.
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByRole('slider', { name: 'Spin', exact: true }).focus();
+  await page.keyboard.press('End');
+  await page.getByTestId('play-button').click();
+  await page.waitForTimeout(2000);
+
+  // Left and right of the core, where the Vortex's strands reach. A buffer of the frame's shape
+  // (wider than high) left both black whenever the spin turned it upright.
+  const sides = [
+    { x: 0.06, y: 0.35, width: 0.12, height: 0.3 },
+    { x: 0.82, y: 0.35, width: 0.12, height: 0.3 },
+  ];
+  const seen: string[] = [];
+  const start = Date.now();
+  while (Date.now() - start < 6000) {
+    const [left, right] = await measure(page, await stage.screenshot(), sides);
+    const level = (region: typeof left) =>
+      (region!.mean[0] + region!.mean[1] + region!.mean[2]) / 3;
+    seen.push(`${level(left).toFixed(1)}/${level(right).toFixed(1)}`);
+    expect(Math.max(level(left), level(right)), seen.join(' ')).toBeGreaterThan(1);
+    await page.waitForTimeout(150);
+  }
   expect(errors).toEqual([]);
 });
 

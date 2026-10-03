@@ -23,7 +23,13 @@ import {
   type ParamSpec,
 } from './kaleido-settings';
 import { NO_CAMERA, PostProcessing } from './post';
-import { FixedStepper, type Scene, type SceneInput, type SceneSnapshot } from './scene';
+import {
+  FixedStepper,
+  type Scene,
+  type SceneInput,
+  type SceneSnapshot,
+  type SnapshotBuffer,
+} from './scene';
 import { parseColor } from './visual-settings';
 
 /**
@@ -40,6 +46,28 @@ import { parseColor } from './visual-settings';
 
 const STEPS_PER_SECOND = 60;
 const PALETTE_SIZE = 256;
+/**
+ * The state covers the circle around the frame's corners, and this much more, for the warps of
+ * a step that look a little further out.
+ */
+const STATE_MARGIN = 1.05;
+/** The largest side of the state (pixels): a 4K frame would ask for more than 4600. */
+const MAX_STATE_SIZE = 4096;
+
+/**
+ * The square the feedback runs on, for a frame of `width` × `height` pixels: its side (pixels)
+ * and half of it (`reach`, in units of half the frame's height). It holds the circle the
+ * frame's corners turn on, at the frame's pixel density, and at most `largest` pixels.
+ */
+export function stateSquare(
+  width: number,
+  height: number,
+  largest = MAX_STATE_SIZE,
+): { side: number; reach: number } {
+  const reach = Math.hypot(width / height, 1) * STATE_MARGIN;
+  const side = Math.max(1, Math.min(largest, MAX_STATE_SIZE, Math.round(height * reach)));
+  return { side, reach };
+}
 
 /** Noise and helpers shared by the step shaders. */
 const NOISE = `
@@ -90,7 +118,15 @@ mat2 rotation(float angle) {
 /** Uniforms and the warp every step shader starts with. */
 const STEP_HEADER = `${FRAGMENT_HEADER}
 uniform sampler2D previous;
+/** The state's size in pixels. */
 uniform vec2 resolution;
+/**
+ * Half the width and the height the state covers, in units of half the frame's height: past
+ * the frame's corners in every direction, so the spin never turns its edge into view.
+ */
+uniform vec2 extent;
+/** The frame's width by its height. */
+uniform float frameAspect;
 uniform float time;
 uniform float dt;
 uniform float kick;
@@ -109,13 +145,20 @@ uniform float p_twist;
 uniform float p_trails;
 uniform float p_intensity;
 ${NOISE}
-/** Centred coordinates: y from -1 to 1, x scaled by the aspect ratio. */
-vec2 centred(vec2 uv, vec2 aspect) {
-  return (uv - 0.5) * 2.0 * aspect;
+/** Centred coordinates: y from -1 to 1 over the frame's height, x on the same scale. */
+vec2 centred(vec2 uv) {
+  return (uv - 0.5) * 2.0 * extent;
 }
-/** The previous state at centred position q, faded by the trails and towards the buffer edge. */
-vec4 fetch(vec2 q, vec2 aspect) {
-  vec2 source = q / aspect * 0.5 + 0.5;
+/**
+ * Beyond the circle around the frame's corners nothing is ever shown: the state stays dark
+ * there, and the step costs little.
+ */
+bool unseen(vec2 p) {
+  return dot(p, p) > extent.y * extent.y;
+}
+/** The previous state at centred position q, faded by the trails and towards the state's edge. */
+vec4 fetch(vec2 q) {
+  vec2 source = q / extent * 0.5 + 0.5;
   vec2 edge = smoothstep(vec2(0.0), vec2(0.03), source) * smoothstep(vec2(0.0), vec2(0.03), 1.0 - source);
   float halfLife = mix(0.08, 2.5, p_trails * p_trails);
   // A little sharpening counters the blur that resampling adds on every step.
@@ -135,8 +178,11 @@ uniform float p_strands;
 uniform float p_fiber;
 
 void main() {
-  vec2 aspect = vec2(resolution.x / resolution.y, 1.0);
-  vec2 p = centred(uv, aspect);
+  vec2 p = centred(uv);
+  if (unseen(p)) {
+    color = vec4(0.0);
+    return;
+  }
   float r = length(p);
 
   // Where the light now at p came from: pulled in (flow < 0) or pushed out, twisted, swirled
@@ -147,7 +193,7 @@ void main() {
   vec2 q = rotation(turn) * p * scale;
   vec2 turbulence = vec2(gnoise(q * 9.0 + time * 0.3), gnoise(q * 9.0 - time * 0.3 + 13.7)) - 0.5;
   q += turbulence * p_fiber * 0.004;
-  vec4 state = fetch(q, aspect);
+  vec4 state = fetch(q);
   // The core swallows the light.
   state *= mix(0.9, 1.0, smoothstep(0.02, 0.3, r));
 
@@ -182,8 +228,11 @@ uniform float p_shards;
 uniform float p_sparks;
 
 void main() {
-  vec2 aspect = vec2(resolution.x / resolution.y, 1.0);
-  vec2 p = centred(uv, aspect);
+  vec2 p = centred(uv);
+  if (unseen(p)) {
+    color = vec4(0.0);
+    return;
+  }
   float r = length(p);
   float a = atan(p.y, p.x);
 
@@ -191,7 +240,7 @@ void main() {
   // the tunnel on.
   float flow = p_flow * (1.0 + 3.0 * kick);
   vec2 q = rotation(p_twist * 0.8 * dt) * p * exp(-flow * 0.9 * dt);
-  vec4 state = fetch(q, aspect);
+  vec4 state = fetch(q);
 
   // A pulsing star outline in the centre, swelling with the kick and the bass; the outward flow
   // turns it into a tunnel of stars.
@@ -266,17 +315,20 @@ float bright(float index) {
 }
 
 void main() {
-  vec2 aspect = vec2(resolution.x / resolution.y, 1.0);
-  vec2 screen = centred(uv, aspect);
+  vec2 screen = centred(uv);
+  if (unseen(screen)) {
+    color = vec4(0.0);
+    return;
+  }
 
   // What was here flows on (outward in the look) and twists: the tubes leave neon trails and
   // the flowers float away. Kicks push it on.
   float flow = p_flow * (1.0 + 2.0 * kick);
   vec2 q = rotation(p_twist * 0.8 * dt) * screen * exp(-flow * 0.6 * dt);
-  vec4 state = fetch(q, aspect);
+  vec4 state = fetch(q);
 
   // The wreath fits a narrow frame too (9:16): everything is drawn a little smaller there.
-  vec2 p = screen / min(1.0, aspect.x / 0.9);
+  vec2 p = screen / min(1.0, frameAspect / 0.9);
   float r = length(p);
   float a = atan(p.y, p.x);
 
@@ -287,7 +339,7 @@ void main() {
   float radius = 0.5 * (1.0 + 0.08 * kick + 0.04 * bass);
   float swing = (0.04 + 0.22 * p_weave) * (1.0 + 0.25 * bass);
   float glow = (0.9 + 0.2 * energy + 0.15 * kick) * p_intensity;
-  float pixel = 2.0 / resolution.y;
+  float pixel = 2.0 * extent.y / resolution.y;
 
   // Blossoms in the lobes, and a larger one in the centre: small fractals, glowing orange on
   // the snare. Light behind the tubes.
@@ -389,12 +441,30 @@ const STEP_SHADERS: Record<KaleidoSceneId, string> = {
   ribbons: RIBBONS,
 };
 
+/**
+ * A state of the frame's shape, as exports begun with an older version kept it, drawn into the
+ * state as it is now: where the frame lies, and dark around it.
+ */
+const REFRAME = `${FRAGMENT_HEADER}
+uniform sampler2D framed;
+uniform vec2 extent;
+uniform float frameAspect;
+
+void main() {
+  vec2 p = (uv - 0.5) * 2.0 * extent;
+  vec2 source = p / vec2(frameAspect, 1.0) * 0.5 + 0.5;
+  bool inside = all(greaterThanEqual(source, vec2(0.0))) && all(lessThanEqual(source, vec2(1.0)));
+  color = inside ? texture(framed, source) : vec4(0.0);
+}`;
+
 const COMPOSITE = `${FRAGMENT_HEADER}
 uniform sampler2D previousState;
 uniform sampler2D latestState;
 uniform float blend;
 uniform sampler2D palette;
 uniform vec2 resolution;
+/** What the state covers (see the steps). */
+uniform vec2 extent;
 uniform float angle;
 uniform float hue;
 uniform vec3 coreColor;
@@ -425,8 +495,8 @@ void main() {
     if (p_mirror > 0.5) a = abs(a - segment * 0.5);
   }
   vec2 q = vec2(cos(a), sin(a)) * r;
-  vec2 source = q / aspect * 0.5 + 0.5;
-  // Beyond the feedback buffer (far corners) fade out softly instead of a hard edge.
+  vec2 source = q / extent * 0.5 + 0.5;
+  // Beyond the state (zoomed out far, or moved off centre) fade out softly, not at an edge.
   vec2 inside = smoothstep(vec2(-0.02), vec2(0.04), source) * smoothstep(vec2(-0.02), vec2(0.04), 1.0 - source);
   vec4 state = mix(texture(previousState, source), texture(latestState, source), blend) * inside.x * inside.y;
   // Accumulated light saturates softly instead of blowing out; the brightest parts move to
@@ -462,6 +532,7 @@ export class KaleidoscopeScene implements Scene {
   private readonly triangle: WebGLVertexArrayObject;
   private readonly steps: Record<KaleidoSceneId, Program>;
   private readonly composite: Program;
+  private readonly reframe: Program;
   private readonly post: PostProcessing;
   private readonly paletteTexture: WebGLTexture;
   private readonly stepper = new FixedStepper(STEPS_PER_SECOND);
@@ -469,6 +540,10 @@ export class KaleidoscopeScene implements Scene {
   private paletteKey = '';
   private width = 1;
   private height = 1;
+  /** The side of the feedback buffers (pixels): a square around the frame. */
+  private stateSize = 1;
+  /** Half that side, in units of half the frame's height. */
+  private reach = 1;
   /** Feedback buffers: [previous step, latest step]. */
   private states: [Target, Target] | null = null;
   private scene: Target | null = null;
@@ -504,6 +579,7 @@ export class KaleidoscopeScene implements Scene {
       ]),
     ) as Record<KaleidoSceneId, Program>;
     this.composite = new Program(gl, FULLSCREEN_VERTEX, COMPOSITE);
+    this.reframe = new Program(gl, FULLSCREEN_VERTEX, REFRAME);
     this.post = new PostProcessing(gl, this.floatTargets);
     this.paletteTexture = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
@@ -529,12 +605,22 @@ export class KaleidoscopeScene implements Scene {
     const gl = this.gl;
     this.width = Math.max(1, Math.round(width));
     this.height = Math.max(1, Math.round(height));
+    // The feedback runs on a square around the circle that the frame's corners turn on, at the
+    // frame's pixel density (less only beyond the largest size): the spin turns the frame on
+    // it, and never shows its edge (a turning rectangle).
+    const square = stateSquare(
+      this.width,
+      this.height,
+      gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
+    );
+    this.stateSize = square.side;
+    this.reach = square.reach;
     deleteTarget(gl, this.scene);
     if (this.states) for (const target of this.states) deleteTarget(gl, target);
     this.scene = createTarget(gl, this.width, this.height, this.floatTargets);
     this.states = [
-      createTarget(gl, this.width, this.height, this.floatTargets),
-      createTarget(gl, this.width, this.height, this.floatTargets),
+      createTarget(gl, this.stateSize, this.stateSize, this.floatTargets),
+      createTarget(gl, this.stateSize, this.stateSize, this.floatTargets),
     ];
     this.post.resize(this.width, this.height);
   }
@@ -606,6 +692,7 @@ export class KaleidoscopeScene implements Scene {
       .texture('palette', this.paletteTexture, 2)
       .float('blend', this.stepper.blend)
       .vec2('resolution', this.width, this.height)
+      .vec2('extent', this.reach, this.reach)
       .float('angle', this.angle)
       .float('hue', this.hue)
       .vec3('coreColor', cr, cg, cb)
@@ -646,8 +733,17 @@ export class KaleidoscopeScene implements Scene {
     if (!this.states || buffers.length !== (calm ? 3 : 2)) {
       throw new Error('Snapshot does not match the Kaleidoscope scene');
     }
-    writeTarget(this.gl, this.states[0], buffers[0]!);
-    writeTarget(this.gl, this.states[1], buffers[1]!);
+    for (const [k, target] of this.states.entries()) {
+      const buffer = buffers[k]!;
+      if (
+        buffer.length === this.width * this.height * 4 &&
+        buffer.length !== target.width * target.height * 4
+      ) {
+        this.restoreFramed(buffer, target);
+      } else {
+        writeTarget(this.gl, target, buffer);
+      }
+    }
     this.frameCount = Number(values['frameCount']);
     this.simulationTime = Number(values['simulationTime']);
     this.angle = Number(values['angle']);
@@ -694,11 +790,13 @@ export class KaleidoscopeScene implements Scene {
 
     const [previous, latest] = states;
     const program = this.steps[this.settings.scene];
-    bindTarget(gl, previous, this.width, this.height);
+    bindTarget(gl, previous, this.stateSize, this.stateSize);
     program
       .use()
       .texture('previous', latest.texture, 0)
-      .vec2('resolution', this.width, this.height)
+      .vec2('resolution', this.stateSize, this.stateSize)
+      .vec2('extent', this.reach, this.reach)
+      .float('frameAspect', this.width / this.height)
       .float('time', this.simulationTime)
       .float('dt', step)
       .float('kick', kick)
@@ -760,6 +858,27 @@ export class KaleidoscopeScene implements Scene {
   }
 
   /** Clears the feedback (when switching scenes). */
+  /** A buffer of the frame's shape (an export begun with an older version) into `target`. */
+  private restoreFramed(buffer: SnapshotBuffer, target: Target): void {
+    const gl = this.gl;
+    const framed = createTarget(gl, this.width, this.height, this.floatTargets);
+    try {
+      writeTarget(gl, framed, buffer);
+      bindTarget(gl, target, this.stateSize, this.stateSize);
+      gl.bindVertexArray(this.triangle);
+      gl.disable(gl.BLEND);
+      this.reframe
+        .use()
+        .texture('framed', framed.texture, 0)
+        .vec2('extent', this.reach, this.reach)
+        .float('frameAspect', this.width / this.height);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.bindVertexArray(null);
+    } finally {
+      deleteTarget(gl, framed);
+    }
+  }
+
   private clear(): void {
     const gl = this.gl;
     if (!this.states) return;
