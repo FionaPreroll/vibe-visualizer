@@ -157,6 +157,8 @@ const STEADY_SEARCH = 0.01;
 const PHASE_BINS = 50;
 /** Beats this sure count for the straight grid. */
 const STEADY_CONFIDENCE = 0.3;
+/** Beats a straight grid the user asked for needs at least, sure ones or else any (TR-12). */
+const FIXED_MIN_BEATS = 8;
 /**
  * Ratios of the score on the beats to the typical score between them, for no and for full
  * confidence. Measured: noise 2.1, a sustained pad 1.5, real recordings (MDB Drums) 5.2–8.8.
@@ -172,6 +174,11 @@ export interface BeatGridOptions {
   bpm?: number | null;
   /** The tempo range the grid looks in when it finds the tempo itself (AN-12). */
   range?: TempoRangeId;
+  /**
+   * One tempo throughout, as the user asked (TR-12): a straight grid from the start of the file
+   * to its end, with bars of four that keep their place, also where the beats found move.
+   */
+  fixed?: boolean;
 }
 
 /** The beats of a track from its onset features. */
@@ -206,9 +213,15 @@ export function computeBeatGrid(features: OnsetFeatures, options: BeatGridOption
     beats[k] = (refine(onset, beatFrames[k]!) + 1) / frameRate - features.delay;
   }
   const confidence = confidences(score, beatFrames, features.active);
-  // A fixed tempo: one straight grid instead of beats that follow every onset.
+  // A fixed tempo: one straight grid instead of beats that follow every onset. The user can ask
+  // for one (TR-12); else the analysis takes it where the beats keep to one.
+  const fixed = options.fixed === true;
   const steady = single && tempoSections({ beats, confidence }).length === 1;
-  const straight = steady ? straightGrid(beats, confidence) : null;
+  const straight = fixed
+    ? straightGrid(beats, confidence, frames / frameRate)
+    : steady
+      ? straightGrid(beats, confidence)
+      : null;
   if (straight) {
     const straightFrames = Array.from(straight, (time) =>
       Math.max(0, Math.min(frames - 1, Math.round((time + features.delay) * frameRate) - 1)),
@@ -216,7 +229,7 @@ export function computeBeatGrid(features: OnsetFeatures, options: BeatGridOption
     return {
       beats: straight,
       confidence: confidences(score, straightFrames, features.active),
-      beatInBar: findBars(straightFrames, features),
+      beatInBar: findBars(straightFrames, features, fixed),
     };
   }
   return { beats, confidence, beatInBar: findBars(beatFrames, features) };
@@ -542,17 +555,29 @@ function unifyTempo(
  * then a least-squares fit to the beats on it), if enough of them lie on it closely. Beats the
  * tracker missed, added or put on the offbeat for a while (the drums of a section stress it)
  * do not count against the rest. The straight grid spans the beats found.
+ *
+ * With `whole` (seconds: the user asked for one tempo, TR-12), it is the best straight grid
+ * however few beats lie on it, from the start of the file to `whole`; null only without beats
+ * to fit it to.
  */
-function straightGrid(beats: Float64Array, confidence: Float32Array): Float64Array | null {
+function straightGrid(
+  beats: Float64Array,
+  confidence: Float32Array,
+  whole?: number,
+): Float64Array | null {
   const count = beats.length;
-  const sure: number[] = [];
+  const asked = whole !== undefined;
+  let sure: number[] = [];
   for (let k = 0; k < count; k++) if (confidence[k]! >= STEADY_CONFIDENCE) sure.push(k);
-  if (sure.length < STEADY_MIN_BEATS) return null;
+  // Asked for: with too few sure beats, all of them.
+  if (asked && sure.length < FIXED_MIN_BEATS) sure = Array.from({ length: count }, (_, k) => k);
+  const least = asked ? FIXED_MIN_BEATS : STEADY_MIN_BEATS;
+  if (sure.length < least) return null;
   const intervals: number[] = [];
   for (let j = 1; j < sure.length; j++) {
     if (sure[j]! === sure[j - 1]! + 1) intervals.push(beats[sure[j]!]! - beats[sure[j - 1]!]!);
   }
-  if (intervals.length < STEADY_MIN_BEATS) return null;
+  if (intervals.length < (asked ? 1 : STEADY_MIN_BEATS)) return null;
   const guess = median(intervals);
   // The grid through most sure beats: for periods near the guess, in steps finer than the width
   // of a match (a period divided by the beats spanned), the phase with the most beats near it.
@@ -586,7 +611,7 @@ function straightGrid(beats: Float64Array, confidence: Float32Array): Float64Arr
       return Math.abs(position - Math.round(position)) < STEADY_TOLERANCE;
     });
   let use = onGrid();
-  for (let pass = 0; pass < 2 && use.length >= STEADY_MIN_BEATS; pass++) {
+  for (let pass = 0; pass < 2 && use.length >= least; pass++) {
     const index = use.map((k) => Math.round((beats[k]! - offset) / period));
     const fit = lineFit(
       index,
@@ -602,10 +627,12 @@ function straightGrid(beats: Float64Array, confidence: Float32Array): Float64Arr
     squares += (position - Math.round(position)) ** 2;
   }
   const spread = Math.sqrt(squares / Math.max(1, use.length));
-  if (use.length < Math.max(STEADY_MIN_BEATS, STEADY_SHARE * sure.length)) return null;
-  if (spread > STEADY_SPREAD) return null;
-  const first = Math.round((beats[0]! - offset) / period);
-  const last = Math.round((beats[count - 1]! - offset) / period);
+  if (!asked && use.length < Math.max(STEADY_MIN_BEATS, STEADY_SHARE * sure.length)) return null;
+  if (!asked && spread > STEADY_SPREAD) return null;
+  const first = asked ? Math.ceil(-offset / period) : Math.round((beats[0]! - offset) / period);
+  const last = asked
+    ? Math.floor((whole - offset) / period)
+    : Math.round((beats[count - 1]! - offset) / period);
   const straight = new Float64Array(Math.max(0, last - first + 1));
   for (let m = first; m <= last; m++) straight[m - first] = offset + period * m;
   return straight;

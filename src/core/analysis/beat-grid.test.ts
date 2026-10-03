@@ -102,6 +102,32 @@ describe('beat grid', () => {
     expect(matched(beats, truth, 0)).toBeGreaterThan(0.97);
   });
 
+  it('keeps one tempo throughout, with steady bars, when the user asks for it (TR-12)', () => {
+    // 128 BPM played loosely (up to 45 ms early or late), after an intro of 4 s without beats:
+    // too loose for the analysis to call it straight by itself.
+    const random = createPrng(9);
+    const truth = beatsOf(64, () => 128, 4.05);
+    const loose = truth.map((time) => time + (random() - 0.5) * 0.09);
+    const features = pulses(loose, 64);
+    const intervals = (beats: Float64Array) => beats.slice(1).map((beat, k) => beat - beats[k]!);
+    const found = intervals(computeBeatGrid(features).beats);
+    expect(Math.max(...found) - Math.min(...found)).toBeGreaterThan(0.01);
+
+    const grid = computeBeatGrid(features, { fixed: true });
+    const beats = grid.beats;
+    const period = (beats[beats.length - 1]! - beats[0]!) / (beats.length - 1);
+    expect(60 / period).toBeCloseTo(128, 0);
+    for (const interval of intervals(beats)) expect(interval).toBeCloseTo(period, 9);
+    // From the start of the file to its end, the intro too.
+    expect(beats[0]!).toBeGreaterThanOrEqual(0);
+    expect(beats[0]!).toBeLessThan(period);
+    expect(beats[beats.length - 1]!).toBeGreaterThan(64 - period);
+    expect(matched(beats, truth, 4)).toBeGreaterThan(0.95);
+    // Bars of four one after the other: no beat is left out or counted twice.
+    const start = grid.beatInBar![0]!;
+    for (let k = 0; k < beats.length; k++) expect(grid.beatInBar![k]).toBe((k + start) % 4);
+  });
+
   it('keeps the grid of a fixed tempo where the onsets stress the offbeat for a while', () => {
     // From 30 to 40 s, the onsets are half a beat late: the drums of that section stress the
     // offbeat, the grid of the track stays.

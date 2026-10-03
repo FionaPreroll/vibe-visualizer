@@ -18,6 +18,8 @@ export interface TrackAnalysisState {
   tempo: number | null;
   /** The tempo range the grid was found in (AN-12). */
   range: TempoRangeId;
+  /** One tempo throughout, as the user asked (TR-12): the grid is straight. */
+  fixed: boolean;
   /** How loud the track gets, for the auto-gain of the visuals; null: not known (yet). */
   loudness: TrackLoudness | null;
 }
@@ -64,7 +66,7 @@ export class TrackAnalyzer {
     fingerprint: string,
     file: File,
     first = false,
-    grid: GridRequest = { tempo: null, range: 'auto' },
+    grid: GridRequest = { tempo: null, range: 'auto', fixed: false },
   ): void {
     const state = this.states.get(fingerprint);
     const retempo = state?.status === 'done' && !sameGrid(state, grid);
@@ -133,7 +135,11 @@ export class TrackAnalyzer {
     const file = this.files.get(fingerprint);
     if (!file) return this.pump();
     this.running = fingerprint;
-    const grid = this.wanted.get(fingerprint) ?? { tempo: null, range: 'auto' };
+    const grid: GridRequest = this.wanted.get(fingerprint) ?? {
+      tempo: null,
+      range: 'auto',
+      fixed: false,
+    };
     // A new grid for a track with its waveform: the waveform stays as it is.
     const again = this.states.get(fingerprint)?.waveform !== null;
     this.update(fingerprint, { status: 'running' });
@@ -167,6 +173,7 @@ export class TrackAnalyzer {
         grid: applyGridEdit(result.grid, this.edits.get(fingerprint) ?? NO_GRID_EDIT),
         tempo: result.tempo,
         range: result.range,
+        fixed: result.fixed,
         loudness: result.loudness,
       });
     } catch {

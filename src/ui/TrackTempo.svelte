@@ -8,7 +8,8 @@
 
   /**
    * The tempo of a queue entry, from its beat grid, correctable (TMP-06): a grid that changes
-   * tempo shows each tempo ("178 · 119") and can be held at one of them for the whole track.
+   * tempo shows each tempo ("178 · 119") and can be held at one of them for the whole track; and
+   * the tempo can be fixed, for a straight grid throughout (TR-12).
    */
   let { track, grid, pending }: { track: Track; grid: BeatGrid; pending: boolean } = $props();
 
@@ -24,11 +25,13 @@
         : `${tempo.toFixed(0)} BPM`,
   );
   const title = $derived(
-    track.tempo !== null
-      ? 'Tempo set by hand: click to change'
-      : tempos.length > 1
-        ? `The beat grid changes tempo: ${tempos.map((bpm) => `${bpm.toFixed(0)} BPM`).join(', ')}. Click to correct`
-        : 'Correct the tempo',
+    track.fixedTempo
+      ? 'One tempo throughout (fixed): click to change'
+      : track.tempo !== null
+        ? 'Tempo set by hand: click to change'
+        : tempos.length > 1
+          ? `The beat grid changes tempo: ${tempos.map((bpm) => `${bpm.toFixed(0)} BPM`).join(', ')}. Click to correct`
+          : 'Correct the tempo',
   );
 </script>
 
@@ -44,4 +47,6 @@
   holdTitle="The whole track at this tempo"
   testid="queue-bpm"
   onchoose={(bpm) => player.setTempo(track.id, bpm)}
+  fixed={track.fixedTempo}
+  onfixed={(fixed) => player.setFixedTempo(track.id, fixed)}
 />

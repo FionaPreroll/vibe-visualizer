@@ -36,9 +36,14 @@ const JUMP = -8;
 
 /**
  * The position of each beat in its bar (0 on the downbeat), from the beat frames. Without
- * clues, the bars are counted from the first beat.
+ * clues, the bars are counted from the first beat. `steady`: one bar of four after the other
+ * throughout (a fixed tempo the user asked for, TR-12), where the clues agree best.
  */
-export function findBars(beatFrames: readonly number[], features: OnsetFeatures): Uint8Array {
+export function findBars(
+  beatFrames: readonly number[],
+  features: OnsetFeatures,
+  steady = false,
+): Uint8Array {
   const count = beatFrames.length;
   const positions = new Uint8Array(count);
   for (let k = 0; k < count; k++) positions[k] = k % BEATS_PER_BAR;
@@ -56,7 +61,23 @@ export function findBars(beatFrames: readonly number[], features: OnsetFeatures)
   if (features.levels) add(harmonyChange(beatFrames, features.levels), CHANGE_WEIGHTS);
   if (features.kick) add(atBeats(beatFrames, features.kick), KICK_WEIGHTS);
   if (features.snare) add(atBeats(beatFrames, features.snare), SNARE_WEIGHTS);
-  return viterbi(evidence, count);
+  return steady ? steadyBars(evidence, count) : viterbi(evidence, count);
+}
+
+/** Bars of four throughout, from the first beat at the position all clues agree on best. */
+function steadyBars(evidence: Float64Array, count: number): Uint8Array {
+  let best = 0;
+  let bestScore = -Infinity;
+  for (let start = 0; start < BEATS_PER_BAR; start++) {
+    let score = 0;
+    for (let k = 0; k < count; k++)
+      score += evidence[k * BEATS_PER_BAR + ((k + start) % BEATS_PER_BAR)]!;
+    if (score > bestScore) {
+      bestScore = score;
+      best = start;
+    }
+  }
+  return Uint8Array.from({ length: count }, (_, k) => (k + best) % BEATS_PER_BAR);
 }
 
 /** The largest value from just before each beat to just after it (the drums rise there). */

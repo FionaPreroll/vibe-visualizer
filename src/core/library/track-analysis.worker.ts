@@ -96,7 +96,7 @@ async function analyse(
   cancelled.delete(args.fingerprint);
   const cached = await readCachedAnalysis(args.fingerprint);
   if (cached && sameGrid(cached, args)) return transferable(cached);
-  const options = { bpm: args.tempo, range: args.range };
+  const options = { bpm: args.tempo, range: args.range, fixed: args.fixed };
   const known = kept.get(args.fingerprint);
   if (known) {
     keep(args.fingerprint, known);
@@ -107,6 +107,7 @@ async function analyse(
       grid: computeBeatGrid(known.features, options),
       tempo: args.tempo,
       range: args.range,
+      fixed: args.fixed,
       loudness: known.loudness,
     };
     await writeCachedAnalysis(result);
@@ -167,6 +168,7 @@ async function analyse(
       grid: computeBeatGrid(onsets, options),
       tempo: args.tempo,
       range: args.range,
+      fixed: args.fixed,
       loudness: loud,
     };
     await writeCachedAnalysis(result);

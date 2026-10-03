@@ -71,6 +71,7 @@ describe('app state', () => {
           cues,
           marks: { in: 10, out: 40 },
           tempo: 174,
+          fixedTempo: true,
           gridEdit: { shift: 0.02, downbeat: 1.5 },
           edit: { title: 'Better title', artist: null },
         },
@@ -80,6 +81,7 @@ describe('app state', () => {
       cues,
       marks: { in: 10, out: 40 },
       tempo: 174,
+      fixedTempo: true,
       gridEdit: { shift: 0.02, downbeat: 1.5 },
       edit: { title: 'Better title', artist: null },
     });
@@ -141,7 +143,7 @@ describe('app state', () => {
     expect(state.tracks.map(shownTitle)).toEqual(['a', 'b', 'c']);
   });
 
-  it('sets the tempo and the grid correction of every entry of a file', () => {
+  it('sets the tempo, fixed or not, and the grid correction of every entry of a file', () => {
     let state = withTracks('a', 'b', 'c');
     state = {
       ...state,
@@ -150,7 +152,9 @@ describe('app state', () => {
     state = reducer(state, { type: 'tracks/tempo', fingerprint: 'same', tempo: 174 });
     const edit = { shift: -0.01, downbeat: 2.5 };
     state = reducer(state, { type: 'tracks/grid', fingerprint: 'same', edit });
+    state = reducer(state, { type: 'tracks/fixed', fingerprint: 'same', fixed: true });
     expect(state.tracks.map((track) => track.tempo)).toEqual([174, 174, null]);
+    expect(state.tracks.map((track) => track.fixedTempo)).toEqual([true, true, false]);
     expect(state.tracks.map((track) => track.gridEdit)).toEqual([edit, edit, NO_GRID_EDIT]);
   });
 
@@ -180,6 +184,7 @@ describe('app state', () => {
           cues,
           marks: { in: null, out: 20 },
           tempo: null,
+          fixedTempo: false,
           gridEdit: NO_GRID_EDIT,
           edit: null,
         }),

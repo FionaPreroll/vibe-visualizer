@@ -697,7 +697,25 @@ export class Player {
     this.analysis.request(fingerprint, file, first, {
       tempo: track?.tempo ?? null,
       range: this.state.settings.bpmRange,
+      fixed: track?.fixedTempo ?? false,
     });
+  }
+
+  /**
+   * One tempo throughout for track `id` and every other entry of its file (TR-12), or not: its
+   * beat grid is computed anew, straight from the start to the end, with bars that keep their
+   * place.
+   */
+  setFixedTempo(id: string, fixed: boolean): void {
+    const track = this.state.tracks.find((entry) => entry.id === id);
+    const fingerprint = track?.fingerprint;
+    if (!fingerprint || track.fixedTempo === fixed) return;
+    this.dispatch({ type: 'tracks/fixed', fingerprint, fixed });
+    const entry = this.state.tracks.find(
+      (other) => other.fingerprint === fingerprint && this.files.has(other.id),
+    );
+    const file = entry ? this.files.get(entry.id) : undefined;
+    if (file) this.requestAnalysis(fingerprint, file, id === this.state.currentId);
   }
 
   /** New grids in the new tempo range (AN-12) for the files without a tempo given. */
@@ -1373,11 +1391,12 @@ export class Player {
         old.cues === track.cues &&
         old.marks === track.marks &&
         old.tempo === track.tempo &&
+        old.fixedTempo === track.fixedTempo &&
         old.gridEdit === track.gridEdit &&
         old.edit === track.edit;
       if (!unchanged) {
-        const { cues, marks, tempo, gridEdit, edit } = track;
-        saveTrackData(track.fingerprint, { cues, marks, tempo, gridEdit, edit });
+        const { cues, marks, tempo, fixedTempo, gridEdit, edit } = track;
+        saveTrackData(track.fingerprint, { cues, marks, tempo, fixedTempo, gridEdit, edit });
       }
     }
   }

@@ -74,6 +74,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | TR-09* | M | In/out markers that define the part of a track that plays and exports, e.g. a 30-second TikTok clip (keys I/O, shown on the timeline, draggable). The queue moves on at the out marker |
 | TR-10* | S | Two waveform styles: three bands as layers (lows blue, mids orange, highs white, as Rekordbox's "3Band") or one shape coloured by the bands (RGB); switched in the detail waveform |
 | TR-11* | S | Beat grid correction per file in the detail waveform, as Rekordbox's grid edit: the beat at the playhead starts its bar, the bars a beat earlier or later, the grid a few milliseconds earlier or later, or Shift+drag to move it; kept per file |
+| TR-12* | S | Fixed tempo per file: one straight beat grid from the start to the end, at the tempo of the track (or the one given), with bars of four that keep their place; the grid's corrections apply to it |
 
 ### 3.4 Tempo (TMP)
 

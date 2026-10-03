@@ -62,6 +62,11 @@ export interface Track {
   cues: Cues;
   /** The tempo (BPM) the user gave for the beat grid (TMP-06); null: the grid finds it. */
   tempo: number | null;
+  /**
+   * One tempo throughout, as the user asked (TR-12): the beat grid is straight from the start to
+   * the end, and its bars keep their place.
+   */
+  fixedTempo: boolean;
   /** The user's correction of the beat grid's phase and bars (TR-11). */
   gridEdit: GridEdit;
   /** The title and artist the user gave the file (LS-18); null: those of the file. */
@@ -103,6 +108,7 @@ export interface TrackData {
   cues: Cues;
   marks: Marks;
   tempo: number | null;
+  fixedTempo: boolean;
   gridEdit: GridEdit;
   edit: TrackEdit | null;
 }
@@ -287,6 +293,8 @@ export type AppAction =
   | { type: 'tracks/cue'; id: string; index: number; seconds: number | null }
   /** The tempo of a file's beat grid (TMP-06), for every entry of that file; null: automatic. */
   | { type: 'tracks/tempo'; fingerprint: string; tempo: number | null }
+  /** One tempo throughout for a file (TR-12), for every entry of that file. */
+  | { type: 'tracks/fixed'; fingerprint: string; fixed: boolean }
   /** The correction of a file's beat grid (TR-11), for every entry of that file. */
   | { type: 'tracks/grid'; fingerprint: string; edit: GridEdit }
   /**
@@ -395,6 +403,7 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
     marks: { in: null, out: null },
     cues: NO_CUES,
     tempo: null,
+    fixedTempo: false,
     gridEdit: NO_GRID_EDIT,
     edit: null,
   };
@@ -554,6 +563,13 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         tracks: state.tracks.map((track) =>
           track.fingerprint === action.fingerprint ? { ...track, tempo: action.tempo } : track,
+        ),
+      };
+    case 'tracks/fixed':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.fingerprint === action.fingerprint ? { ...track, fixedTempo: action.fixed } : track,
         ),
       };
     case 'tracks/grid':

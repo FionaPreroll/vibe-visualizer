@@ -36,7 +36,7 @@
    */
   function regridding(track: Track): boolean {
     const state = track.fingerprint ? $analyses.get(track.fingerprint) : undefined;
-    const wanted = { tempo: track.tempo, range: $app.settings.bpmRange };
+    const wanted = { tempo: track.tempo, range: $app.settings.bpmRange, fixed: track.fixedTempo };
     return state !== undefined && !sameGrid(state, wanted);
   }
 

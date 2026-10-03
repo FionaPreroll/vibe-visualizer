@@ -94,14 +94,15 @@ function trackEdit(value: unknown): TrackEdit | null {
 }
 
 /**
- * The cues, markers, tempo, grid correction and names stored for a file (TR-05), validated
- * against its duration.
+ * The cues, markers, tempo (fixed or not), grid correction and names stored for a file (TR-05),
+ * validated against its duration.
  */
 export function loadTrackData(fingerprint: string, duration: number): TrackData | null {
   const stored = read(TRACK_PREFIX + fingerprint) as {
     cues?: unknown;
     marks?: { in?: unknown; out?: unknown };
     tempo?: unknown;
+    fixed?: unknown;
     grid?: unknown;
     edit?: unknown;
   } | null;
@@ -113,6 +114,7 @@ export function loadTrackData(fingerprint: string, duration: number): TrackData 
     cues: Array.from({ length: CUE_COUNT }, (_, index) => time(cues[index], duration)),
     marks,
     tempo: tempo(stored.tempo),
+    fixedTempo: stored.fixed === true,
     gridEdit: gridEdit(stored.grid, duration),
     edit: trackEdit(stored.edit),
   };
@@ -129,6 +131,7 @@ export function saveTrackData(fingerprint: string, data: TrackData): void {
     data.marks.in === null &&
     data.marks.out === null &&
     data.tempo === null &&
+    !data.fixedTempo &&
     !isGridEdited(data.gridEdit) &&
     data.edit === null;
   if (empty) {
@@ -143,6 +146,7 @@ export function saveTrackData(fingerprint: string, data: TrackData): void {
     cues: data.cues,
     marks: data.marks,
     tempo: data.tempo,
+    ...(data.fixedTempo ? { fixed: true } : {}),
     ...(isGridEdited(data.gridEdit) ? { grid: data.gridEdit } : {}),
     ...(data.edit ? { edit: data.edit } : {}),
   });
