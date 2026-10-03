@@ -428,7 +428,15 @@
   {/if}
   <TransportBar />
   <ExportDialog open={exportOpen} onclose={() => (exportOpen = false)} />
-  <ControllerDialog open={controllerOpen} onclose={() => (controllerOpen = false)} />
+  <ControllerDialog
+    open={controllerOpen}
+    onclose={() => (controllerOpen = false)}
+    onhelp={() => {
+      controllerOpen = false;
+      helpSection = 'dj-controller';
+      helpOpen = true;
+    }}
+  />
   <HelpDialog
     open={helpOpen}
     bind:section={helpSection}
