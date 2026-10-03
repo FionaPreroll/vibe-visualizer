@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { startWithClassicLook } from './looks';
 import { createWav } from './wav';
 
 /**
@@ -247,6 +248,7 @@ test('the jog wheel stays in the track, step by step', async ({ page, context })
 
 test('the playhead follows the jog wheel smoothly', async ({ page, context }) => {
   await context.grantPermissions(['midi']);
+  await startWithClassicLook(page);
   await page.goto('/');
   await page.getByTestId('file-input').setInputFiles({
     name: 'Clicks.wav',

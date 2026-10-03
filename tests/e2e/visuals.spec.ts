@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { startWithClassicLook } from './looks';
 import { COVER, logoQuarters, measure, showsCover, type Region } from './pixels';
 import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';
@@ -494,10 +495,7 @@ test('a track can be named, and the visuals show its title and cover art (LS-15,
 }) => {
   const errors = collectErrors(page);
   await acknowledge(page);
-  // A logo that stands still, so that the cover's quarters are where they are measured.
-  await page.addInitScript(() =>
-    localStorage.setItem('vibe-visualizer:visuals:v1', JSON.stringify({ logoSpin: 0 })),
-  );
+  await startWithClassicLook(page);
   await page.goto('/');
   const stage = page.getByTestId('visual-stage');
   await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
@@ -564,6 +562,7 @@ test('a track can be named, and the visuals show its title and cover art (LS-15,
 test('the cover art turns like a record while the music plays (LS-16)', async ({ page }) => {
   const errors = collectErrors(page);
   await acknowledge(page);
+  await startWithClassicLook(page);
   await page.addInitScript(() =>
     localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify({ coverLogo: true })),
   );

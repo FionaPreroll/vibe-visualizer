@@ -1,11 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 import { ALL_FORMATS, BufferSource, EncodedPacketSink, Input } from 'mediabunny';
 import { readFile } from 'node:fs/promises';
+import { startWithClassicLook } from './looks';
 import { COVER, logoQuarters, measure, showsCover, videoFrame } from './pixels';
 import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
+  await startWithClassicLook(page);
   await page.addInitScript(() => {
     localStorage.setItem('vibe-visualizer:welcome:v1', '1');
     // Headless browsers cannot show the save dialogs: the videos are downloaded instead.
@@ -126,8 +128,6 @@ test('the video shows the track overlay and the cover art (LS-15, LS-18, LS-19)'
     // The overlay with its progress and time, and the cover art as the logo.
     const settings = { coverLogo: true, overlay: { on: true, progress: true, time: true } };
     localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
-    // A logo that stands still, so that the cover's quarters are where they are measured.
-    localStorage.setItem('vibe-visualizer:visuals:v1', JSON.stringify({ logoSpin: 0 }));
   });
   await page.goto('/');
   await page.getByTestId('file-input').setInputFiles({
@@ -196,8 +196,6 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
     // Each track's title over its part, and its cover art as the logo.
     const settings = { coverLogo: true, overlay: { on: true } };
     localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
-    // A logo that stands still, so that the covers' quarters are where they are measured.
-    localStorage.setItem('vibe-visualizer:visuals:v1', JSON.stringify({ logoSpin: 0 }));
   });
   await page.goto('/');
   const cyan = createPng(64, 64, () => [30, 220, 230]);
@@ -420,8 +418,6 @@ test('the picture on the stage is saved as a PNG thumbnail (EX-10)', async ({ pa
   await page.addInitScript(() => {
     const settings = { coverLogo: true, overlay: { on: true } };
     localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
-    // A logo that stands still, so that the cover's quarters are where they are measured.
-    localStorage.setItem('vibe-visualizer:visuals:v1', JSON.stringify({ logoSpin: 0 }));
   });
   await page.goto('/');
   await page.getByTestId('file-input').setInputFiles({
