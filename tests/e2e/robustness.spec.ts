@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createWav } from './wav';
+import { COVER } from './pixels';
+import { createTaggedWav, createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('vibe-visualizer:welcome:v1', '1'));
@@ -272,4 +273,44 @@ test('the help has a system check of this browser, to copy for a bug report (NF-
   const report = await page.evaluate(() => navigator.clipboard.readText());
   expect(report).toMatch(/^FibeStation: system check, \d{4}-/);
   expect(report).toContain('\n- Graphics: WebGL 2 on ');
+});
+
+test('the content security policy lets the app do all it does (NF-01)', async ({ page }) => {
+  const errors = collectErrors(page);
+  // What the policy blocks in the page: none of it may come from the app.
+  await page.addInitScript(() => {
+    const blocked: string[] = [];
+    Object.assign(window, { blocked });
+    document.addEventListener('securitypolicyviolation', (event) =>
+      blocked.push(`${event.effectiveDirective}: ${event.blockedURI}`),
+    );
+  });
+  const response = await page.goto('/');
+  expect(response!.headers()['content-security-policy']).toContain("default-src 'self'");
+  await expect(page.getByTestId('visual-stage')).toHaveAttribute('data-status', 'running', {
+    timeout: 15_000,
+  });
+  // A track with its cover art (blob: images), the overlay's fonts, the logo turning.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(20, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByText('Logo', { exact: true }).click();
+  await page.getByTestId('cover-logo').check();
+  await page.getByText('Track info', { exact: true }).click();
+  await page.getByTestId('overlay-on').check();
+  await page.getByTestId('play-button').click();
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await page.waitForTimeout(3000);
+  // The help, with the system check.
+  await page.getByTestId('shortcuts-button').click();
+  await page.getByTestId('help-nav-when-something-goes-wrong').click();
+  await expect(page.getByTestId('system-check')).toContainText('WebGL 2 on');
+  expect(await page.evaluate(() => (window as unknown as { blocked: string[] }).blocked)).toEqual(
+    [],
+  );
+  expect(errors).toEqual([]);
 });
