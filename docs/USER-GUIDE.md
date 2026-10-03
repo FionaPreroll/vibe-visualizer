@@ -145,4 +145,4 @@ FibeStation is a work in progress: expect rough edges. Bug reports and ideas are
 
 Everything runs locally in your browser; your music, images and settings stay on your computer.
 
-The default logo is set in Pacifico by Vernon Adams (SIL Open Font License 1.1). Audio and video go through Mediabunny, key lock uses Signalsmith Stretch.
+FibeStation has no licence yet: all rights reserved. It contains parts of others, which keep their own licences: **Licences** lists them with their texts. Among them are Mediabunny for audio and video, Signalsmith Stretch for the key lock, FFmpeg's AAC encoder for the sound of MP4 exports in browsers without one of their own, and the fonts, such as Pacifico for the default logo.

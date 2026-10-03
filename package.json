@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.9.0",
   "description": "Audio-reactive music visualizer that renders HD videos in the browser",
+  "license": "UNLICENSED",
   "bugs": {
     "email": "fipreroll+app@gmail.com"
   },

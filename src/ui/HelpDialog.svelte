@@ -5,6 +5,7 @@
   import { backdropClose } from './backdrop';
   import BackupSection from './BackupSection.svelte';
   import Icon from './Icon.svelte';
+  import LicencesList from './LicencesList.svelte';
   import { guideSections, renderMarkdown } from './markdown';
   import { usePlayer } from './player-context';
   import ShortcutList from './ShortcutList.svelte';
@@ -31,10 +32,12 @@
   const ABOUT_ID = 'about';
   const BACKUP_ID = 'backup';
   const TROUBLE_ID = 'when-something-goes-wrong';
-  const sections = guideSections(guide).map((entry) => ({
-    ...entry,
-    html: renderMarkdown(entry.markdown),
-  }));
+  const LICENCES_ID = 'licences';
+  const sections = [
+    ...guideSections(guide).map((entry) => ({ ...entry, html: renderMarkdown(entry.markdown) })),
+    // The parts of others, from the build: not in the guide.
+    { id: LICENCES_ID, title: 'Licences', markdown: '', html: '' },
+  ];
   const current = $derived(sections.find((entry) => entry.id === section) ?? sections[0]!);
 
   let dialog: HTMLDialogElement | undefined = $state();
@@ -86,6 +89,8 @@
       {/if}
       {#if current.id === SHORTCUTS_ID}
         <ShortcutList />
+      {:else if current.id === LICENCES_ID}
+        <LicencesList />
       {:else}
         <!-- The guide is our own text, rendered with everything else escaped. -->
         <!-- eslint-disable-next-line svelte/no-at-html-tags -->
@@ -101,6 +106,9 @@
         <div class="actions">
           <a class="button" href={bugReportLink($app.settings.appName)} data-testid="help-bug"
             >Report a bug to {BUG_EMAIL}</a
+          >
+          <button onclick={() => (section = LICENCES_ID)} data-testid="help-licences"
+            >Licences</button
           >
           <button onclick={welcome} data-testid="help-welcome">Show the welcome again</button>
         </div>

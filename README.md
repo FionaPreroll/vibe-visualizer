@@ -84,7 +84,9 @@ src/ui/         Svelte app: top bar, stage, queue, sound, visuals and live panel
                 with waveforms and cues, export, sync, welcome and help dialogs
 packages/       dj-controllers: library for DJ controllers (Web MIDI, profiles, lights)
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core, the build's
-                name (version.json), the production headers for the preview server
+                name and version (version.json), the parts of others with their licences
+                (licenses.json, licenses.txt), the production headers for the preview server
+licenses/       licence texts that the packages do not ship themselves
 tests/e2e/      Playwright tests
 tests/eval/     analysis evaluation on real recordings
 tests/screenshots/
@@ -92,3 +94,7 @@ tests/screenshots/
 docs/           user guide (also the in-app help), feature list, tech stack, audio analysis,
                 DJ controller proposal, screenshots
 ```
+
+## Licence
+
+None yet: all rights reserved. The parts of others in the app keep their own licences; the build lists them with their texts in `licenses.txt`, and the app shows them under **Help → Licences**.
