@@ -24,6 +24,8 @@ Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and 
 
 **How to use it:** see the [user guide](docs/USER-GUIDE.md). The same guide opens in the app: click **?** in the top bar (or press ? for the keyboard shortcuts).
 
+**Bugs and ideas:** [open an issue](https://github.com/FionaPreroll/vibe-visualizer/issues/new/choose), with a form for each, or write to fipreroll+app@gmail.com (**Report a bug** in the app's help fills in the version and the browser).
+
 ## Screenshots
 
 | | |

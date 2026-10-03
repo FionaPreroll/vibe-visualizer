@@ -1,0 +1,6 @@
+# Blank issues stay possible, for tasks; bug reports and ideas have their forms.
+blank_issues_enabled: true
+contact_links:
+  - name: User guide
+    url: https://github.com/FionaPreroll/vibe-visualizer/blob/main/docs/USER-GUIDE.md
+    about: How the app works. The same text is in the app's help (the ? in the top bar).

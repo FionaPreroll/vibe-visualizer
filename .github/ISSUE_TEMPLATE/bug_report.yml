@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in FibeStation does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting it! Issues are public: leave out what you would not want to show, such as the names of your files and folders. To report it privately, use **Report a bug** in the app (Help → About), or write to fipreroll+app@gmail.com.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: The steps from opening the app. Say what kind of file it was (MP3, FLAC, …), and the look or the export settings, if they matter.
+      placeholder: |
+        1. Add an MP3 of five minutes
+        2. Export it as YouTube 1080p60
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Help (the **?** in the top bar) → About shows it.
+      placeholder: 0.9.20261003.1432
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: System check
+      description: Help → When something goes wrong → **Copy the report**, pasted here. If the app does not start, the browser and the system instead, such as Chrome on Windows 11.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error details
+      description: If the app showed an error, **Copy details** in its message, pasted here.
+      render: text
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Screenshots, a video that shows it, the messages of the MIDI monitor, …
