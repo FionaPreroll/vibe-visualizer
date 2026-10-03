@@ -41,7 +41,7 @@ test('the first start shows the welcome, with the warning about flashing visuals
   await expect(page.getByTestId('reduce-flashing')).toBeChecked();
 });
 
-test('Logo Spectrum renders in a worker and moves with the music', async ({ page }) => {
+test('Logo Spectrum renders in a worker and moves with the music @firefox', async ({ page }) => {
   const errors = collectErrors(page);
   await acknowledge(page);
   await page.goto('/');

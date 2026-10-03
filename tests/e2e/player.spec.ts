@@ -100,7 +100,7 @@ test('waveform, hot cues and beat grid of a file, kept for the next visit (TR-03
   expect(errors).toEqual([]);
 });
 
-test('tracks follow each other without a gap, also at another sample rate (PL-05, PL-04)', async ({
+test('tracks follow each other without a gap, also at another sample rate (PL-05, PL-04) @firefox', async ({
   page,
 }) => {
   const errors = collectErrors(page);
@@ -122,7 +122,7 @@ test('tracks follow each other without a gap, also at another sample rate (PL-05
   expect(errors).toEqual([]);
 });
 
-test('a track played before plays again while the next one plays', async ({ page }) => {
+test('a track played before plays again while the next one plays @firefox', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/');
   await page.getByTestId('file-input').setInputFiles([
