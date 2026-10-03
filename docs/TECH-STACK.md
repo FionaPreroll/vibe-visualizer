@@ -26,7 +26,7 @@
 | Tests | Vitest 5 (unit and DSP golden tests; browser mode for WebGL and WebCodecs), Playwright (end-to-end: all in Chromium, the main paths in Firefox; a soak test of the memory) | Shares Vite's config; GPU and codec tests run in real browsers |
 | Lint & format | ESLint with typescript-eslint and eslint-plugin-svelte; Prettier | Standard for Svelte + TypeScript |
 | Tooling | pnpm, Node 24 LTS (CI) | Fast, strict installs; locally Node 22.13 or newer works |
-| CI | GitHub Actions | Type check, lint, unit and end-to-end tests for each pull request and after each merge to main, the main paths in Firefox in a job of their own; the README screenshots and the soak test when their workflows are run by hand |
+| CI | GitHub Actions | Type check, lint, unit and end-to-end tests for each pull request and after each merge to main, the main paths in Firefox in a job of their own (with a virtual display for WebGL, and a sound server, without which Firefox on Linux plays no sound); the README screenshots and the soak test when their workflows are run by hand |
 | Hosting | Cloudflare Workers with static assets (free), built by Workers Builds | A Preview per branch; can send the COOP/COEP headers that SharedArrayBuffer requires (GitHub Pages can't) |
 
 **Licences:** all dependencies are MIT, ISC, Apache-2.0 or MPL-2.0 (Mediabunny); the bundled fonts are under the SIL Open Font License 1.1. The optional AAC fallback contains FFmpeg's AAC encoder (LGPL) as a separate WebAssembly module. No GPL code.

@@ -43,6 +43,15 @@ jobs:
       - run: pnpm exec playwright install --with-deps firefox
       # Firefox gets a virtual display: headless, it has no WebGL without a GPU.
       - run: command -v xvfb-run || sudo apt-get install -y xvfb
+      # And a sound server with a silent output: without one, its audio never starts.
+      - run: |
+          sudo apt-get install -y --no-install-recommends pulseaudio
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=silent
+          pactl set-default-sink silent
       - run: xvfb-run --auto-servernum pnpm test:e2e:firefox
         env:
           PW_FIREFOX_DISPLAY: '1'
+      # When a test fails, the log shows what its page showed.
+      - if: failure()
+        run: find test-results -name error-context.md -print -exec cat {} \;
