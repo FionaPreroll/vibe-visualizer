@@ -141,8 +141,8 @@ Press **?** for the full list. The main ones: Space play and pause, ← and → 
 
 ## About
 
-FibeStation is a work in progress: expect rough edges. Bug reports and ideas are very welcome at fipreroll+app@gmail.com.
+FibeStation is a work in progress: expect rough edges. Bug reports and ideas are very welcome at fipreroll+app@gmail.com, or as an issue on [GitHub](https://github.com/FionaPreroll/vibe-visualizer/issues/new/choose), where a form asks for what helps.
 
-Everything runs locally in your browser; your music, images and settings stay on your computer.
+Everything runs locally in your browser; your music, images and settings stay on your computer. **Privacy** says in detail what the app keeps, and what goes over the network.
 
 FibeStation has no licence yet: all rights reserved. It contains parts of others, which keep their own licences: **Licences** lists them with their texts. Among them are Mediabunny for audio and video, Signalsmith Stretch for the key lock, FFmpeg's AAC encoder for the sound of MP4 exports in browsers without one of their own, and the fonts, such as Pacifico for the default logo.

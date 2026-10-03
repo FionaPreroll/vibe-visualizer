@@ -7,6 +7,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 - **A new default look:** *Blue-Pink Vortex*, neon lines around a logo that turns like a record, in front of a Vortex of its own. *Classic Rainbow*, the look before, stays a preset, and looks you saved keep theirs.
 - **Versions:** each build has a version. **About** shows it, and the note of a new version says from which version to which.
 - **Licences:** **Help → Licences** lists the parts of others in the app, with their licences.
+- **Privacy:** **Help → Privacy** says what the app keeps in your browser, and what goes over the network: only its own files.
 - **What's new:** this list, in the help.
 - **Settings:** the gear in the top bar holds the app's name and the backup, which were in the help. The help only explains now, in three parts: the guide, what to do when something goes wrong, and about the app.
 - **The app recovers by itself:** after the graphics card was reset, the visuals start again within a second, and an export goes on from where it was. When the sound stops by itself (the audio device was unplugged, the system took the sound), the music pauses with a message.

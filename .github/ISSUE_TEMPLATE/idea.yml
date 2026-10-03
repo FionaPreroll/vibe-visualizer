@@ -1,0 +1,25 @@
+name: Idea
+description: Something FibeStation could do, or do better.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The [feature list](https://github.com/FionaPreroll/vibe-visualizer/blob/main/docs/FEATURES.md) says what is planned and what may come later, each with an ID.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What would you like to do?
+      description: And what for, such as a kind of video, a DJ set or a look. What you want to do matters more than how.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How could it work?
+      description: How you picture it, or an app that does it well.
+  - type: input
+    id: feature
+    attributes:
+      label: Feature ID
+      description: If it is in the feature list, its ID, such as EX-11.

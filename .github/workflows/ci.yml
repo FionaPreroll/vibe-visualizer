@@ -17,6 +17,10 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # Codecov takes the coverage signed in with GitHub's OIDC token: no secret to keep.
+      id-token: write
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -28,7 +32,13 @@ jobs:
       - run: pnpm check
       - run: pnpm lint
       - run: pnpm format:check
-      - run: pnpm test
+      - run: pnpm test:coverage
+      # The unit tests' coverage, for the badge in the README. An upload that fails does not
+      # fail the checks.
+      - uses: codecov/codecov-action@v7
+        with:
+          files: coverage/lcov.info
+          use_oidc: true
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
 

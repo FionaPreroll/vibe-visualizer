@@ -47,5 +47,15 @@ export default defineConfig({
       'tests/eval/**/*.test.ts',
     ],
     environment: 'node',
+    // `pnpm test:coverage`: the unit tests' coverage of the app's code (CI sends it to Codecov).
+    // The UI and the workers are tested end to end, which this does not count. Coverage makes the
+    // tests about three times as slow, so that script gives a test 20 s instead of 5 s and a hook
+    // 40 s instead of 10 s: the longest take 6 s on a CI runner.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts', 'packages/*/src/**/*.ts'],
+      exclude: ['**/*.test.ts', '**/*.d.ts'],
+      reporter: ['text-summary', 'lcov'],
+    },
   },
 });

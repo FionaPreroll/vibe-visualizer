@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import changelog from '../../CHANGELOG.md?raw';
 import guide from '../../docs/USER-GUIDE.md?raw';
-import { guideSections, renderChangelog, renderMarkdown, slug } from './markdown';
+import privacy from '../../PRIVACY.md?raw';
+import { guideSections, renderDocument, renderMarkdown, slug } from './markdown';
 
 describe('user guide', () => {
   it('splits the guide into its sections', () => {
@@ -64,7 +65,7 @@ describe('user guide', () => {
 
 describe('changelog', () => {
   it('shows each day as a heading with its changes, newest first, without the title', () => {
-    const html = renderChangelog(changelog);
+    const html = renderDocument(changelog);
     expect(html).not.toContain('<h1');
     expect(html).not.toContain('# Changelog');
     const days = [...html.matchAll(/<h3>(\d{1,2} \w+ \d{4})<\/h3>/g)].map((match) => match[1]!);
@@ -72,5 +73,25 @@ describe('changelog', () => {
     const dates = days.map((day) => Date.parse(`${day} UTC`));
     expect(dates).toEqual([...dates].sort((a, b) => b - a));
     expect(html).toContain('<li><strong>A new default look:</strong>');
+  });
+});
+
+describe('privacy policy', () => {
+  it('shows its sections as headings, without the title, with its links and the mail address', () => {
+    const html = renderDocument(privacy);
+    expect(html).not.toContain('Privacy policy');
+    const sections = [...html.matchAll(/<h3>([^<]+)<\/h3>/g)].map((match) => match[1]);
+    expect(sections).toEqual([
+      'Who is responsible',
+      'What stays in your browser',
+      'Music, live input and devices',
+      'What goes over the network',
+      'Hosting: Cloudflare',
+      'Bug reports and ideas',
+      'Your rights',
+      'Changes',
+    ]);
+    expect(html).toContain('<a href="mailto:fipreroll+app@gmail.com">fipreroll+app@gmail.com</a>');
+    expect(html).toContain('<a href="https://www.cloudflare.com/privacypolicy/"');
   });
 });
