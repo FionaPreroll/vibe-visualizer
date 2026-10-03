@@ -17,6 +17,7 @@
   import Guard from './Guard.svelte';
   import HelpDialog from './HelpDialog.svelte';
   import LivePanel from './LivePanel.svelte';
+  import NewVersionNotice from './NewVersionNotice.svelte';
   import { provideExporter } from './exporter-context';
   import Icon from './Icon.svelte';
   import { savePicture } from './picture';
@@ -348,6 +349,7 @@
     {/if}
     <div class="notes">
       <ProblemNotice />
+      <NewVersionNotice />
       {#if $app.undo}
         <div class="undo" role="status" data-testid="undo-toast">
           <span>{$app.undo}</span>

@@ -1,7 +1,9 @@
 import type { BeatGrid } from '../analysis/beat-grid';
 import type { SoundSettings } from '../audio/dsp/sound-settings';
 import { decodeImage, type StoredImages } from '../render/visual-assets';
+import { newerBuild } from '../env/version';
 import { keepStorage } from '../state/keep-storage';
+import { errorMessage } from '../util/format';
 import { WorkerClient } from '../util/worker-rpc';
 import {
   CANCELLED,
@@ -27,6 +29,12 @@ import type {
 import ExportWorker from './export.worker.ts?worker';
 import { clearJob, clearShelf, readJobFile, readManifest, readShelfFile } from './job-store';
 import type { VideoFormat } from './video-format';
+
+/**
+ * Said when the export fails while a newer build of the app is out (NF-09): a tab from before
+ * a deploy may no longer find the files of its worker on the server.
+ */
+const UPDATED = 'A new version of the app came out meanwhile: reload the page';
 
 /**
  * Main-thread face of the export (EX-01…07, EX-15): starts, pauses, cancels and resumes the
@@ -163,8 +171,15 @@ export class Exporter {
   }
 
   /** The codecs this browser would use for `format` (EX-04). */
-  probe(format: VideoFormat): Promise<ExportCodecs> {
-    return this.worker().call<ExportCodecs>('probe', format);
+  async probe(format: VideoFormat): Promise<ExportCodecs> {
+    try {
+      return await this.worker().call<ExportCodecs>('probe', format);
+    } catch (error) {
+      // A worker that could not start stays dead: the next look starts a new one.
+      if (this.current.status !== 'running') this.terminate();
+      if ((await newerBuild()) !== true) throw error;
+      throw new Error(`${errorMessage(error)} ${UPDATED}.`, { cause: error });
+    }
   }
 
   async start(request: ExportRequest): Promise<void> {
@@ -486,10 +501,14 @@ export class Exporter {
         this.set({ status: 'idle' });
       } else {
         const manifest = await readManifest();
+        const resumable = manifest !== null && !manifest.progress.finished;
+        const updated = (await newerBuild()) === true;
         this.set({
           status: 'failed',
-          message,
-          resumable: manifest !== null && !manifest.progress.finished,
+          message: updated
+            ? `${message} ${UPDATED}, then ${resumable ? 'resume' : 'start'} the export again.`
+            : message,
+          resumable,
           videos: [],
         });
       }

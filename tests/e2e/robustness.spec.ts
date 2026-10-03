@@ -216,3 +216,39 @@ test('the app asks to keep its data, and says when it cannot store (NF-09, NF-10
   }
   expect(await asked()).toBe(1);
 });
+
+test('a tab from before a deploy learns of the new version (NF-09)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  const notice = page.getByTestId('new-version');
+  const showAgain = () =>
+    page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+
+  // The server has this very build: nothing to say.
+  const served = (await (await page.request.get('/version.json')).json()) as { build: string };
+  expect(served.build).toMatch(/^[a-z0-9]+-[a-z0-9]+$/);
+  await showAgain();
+  await page.waitForTimeout(500);
+  await expect(notice).toHaveCount(0);
+
+  // A newer build is deployed, without the worker files of this one.
+  await page.route('**/version.json', (route) => route.fulfill({ json: { build: 'newer' } }));
+  await page.route('**/assets/export.worker-*.js', (route) => route.fulfill({ status: 404 }));
+  await page.reload();
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await showAgain();
+  await expect(notice).toContainText('A new version of FibeStation is out.');
+
+  // The export's worker cannot start: the dialog says that a reload helps.
+  await page.getByTestId('export-button').click();
+  await expect(page.getByTestId('export-dialog')).toContainText(
+    'A worker of the app could not start. A new version of the app came out meanwhile: reload the page.',
+  );
+  await page.keyboard.press('Escape');
+  await notice.getByRole('button', { name: 'Reload' }).click();
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await expect(notice).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
