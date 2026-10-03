@@ -13,8 +13,8 @@ export interface StreamTrack {
   track: OverlayTrack | null;
   /**
    * How loud the file gets is still being found out (its analysis runs, AN-05): until then, the
-   * camera does not move with the music (no shake, no zoom on the bass), so a quiet start of it
-   * does not swing too far.
+   * picture does not move with the music (no shake, no zoom or pulse on the bass), so a quiet
+   * start of it does not swing too far.
    */
   calm: boolean;
 }

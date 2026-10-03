@@ -14,8 +14,9 @@ export interface SceneInput {
    */
   played?: number;
   /**
-   * How far the camera moves with the music (0…1): its shake on kicks and the zoom on the bass.
-   * 0 while how loud the file heard gets is not known yet (its first seconds); not given: 1.
+   * How far the picture moves with the music (0…1): the shake on kicks, and the zoom of the
+   * background and the pulse of the logo on the bass. 0 while how loud the file heard gets is
+   * not known yet (its first seconds); not given: 1.
    */
   motion?: number;
 }

@@ -19,7 +19,7 @@ function analysis(changes: Partial<TrackAnalysisState>): TrackAnalyses {
   return new Map([['f00d', state]]);
 }
 
-describe('the camera while a file is analysed (AN-05)', () => {
+describe('the picture while a file is analysed (AN-05)', () => {
   const track = { ...newTrack('t1', { name: 'a.mp3', size: 1 }), fingerprint: 'f00d' };
 
   it('stays calm until how loud the file gets is known', () => {

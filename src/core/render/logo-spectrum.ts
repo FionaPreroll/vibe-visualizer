@@ -517,9 +517,10 @@ export class LogoSpectrumScene implements Scene {
     const energy = this.energy.update(features[F.energy]!, dt);
     this.shaper.update(features, s, dt);
 
-    // Geometry in pixels.
+    // Geometry in pixels. The logo pulses with the bass, as far as the camera moves.
+    const motion = input.motion ?? 1;
     const short = Math.min(this.width, this.height);
-    const pulse = 1 + 0.07 * s.bassPulse * bass;
+    const pulse = 1 + 0.07 * s.bassPulse * bass * motion;
     const radius = s.ringRadius * short * pulse;
     const cx = this.width * (0.5 + s.centerX);
     const cy = this.height * (0.5 + s.centerY);
@@ -531,7 +532,6 @@ export class LogoSpectrumScene implements Scene {
     // Background, with the bass zoom and the slow drift (LS-03).
     bindTarget(gl, scene, this.width, this.height);
     const drift = backgroundDrift(s.drift, input.time);
-    const motion = input.motion ?? 1;
     const zoom = (1 + 0.05 * s.backgroundPulse * bass * motion) * drift.zoom;
     const layered = this.wantsLayer && this.layer !== null;
     // The layer has the picture's size: it fills it as it is.

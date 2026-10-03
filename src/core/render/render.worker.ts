@@ -64,9 +64,9 @@ let overlaySettings: OverlaySettings = DEFAULT_OVERLAY;
 /** Until then (performance.now()), the overlay shows in full: its settings just changed. */
 let overlayPreview = 0;
 const overlayTracks = new Map<number, OverlayTrack>();
-/** Files of the stream whose loudness is still being found out: the camera stays calm. */
+/** Files of the stream whose loudness is still being found out: the picture stays calm. */
 const calmTokens = new Set<number>();
-/** How far the camera moves with the music (0…1). */
+/** How far the picture moves with the music (0…1): shake, zoom and pulse. */
 let motion = 1;
 /** Time constant of its easing back in (s). */
 const MOTION_SECONDS = 0.4;

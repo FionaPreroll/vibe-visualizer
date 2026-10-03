@@ -18,7 +18,7 @@ export function overlayTrack(track: Track): OverlayTrack | null {
 
 /**
  * Whether how loud `track` gets is still being found out (AN-05): its analysis has not run yet
- * or runs, without a loudness from before. Until then, the camera does not move with the music.
+ * or runs, without a loudness from before. Until then, the picture does not move with the music.
  */
 export function stillCalm(track: Track, analyses: TrackAnalyses): boolean {
   if (!track.fingerprint) return true;
@@ -29,7 +29,7 @@ export function stillCalm(track: Track, analyses: TrackAnalyses): boolean {
 
 /**
  * Keeps the render worker told about the files of the engine's stream (the one heard and the
- * one that follows): their tracks for the overlay, whether the camera stays calm for them, and
+ * one that follows): their tracks for the overlay, whether the picture stays calm for them, and
  * their cover art for the logo (LS-15), each cover decoded once.
  */
 export class StreamInfo {
