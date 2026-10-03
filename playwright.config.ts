@@ -35,9 +35,11 @@ export default defineConfig({
       grep: /@firefox/,
       use: {
         ...devices['Desktop Firefox'],
+        // Headless, Firefox has no WebGL without a GPU: CI gives it a virtual display instead.
+        headless: !process.env['PW_FIREFOX_DISPLAY'],
         launchOptions: {
           firefoxUserPrefs: {
-            // Software WebGL for headless runs without a GPU; sound without a user gesture.
+            // Software WebGL without a GPU; sound without a user gesture.
             'webgl.force-enabled': true,
             'media.autoplay.default': 0,
             'media.autoplay.block-webaudio': false,

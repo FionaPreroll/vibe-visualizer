@@ -12,6 +12,34 @@ function collectErrors(page: Page): string[] {
   return errors;
 }
 
+test('the app starts in this browser, which has all it needs (NF-02) @firefox', async ({
+  page,
+}) => {
+  await page.goto('/');
+  // What the browser offers of what the app needs: a failure says what is missing.
+  const offers = await page.evaluate(() => {
+    const webgl2 = (canvas: OffscreenCanvas | HTMLCanvasElement) => {
+      try {
+        return canvas.getContext('webgl2') !== null;
+      } catch {
+        return false;
+      }
+    };
+    return {
+      crossOriginIsolated: globalThis.crossOriginIsolated,
+      audioWorklet: typeof AudioWorkletNode === 'function',
+      offscreenCanvas: typeof OffscreenCanvas === 'function',
+      webgl2Offscreen: typeof OffscreenCanvas === 'function' && webgl2(new OffscreenCanvas(1, 1)),
+      webgl2Canvas: webgl2(document.createElement('canvas')),
+      unsupported: document.querySelector('[data-testid="unsupported"]')?.textContent ?? null,
+    };
+  });
+  expect(offers.unsupported, JSON.stringify(offers)).toBeNull();
+  await expect(page.getByTestId('visual-stage')).toHaveAttribute('data-status', 'running', {
+    timeout: 15_000,
+  });
+});
+
 async function addFiles(page: Page) {
   await page.getByTestId('file-input').setInputFiles([
     { name: 'First.wav', mimeType: 'audio/wav', buffer: createWav(4, 44100) },

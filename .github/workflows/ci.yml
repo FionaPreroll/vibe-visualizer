@@ -41,4 +41,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps firefox
-      - run: pnpm test:e2e:firefox
+      # Firefox gets a virtual display: headless, it has no WebGL without a GPU.
+      - run: command -v xvfb-run || sudo apt-get install -y xvfb
+      - run: xvfb-run --auto-servernum pnpm test:e2e:firefox
+        env:
+          PW_FIREFOX_DISPLAY: '1'
