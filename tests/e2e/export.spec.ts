@@ -570,7 +570,7 @@ test('an export can be paused, continued and cancelled', async ({ page }) => {
   await page.getByTestId('export-start').click();
   const progress = page.getByTestId('export-progress');
   await expect(progress).toHaveAttribute('data-phase', 'video', { timeout: 30_000 });
-  await page.getByRole('button', { name: 'Pause' }).click();
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect(page.getByTestId('export-button')).toContainText('Paused');
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByTestId('export-button')).toContainText('Exporting');
