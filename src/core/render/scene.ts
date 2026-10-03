@@ -13,6 +13,11 @@ export interface SceneInput {
    * LS-16) follows it; not given, the music plays on (`dt`).
    */
   played?: number;
+  /**
+   * How far the camera moves with the music (0…1): its shake on kicks and the zoom on the bass.
+   * 0 while how loud the file heard gets is not known yet (its first seconds); not given: 1.
+   */
+  motion?: number;
 }
 
 export interface Scene {

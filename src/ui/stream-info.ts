@@ -1,3 +1,4 @@
+import type { TrackAnalyses } from '../core/library/track-analyzer';
 import type { StreamFile } from '../core/player/player';
 import type { OverlayTrack } from '../core/render/overlay-settings';
 import type { Renderer } from '../core/render/renderer';
@@ -16,9 +17,20 @@ export function overlayTrack(track: Track): OverlayTrack | null {
 }
 
 /**
+ * Whether how loud `track` gets is still being found out (AN-05): its analysis has not run yet
+ * or runs, without a loudness from before. Until then, the camera does not move with the music.
+ */
+export function stillCalm(track: Track, analyses: TrackAnalyses): boolean {
+  if (!track.fingerprint) return true;
+  const analysis = analyses.get(track.fingerprint);
+  if (!analysis || analysis.loudness) return false;
+  return analysis.status === 'waiting' || analysis.status === 'running';
+}
+
+/**
  * Keeps the render worker told about the files of the engine's stream (the one heard and the
- * one that follows): their tracks for the overlay, and their cover art for the logo (LS-15),
- * each cover decoded once.
+ * one that follows): their tracks for the overlay, whether the camera stays calm for them, and
+ * their cover art for the logo (LS-15), each cover decoded once.
  */
 export class StreamInfo {
   private sent = '';
@@ -31,6 +43,7 @@ export class StreamInfo {
     tracks: readonly Track[],
     rate: number,
     covers: boolean,
+    analyses: TrackAnalyses,
   ): void {
     const entries = files.map(({ token, id }) => ({
       token,
@@ -39,6 +52,7 @@ export class StreamInfo {
     const overlay = entries.map(({ token, track }) => ({
       token,
       track: track ? overlayTrack(track) : null,
+      calm: track ? stillCalm(track, analyses) : false,
     }));
     const key = JSON.stringify([overlay, rate]);
     if (key !== this.sent) {

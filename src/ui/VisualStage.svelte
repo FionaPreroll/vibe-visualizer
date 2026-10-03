@@ -93,9 +93,10 @@
     renderer?.setCoverLogo(coverLogo);
   });
   const stream = player.stream;
+  const analyses = player.analysis;
   const streamInfo = $derived(renderer ? new StreamInfo(renderer) : null);
   $effect(() => {
-    streamInfo?.update($stream, $app.tracks, $app.sound.rate, coverLogo);
+    streamInfo?.update($stream, $app.tracks, $app.sound.rate, coverLogo, $analyses);
   });
 
   // Automatic preset switching: its settings and the presets of each mode that take part.

@@ -7,6 +7,18 @@ import type { LogoSpectrumSettings } from './visual-settings';
 /** The scenes the render worker can show. */
 export type SceneKind = 'logoSpectrum' | 'kaleidoscope';
 
+/** A file of the engine's stream, by its token: its track for the overlay, and how it moves. */
+export interface StreamTrack {
+  token: number;
+  track: OverlayTrack | null;
+  /**
+   * How loud the file gets is still being found out (its analysis runs, AN-05): until then, the
+   * camera does not move with the music (no shake, no zoom on the bass), so a quiet start of it
+   * does not swing too far.
+   */
+  calm: boolean;
+}
+
 /** Messages from the main thread to the render worker. */
 export type RenderRequest =
   | { type: 'init'; canvas: OffscreenCanvas; timeline: SharedArrayBuffer; sampleRate: number }
@@ -31,7 +43,7 @@ export type RenderRequest =
    * and the tempo they play at: the overlay shows the file the music being heard comes from
    * (null: not known yet).
    */
-  | { type: 'tracks'; tracks: { token: number; track: OverlayTrack | null }[]; rate: number }
+  | { type: 'tracks'; tracks: StreamTrack[]; rate: number }
   /** The cover art of the file with `token` (null: none). */
   | { type: 'cover'; token: number; image: ImageBitmap | null }
   /** The Logo Spectrum shows the cover art of the track heard as its logo (LS-15). */
