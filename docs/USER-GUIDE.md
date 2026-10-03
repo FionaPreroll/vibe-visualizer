@@ -125,6 +125,15 @@ If a control does not do what it should, open **MIDI monitor** in the dialog, co
 
 **Restore a backup** replaces everything the app keeps in this browser with what is in the file; it says what that is first. Then the app reloads. The queue stays as it is, and so does the analysis of the tracks if the backup has none.
 
+## When something goes wrong
+
+- **The visuals stop:** when the graphics card is reset (with heavy scenes, after sleep, or when a laptop changes its graphics chip), the visuals start again by themselves within a second. When that happens again and again, they wait for a click on **Try again**. An export goes on by itself from its last finished part.
+- **The music stops:** when the sound stops by itself (the audio device was unplugged, or the system took the sound), the music pauses and a message says what happened. Press **Play** to go on.
+- **Something went wrong:** an error the app did not expect shows at the bottom. **Copy details** copies what a bug report needs, and **Report…** opens a mail with it. A part of the app that failed shows **Try again**, while the rest goes on.
+- **A new version is out:** when the app was updated while it is open, a note offers to **Reload**.
+- **Storage:** the app asks the browser to keep its data, so that it is not cleared when the disk runs low (Firefox asks you, the first time you add an image or export). When the browser's storage is full, a message says that changes are not saved.
+- **The browser:** the app needs a current browser, with WebGL 2. If something is missing, it says what instead of starting. When it is WebGL 2 in Chrome, Edge or Firefox, turn on graphics acceleration in the browser's settings.
+
 ## Keyboard shortcuts
 
 Press **?** for the full list. The main ones: Space play and pause, ← and → seek 5 s (30 s with Shift), N next, P previous, 1–8 hot cues, I and O the in and out markers, Q snap to the beat, W the detail waveform, − and + the tempo, V the next view, [ and ] the presets, F fullscreen, Ctrl+Z undo.

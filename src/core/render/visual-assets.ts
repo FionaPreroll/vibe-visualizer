@@ -1,3 +1,4 @@
+import { keepStorage } from '../state/keep-storage';
 import type { ImageKind } from './logo-spectrum';
 
 /**
@@ -72,9 +73,15 @@ export class VisualAssets {
     }
     if (file) await decodeImage(file).then((bitmap) => bitmap.close());
     this.update(kind, file ? { name: file.name, blob: file } : null);
+    if (file) void keepStorage();
     const names = readNames();
     names[kind] = file?.name ?? null;
-    localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+    try {
+      localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+    } catch {
+      // Storage full or blocked: the image stays for this session.
+      return;
+    }
     try {
       const directory = await assetDirectory();
       if (file) {

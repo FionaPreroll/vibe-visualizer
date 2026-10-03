@@ -35,7 +35,11 @@ export class Renderer {
       else this.onEvent?.(data);
     });
     this.worker.addEventListener('error', (event) => {
-      this.onEvent?.({ type: 'error', message: event.message || 'The render worker failed.' });
+      this.onEvent?.({
+        type: 'error',
+        message: event.message || 'The render worker failed.',
+        fatal: true,
+      });
     });
     this.send(
       {

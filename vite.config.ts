@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
+import { buildId } from './vite-plugins/build-id.ts';
 import { signalsmithStretchWasm } from './vite-plugins/signalsmith-stretch-wasm.ts';
 
 // SharedArrayBuffer (used for the audio ring buffers) requires cross-origin isolation.
@@ -11,7 +12,7 @@ const crossOriginIsolation = {
 };
 
 export default defineConfig({
-  plugins: [svelte(), signalsmithStretchWasm()],
+  plugins: [svelte(), signalsmithStretchWasm(), buildId()],
   worker: {
     format: 'es',
     plugins: () => [signalsmithStretchWasm()],

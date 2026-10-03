@@ -69,6 +69,61 @@ test('Logo Spectrum renders in a worker and moves with the music', async ({ page
   expect(errors).toEqual([]);
 });
 
+/** Loses the render worker's graphics context, as a reset of the graphics card does. */
+async function loseGraphicsContext(page: Page) {
+  const worker = page
+    .workers()
+    .filter((entry) => entry.url().includes('render.worker'))
+    .at(-1);
+  await worker!.evaluate(() => {
+    self.dispatchEvent(new MessageEvent('message', { data: { type: 'loseContext' } }));
+  });
+}
+
+test('the visuals come back after the graphics card was reset (NF-09)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'Clicks.wav',
+    mimeType: 'audio/wav',
+    buffer: createWav(30, 44100),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('play-button').click();
+
+  // A new worker takes over on a new canvas, and the picture moves again.
+  await loseGraphicsContext(page);
+  await expect(stage).toHaveAttribute('data-generation', '1', { timeout: 10_000 });
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await expect
+    .poll(async () => Number(await stage.getAttribute('data-fps')), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  const first = await stage.screenshot();
+  await page.waitForTimeout(700);
+  expect(first.equals(await stage.screenshot())).toBe(false);
+
+  // Three times a minute at most; then the visuals wait for a click.
+  for (const generation of ['2', '3']) {
+    await loseGraphicsContext(page);
+    await expect(stage).toHaveAttribute('data-generation', generation, { timeout: 10_000 });
+    await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  }
+  await loseGraphicsContext(page);
+  const failed = page.getByTestId('visual-stage-failed');
+  await expect(failed).toContainText(
+    'The visuals stopped: the graphics card was reset, several times in a row.',
+  );
+  await expect(stage).toHaveAttribute('data-status', 'failed');
+  await failed.getByRole('button', { name: 'Try again' }).click();
+  await expect(failed).toHaveCount(0);
+  await expect(stage).toHaveAttribute('data-generation', '4');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  expect(errors).toEqual([]);
+});
+
 test('visual settings and presets survive a reload', async ({ page }) => {
   const errors = collectErrors(page);
   await acknowledge(page);

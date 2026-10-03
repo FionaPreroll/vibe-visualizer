@@ -162,7 +162,11 @@ function frame(now: number): void {
     if (captures.length > 0) takeCaptures();
   } catch (error) {
     running = false;
-    post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+    post({
+      type: 'error',
+      message: error instanceof Error ? error.message : String(error),
+      fatal: true,
+    });
     return;
   }
   frames++;
@@ -288,8 +292,10 @@ scope.addEventListener('message', (event) => {
         sampler = new FeatureSampler(reader);
         canvas.addEventListener('webglcontextlost', (e) => {
           e.preventDefault();
+          // Given up on purpose (dispose).
+          if (lost) return;
           lost = true;
-          post({ type: 'error', message: 'The graphics context was lost.' });
+          post({ type: 'lost' });
         });
         gl = canvas.getContext('webgl2', {
           alpha: false,
@@ -400,6 +406,9 @@ scope.addEventListener('message', (event) => {
         else
           post({ type: 'capture', id: message.id, png: null, message: 'The visuals are paused.' });
         break;
+      case 'loseContext':
+        gl?.getExtension('WEBGL_lose_context')?.loseContext();
+        break;
       case 'dispose':
         setRunning(false);
         logoSpectrum?.dispose();
@@ -410,11 +419,17 @@ scope.addEventListener('message', (event) => {
         logoSpectrum = null;
         kaleidoscope = null;
         scene = null;
+        lost = true;
         gl?.getExtension('WEBGL_lose_context')?.loseContext();
         scope.close();
         break;
     }
   } catch (error) {
-    post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+    post({
+      type: 'error',
+      message: error instanceof Error ? error.message : String(error),
+      // Without a scene, nothing draws.
+      fatal: message.type === 'init',
+    });
   }
 });

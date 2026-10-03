@@ -51,7 +51,6 @@ export class DspCore {
   }
 
   setSettings(settings: SoundSettings): void {
-    this.settings = settings;
     this.tempo.rate = settings.rate;
     this.tempo.mode = settings.tempoMode;
     this.filter.amount = settings.filter;
@@ -62,7 +61,7 @@ export class DspCore {
     delay.tone = settings.delayTone;
     delay.pingPong = settings.delayPingPong;
     delay.mix = settings.delayMix;
-    this.updateDelayTime();
+    this.updateDelayTime(settings);
     const reverb = this.reverb.parameters;
     reverb.on = settings.reverbOn;
     reverb.size = settings.reverbSize;
@@ -70,6 +69,8 @@ export class DspCore {
     reverb.preDelay = settings.reverbPreDelay / 1000;
     reverb.damping = settings.reverbDamping;
     reverb.mix = settings.reverbMix;
+    // Last: settings that cannot be read leave the ones before in place.
+    this.settings = settings;
   }
 
   /** Temporary speed change on top of the tempo (TMP-03), e.g. 1.04 while nudging. */
@@ -189,8 +190,7 @@ export class DspCore {
     this.limiter.process(planes, frames);
   }
 
-  private updateDelayTime(): void {
-    const settings = this.settings;
+  private updateDelayTime(settings = this.settings): void {
     this.delay.parameters.seconds = settings.delaySync
       ? syncedDelaySeconds(this.bpm, settings.delayDivision, settings.delayFeel)
       : settings.delayMs / 1000;

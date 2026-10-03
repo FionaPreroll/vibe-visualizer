@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { aspectRatio, type AspectRatio } from '../core/export/video-format';
   import { AutoQuality } from '../core/render/auto-quality';
   import { BUILT_IN_KALEIDO_PRESETS } from '../core/render/kaleido-settings';
@@ -11,6 +11,7 @@
   import { BUILT_IN_PRESETS } from '../core/render/visual-settings';
   import { usePlayer } from './player-context';
   import { kaleidoPresets, logoSpectrumPresets } from './preset-store';
+  import { reportProblem } from './problems';
   import { liveScale } from './render-quality';
   import SafeAreas from './SafeAreas.svelte';
   import { useCapture } from './stage-capture';
@@ -23,7 +24,8 @@
    * the two keeps the worker and both scenes; settings and images are forwarded as they change.
    * The worker switches presets on its own (PR-02) and says so, so the panels show the preset.
    * It draws at a share of the canvas's device pixels (VE-07): the render scale, lowered by the
-   * auto-quality while the frame rate drops.
+   * auto-quality while the frame rate drops. When the graphics card is reset and the context is
+   * lost, or drawing fails, a new worker takes over on a new canvas (NF-09).
    */
   interface Props {
     mode: SceneKind;
@@ -38,11 +40,15 @@
   const assets = useAssets();
   const capture = useCapture();
   const app = player.store;
-  let canvas: HTMLCanvasElement;
+  let canvas: HTMLCanvasElement | undefined = $state();
   let renderer: Renderer | null = $state(null);
   let status = $state<'starting' | 'running' | 'failed'>('starting');
   let message = $state('');
   let fps = $state(0);
+  /** Whether the visuals ran since the page loaded: a failure then stops them. */
+  let ran = $state(false);
+  /** Counts the canvases: each start needs a new one, as a canvas draws for one worker only. */
+  let generation = $state(0);
 
   let visible = $state(true);
 
@@ -111,21 +117,24 @@
     );
   });
 
-  onMount(() => {
+  /** Starts a render worker on the canvas; returns what stops it again. */
+  function start(): () => void {
+    const element = canvas!;
     const size = () => {
       const ratio = window.devicePixelRatio || 1;
       return [
-        Math.max(1, Math.round(canvas.clientWidth * ratio)),
-        Math.max(1, Math.round(canvas.clientHeight * ratio)),
+        Math.max(1, Math.round(element.clientWidth * ratio)),
+        Math.max(1, Math.round(element.clientHeight * ratio)),
       ] as const;
     };
     box = size();
-    const instance = new Renderer(canvas, player.engine, ...scaled());
+    const instance = new Renderer(element, player.engine, ...scaled());
     // The first frame already shows the right scene (the effect takes over after mounting).
     instance.setScene(mode);
     instance.onEvent = (event) => {
       if (event.type === 'ready') {
         status = 'running';
+        ran = true;
         // A picture of the stage can be taken now (EX-10).
         capture.attach(instance);
       } else if (event.type === 'stats') {
@@ -135,10 +144,13 @@
         // The switching chose it: the panels show it (the worker morphs there already).
         if (event.scene === 'logoSpectrum') player.replaceVisuals(event.settings);
         else player.replaceKaleido(event.settings);
+      } else if (event.type === 'lost') {
+        recover('the graphics card was reset, several times in a row.');
+      } else if (event.fatal) {
+        recover(event.message);
       } else {
-        status = 'failed';
-        message = event.message;
-        capture.attach(null);
+        // It draws on: the error is only reported.
+        reportProblem(new Error(event.message), 'The render worker');
       }
     };
 
@@ -148,9 +160,9 @@
       instance.resize(...scaled());
     });
     try {
-      observer.observe(canvas, { box: 'device-pixel-content-box' });
+      observer.observe(element, { box: 'device-pixel-content-box' });
     } catch {
-      observer.observe(canvas);
+      observer.observe(element);
     }
 
     let lastVisuals = $app.visuals;
@@ -205,6 +217,7 @@
 
     return () => {
       renderer = null;
+      instance.onEvent = null;
       capture.attach(null);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
@@ -213,27 +226,86 @@
       observer.disconnect();
       instance.dispose();
     };
+  }
+
+  // Restarts (NF-09): a lost graphics context comes back on a new canvas, with everything sent
+  // anew. A few times a minute; more often, the graphics card does not keep up, and the visuals
+  // wait for a click.
+  const RESTARTS = 3;
+  const RESTART_WINDOW_MS = 60_000;
+  const RESTART_DELAY_MS = 1000;
+  const restarts: number[] = [];
+  let stop: (() => void) | null = null;
+  let restartTimer: ReturnType<typeof setTimeout> | undefined;
+  let mounted = false;
+
+  function recover(reason: string) {
+    stop?.();
+    stop = null;
+    fps = 0;
+    const now = performance.now();
+    while (restarts.length > 0 && now - restarts[0]! > RESTART_WINDOW_MS) restarts.shift();
+    if (restarts.length >= RESTARTS) {
+      status = 'failed';
+      message = reason;
+      return;
+    }
+    restarts.push(now);
+    status = 'starting';
+    restartTimer = setTimeout(() => void restart(), RESTART_DELAY_MS);
+  }
+
+  async function restart() {
+    stop?.();
+    stop = null;
+    generation++;
+    // The new canvas is in place after the update.
+    await tick();
+    if (mounted) stop = start();
+  }
+
+  function tryAgain() {
+    restarts.length = 0;
+    status = 'starting';
+    void restart();
+  }
+
+  onMount(() => {
+    mounted = true;
+    stop = start();
+    return () => {
+      mounted = false;
+      clearTimeout(restartTimer);
+      stop?.();
+      stop = null;
+    };
   });
 </script>
 
 <div class="box">
   <div class="frame" style:--ratio={aspectRatio(aspect)} data-aspect={aspect}>
-    <canvas
-      bind:this={canvas}
-      data-testid="visual-stage"
-      data-status={status}
-      data-fps={fps.toFixed(0)}
-      data-scale={scale.toFixed(3)}
-      data-scene={mode}
-      aria-label={mode === 'kaleidoscope' ? 'Kaleidoscope visuals' : 'Logo Spectrum visuals'}
-    ></canvas>
+    {#key generation}
+      <canvas
+        bind:this={canvas}
+        data-testid="visual-stage"
+        data-status={status}
+        data-fps={fps.toFixed(0)}
+        data-scale={scale.toFixed(3)}
+        data-scene={mode}
+        data-generation={generation}
+        aria-label={mode === 'kaleidoscope' ? 'Kaleidoscope visuals' : 'Logo Spectrum visuals'}
+      ></canvas>
+    {/key}
     {#if safeAreas}
       <SafeAreas {aspect} />
     {/if}
   </div>
 </div>
 {#if status === 'failed'}
-  <p class="failed" role="alert">The visuals could not start: {message}</p>
+  <p class="failed" role="alert" data-testid="visual-stage-failed">
+    {ran ? 'The visuals stopped' : 'The visuals could not start'}: {message}
+    <button onclick={tryAgain}>Try again</button>
+  </p>
 {/if}
 
 <style>
@@ -269,5 +341,8 @@
     border-radius: 8px;
     background: color-mix(in srgb, var(--fail) 22%, var(--surface));
     border: 1px solid var(--fail);
+  }
+  .failed button {
+    margin-left: 10px;
   }
 </style>

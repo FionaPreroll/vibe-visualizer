@@ -178,6 +178,21 @@ let paused = false;
 let cancelled = false;
 let wake: (() => void) | null = null;
 let wasmAac = false;
+/** Set by `loseContext` (tests): the video pass loses its graphics context at the next frame. */
+let loseContextSoon = false;
+/**
+ * How often the video pass starts again in a new graphics context after the graphics card was
+ * reset, and how long it waits before (NF-09).
+ */
+const GRAPHICS_RETRIES = 3;
+const GRAPHICS_RETRY_MS = 2000;
+
+/** The graphics context of the video pass was lost: the graphics card was reset. */
+class GraphicsLost extends Error {
+  constructor() {
+    super('The graphics card was reset.');
+  }
+}
 
 /** Waits while paused; throws once cancelled. Called between frames and chunks. */
 async function gate(): Promise<void> {
@@ -193,6 +208,11 @@ function unpause(): void {
   paused = false;
   wake?.();
   wake = null;
+}
+
+/** Loses the video pass's graphics context, as a reset of the graphics card does (for tests). */
+function loseContext(): void {
+  loseContextSoon = true;
 }
 
 function cancel(): void {
@@ -370,8 +390,21 @@ async function run(
     manifest.progress.audioDone = true;
     await store.writeManifest(manifest);
   }
-  if (manifest.progress.segmentsDone < manifest.timing.segments) {
-    await videoPass(store, manifest, pictures, progress);
+  // After a reset of the graphics card, the video goes on from its last finished segment, in a
+  // new context (NF-09). Reset again and again before the next segment is finished, it stops.
+  let losses = 0;
+  while (manifest.progress.segmentsDone < manifest.timing.segments) {
+    const done = manifest.progress.segmentsDone;
+    try {
+      await videoPass(store, manifest, pictures, progress);
+    } catch (error) {
+      if (!(error instanceof GraphicsLost)) throw error;
+      losses = manifest.progress.segmentsDone > done ? 1 : losses + 1;
+      if (losses > GRAPHICS_RETRIES) {
+        throw new Error('The graphics card was reset, several times in a row.', { cause: error });
+      }
+      await new Promise((resolve) => setTimeout(resolve, GRAPHICS_RETRY_MS));
+    }
   }
   // The file of a batch's video in its folder is only made now (EX-09).
   const destination =
@@ -772,7 +805,11 @@ async function videoPass(
     }
 
     const render = async (frame: number) => {
-      if (lost) throw new Error('The graphics context was lost.');
+      if (loseContextSoon) {
+        loseContextSoon = false;
+        gl.getExtension('WEBGL_lose_context')?.loseContext();
+      }
+      if (lost || gl.isContextLost()) throw new GraphicsLost();
       const at = frameTime(timing, fps, frame);
       await feed.ensure(at);
       sampler.sample(at, features);
@@ -849,6 +886,8 @@ async function videoPass(
             preview?.close();
           }
         }
+        // Lost while the last frame was drawn: the segment is made again.
+        if (lost || gl.isContextLost()) throw new GraphicsLost();
         await output.finalize();
       } catch (error) {
         await output.cancel().catch(() => undefined);
@@ -1002,4 +1041,4 @@ async function discard(): Promise<void> {
   await clearJob();
 }
 
-exposeWorker({ probe, start, resume, pause, unpause, cancel, discard });
+exposeWorker({ probe, start, resume, pause, unpause, cancel, discard, loseContext });

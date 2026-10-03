@@ -78,7 +78,8 @@ export class WorkerClient {
       }
     });
     worker.addEventListener('error', (event) => {
-      const error = new Error(event.message || 'Worker failed');
+      // Without a message: the worker's file could not be loaded.
+      const error = new Error(event.message || 'A worker of the app could not start.');
       for (const entry of this.pending.values()) entry.reject(error);
       this.pending.clear();
     });
