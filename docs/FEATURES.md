@@ -319,6 +319,10 @@ Reordered after Q1: the export comes right after the core, because it is the mai
 | v1.0 Stabilization | Robust and ready to release | In three parts: **A** robustness (done: NF-09, NF-10, and NF-02's check of the browser at the start); **B** tests and CI (done: the main paths in Firefox, CI once per push, a soak test of the memory, a flaky test made robust); **C** the release setup (done: wrangler pinned, Dependabot, the Spike Lab replaced by a system check in the help, a content security policy; and Blue-Pink Vortex as the default look); **D** for the release: CI on Ubuntu 24.04, a version from the build time (0.9.YYYYMMDD.HHMM), the licences of the parts of others in the app, a changelog, and settings out of the help (done). Later, after the first feedback: the number for 1.0, and a licence for the app itself |
 | Afterwards | Picks from C/L | by agreement |
 
+**To-do** (technical, no feature of its own):
+
+- **Build the AAC encoder ourselves**, from a known FFmpeg tag, as `@mediabunny/aac-encoder` describes it. Its WebAssembly comes ready-made, and which FFmpeg commit it was built from is not published (only libavcodec 62.23.103), so the LGPL source the app offers can only be the exact one once the app builds it itself.
+
 Frame-rate independence (VE-03), determinism (NF-05) and timestamped actions (NF-08) are built in from P1. So the export needs no rewrite, and session replay (EX-13) stays possible. The other non-functional requirements (NF-01–07) apply to every phase.
 
 ## 6. Open questions
