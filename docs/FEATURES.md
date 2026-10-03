@@ -144,7 +144,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | VE-05* | M | Photosensitivity warning on first start (flashing visuals) |
 | VE-06* | S | "Reduce flashing" option: limits strobe/flash frequency and sudden brightness jumps |
 | VE-07* | S | Render-scale/quality slider and auto-quality (lowers the internal resolution when the frame rate drops) |
-| VE-08* | S | Layer composition, e.g. a kaleidoscope scene as an animated background behind the logo spectrum. Internally both modes are built on this layer stack (Q5) |
+| VE-08* | S | Layer composition, e.g. a kaleidoscope scene as an animated background behind the logo spectrum. Internally both modes are built on this layer stack (Q5); the background image can show under the Kaleidoscope behind |
 | VE-09* | M | Aspect ratios 16:9, 9:16 (TikTok/Shorts/Reels), 1:1, 4:5, 21:9; the preview is letterboxed and shows safe-area guides, including the areas TikTok covers with its buttons |
 | VE-10* | C | Post effects: vignette, chromatic aberration on beats, film grain, beat flash |
 | VE-11* | C | FPS/performance overlay |

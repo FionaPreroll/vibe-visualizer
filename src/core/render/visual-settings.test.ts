@@ -115,7 +115,10 @@ const CLASSIC_RAINBOW = BUILT_IN_PRESETS.find(
 describe('visual settings', () => {
   it('starts with Blue-Pink Vortex, as it was exported from the app', () => {
     expect(BUILT_IN_PRESETS[0]!.name).toBe('Blue-Pink Vortex');
-    expect(DEFAULT_LOGO_SPECTRUM).toEqual(BLUE_PINK_EXPORT);
+    // Settings added since then have their defaults: no image under the Kaleidoscope.
+    expect(DEFAULT_LOGO_SPECTRUM).toEqual({ ...BLUE_PINK_EXPORT, layerImage: 0 });
+    // The export itself, as a look from a file: the same.
+    expect(sanitizeSettings(BLUE_PINK_EXPORT)).toEqual(DEFAULT_LOGO_SPECTRUM);
     expect(sanitizeSettings(null)).toEqual(DEFAULT_LOGO_SPECTRUM);
     expect(sanitizeSettings('nonsense')).toEqual(DEFAULT_LOGO_SPECTRUM);
   });

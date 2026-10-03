@@ -47,6 +47,11 @@ export interface LogoSpectrumSettings {
    * as it is set up in its own mode.
    */
   layerLook: KaleidoSettings | null;
+  /**
+   * 0…1: with the Kaleidoscope behind, how much of the background image shows under it (VE-08);
+   * 0: none, as before.
+   */
+  layerImage: number;
   backgroundFit: 'cover' | 'contain';
   /** 0…1 */
   backgroundBlur: number;
@@ -162,6 +167,7 @@ export interface LogoSpectrumSettings {
 const CLASSIC: LogoSpectrumSettings = {
   backgroundSource: 'image',
   layerLook: null,
+  layerImage: 0,
   backgroundFit: 'cover',
   backgroundBlur: 0.15,
   backgroundDim: 0.35,
@@ -443,6 +449,7 @@ type NumericKey = {
 
 /** Allowed ranges of the numeric settings (also used by the UI sliders). */
 export const RANGES: Record<NumericKey, readonly [number, number]> = {
+  layerImage: [0, 1],
   backgroundBlur: [0, 1],
   backgroundDim: [0, 1],
   backgroundPulse: [0, 1],

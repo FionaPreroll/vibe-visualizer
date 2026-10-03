@@ -4,6 +4,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 ## 3 October 2026
 
+- **An image under the Kaleidoscope:** with the Kaleidoscope behind the Logo Spectrum, the background image can show under it.
 - **Fixed tempo:** in the tempo menu of a track, one straight beat grid from start to end, so the bars no longer drift after a correction or through a break.
 - **Fixes:** the Kaleidoscope no longer shows a turning rectangle when it spins: it fills the picture in every turn. The track's title no longer shows in full for a moment and then fades in again, when a track starts soon after the app opened or the visuals restarted.
 - **Only the music:** the crossed-out eye in the top bar (or **B**) lets the visuals rest while the music plays on.

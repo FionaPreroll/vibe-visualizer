@@ -430,9 +430,9 @@ test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page 
     .getByRole('radio', { name: 'Kaleidoscope' })
     .click();
   await expect.poll(async () => (await stored()).backgroundSource).toBe('kaleidoscope');
-  // No image to pick for it; a word on what it shows.
+  // A word on what it shows; an image can go under it.
   await expect(page.getByTestId('background-layer-hint')).toBeVisible();
-  await expect(page.getByTestId('background-input')).toHaveCount(0);
+  await expect(page.getByText('Image under it').first()).toBeVisible();
 
   await page.getByTestId('play-button').click();
   await expect
@@ -441,6 +441,18 @@ test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page 
   const first = await stage.screenshot();
   await page.waitForTimeout(700);
   expect(first.equals(await stage.screenshot())).toBe(false);
+
+  // A green image picked there shows under the Kaleidoscope at once, half of it (Kanban #20).
+  const corner: Region[] = [{ x: 0.01, y: 0.02, width: 0.1, height: 0.12 }];
+  const green = async () => (await measure(page, await stage.screenshot(), corner))[0]!.mean[1];
+  const without = await green();
+  await page.getByTestId('background-input').setInputFiles({
+    name: 'green.png',
+    mimeType: 'image/png',
+    buffer: createPng(64, 64, () => [0, 220, 0]),
+  });
+  await expect.poll(async () => (await stored()).layerImage).toBe(0.5);
+  await expect.poll(green, { timeout: 10_000 }).toBeGreaterThan(without + 20);
 
   // To the Kaleidoscope and back: the layer goes on.
   await page.getByRole('button', { name: 'Kaleidoscope', exact: true }).click();
