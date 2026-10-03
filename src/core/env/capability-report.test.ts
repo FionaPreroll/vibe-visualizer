@@ -55,7 +55,7 @@ describe('system check', () => {
 
   it('is text for a bug report', () => {
     const text = capabilityText(REPORT, 'FibeStation');
-    expect(text).toMatch(/^FibeStation: system check, \d{4}-\d\d-\d\dT/);
+    expect(text).toMatch(/^FibeStation v0\.9\.\d{8}\.\d{4}: system check, \d{4}-\d\d-\d\dT/);
     expect(text).toContain('\n- Browser: Mozilla/5.0 Test\n');
   });
 });

@@ -1,7 +1,8 @@
 /// <reference types="vitest/config" />
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
-import { buildId } from './vite-plugins/build-id.ts';
+import packageJson from './package.json' with { type: 'json' };
+import { buildInfo } from './vite-plugins/build-info.ts';
 import { productionHeaders } from './vite-plugins/production-headers.ts';
 import { signalsmithStretchWasm } from './vite-plugins/signalsmith-stretch-wasm.ts';
 
@@ -14,7 +15,7 @@ const crossOriginIsolation = {
 };
 
 export default defineConfig({
-  plugins: [svelte(), signalsmithStretchWasm(), buildId()],
+  plugins: [svelte(), signalsmithStretchWasm(), buildInfo(packageJson.version)],
   worker: {
     format: 'es',
     plugins: () => [signalsmithStretchWasm()],

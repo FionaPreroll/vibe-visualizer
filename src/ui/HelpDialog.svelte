@@ -1,6 +1,7 @@
 <script lang="ts">
   import guide from '../../docs/USER-GUIDE.md?raw';
   import { bugReportLink, BUG_EMAIL } from './app-info';
+  import AboutInfo from './AboutInfo.svelte';
   import { backdropClose } from './backdrop';
   import BackupSection from './BackupSection.svelte';
   import Icon from './Icon.svelte';
@@ -80,6 +81,9 @@
     </nav>
     <article bind:this={content} data-testid="help-content" data-section={current.id}>
       <h3 class="title">{current.title}</h3>
+      {#if current.id === ABOUT_ID}
+        <AboutInfo />
+      {/if}
       {#if current.id === SHORTCUTS_ID}
         <ShortcutList />
       {:else}

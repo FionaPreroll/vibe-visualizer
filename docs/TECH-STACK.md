@@ -95,7 +95,7 @@ The main thread only starts, pauses, resumes and cancels the worker, decodes the
 - **Storage:** `navigator.storage.persist()`, once a session, at the first image of the user's own or the start of an export (Firefox asks the user, so not at the start). A failed write of the settings is reported once.
 - **System check:** the help shows what the browser offers the app (graphics, the encoders, storage), from `core/env/capabilities.ts`, with a report to copy for a bug report.
 - **Content security policy:** `public/_headers` allows only what the app itself loads, its WebAssembly, and `blob:`/`data:` for the user's files and images, and for the worker of the AAC encoder that exports use where the browser has none (Firefox, Chromium on Linux). The preview server sends the same headers, so the e2e tests run with them.
-- **Updates:** `vite-plugins/build-id.ts` names each build (`__BUILD_ID__`) and writes `version.json`. A tab compares the two when it is shown again and every half hour, and when the export's worker cannot start: a tab from before a deploy may no longer find the files of the workers it loads late.
+- **Updates:** `vite-plugins/build-info.ts` names and versions each build (`__BUILD_ID__`, `__APP_VERSION__`) and writes both to `version.json`. The version is 0.9, then the day and the time of the build in UTC (`0.9.20261003.1432`): something to show and report until v1.0 is settled after the first feedback; the notice of a new version says from which to which. A tab compares the two when it is shown again and every half hour, and when the export's worker cannot start: a tab from before a deploy may no longer find the files of the workers it loads late.
 
 ## 3. Key decisions and alternatives
 

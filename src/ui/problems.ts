@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { APP_VERSION } from '../core/env/version';
 import { errorMessage } from '../core/util/format';
 
 /**
@@ -7,7 +8,7 @@ import { errorMessage } from '../core/util/format';
  */
 export interface Problem {
   message: string;
-  /** For a bug report: where, when, the browser and the stack. */
+  /** For a bug report: where, the version, when, the browser and the stack. */
   details: string;
   /** How many came since the last was dismissed. */
   count: number;
@@ -22,6 +23,7 @@ export function reportProblem(error: unknown, where = 'App'): void {
   const stack = error instanceof Error ? (error.stack ?? '') : '';
   const details = [
     `${where}: ${message}`,
+    `Version: v${APP_VERSION}`,
     `Time: ${new Date().toISOString()}`,
     `Browser: ${navigator.userAgent}`,
     `Page: ${location.href}`,
