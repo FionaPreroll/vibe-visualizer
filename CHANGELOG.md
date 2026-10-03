@@ -4,6 +4,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 ## 3 October 2026
 
+- **Fixes:** the track's title no longer shows in full for a moment and then fades in again, when a track starts soon after the app opened or the visuals restarted.
 - **Only the music:** the crossed-out eye in the top bar (or **B**) lets the visuals rest while the music plays on.
 - **The queue scrolls** while you drag a track to its top or bottom, so a track can go far in one go.
 - **A new default look:** *Blue-Pink Vortex*, neon lines around a logo that turns like a record, in front of a Vortex of its own. *Classic Rainbow*, the look before, stays a preset, and looks you saved keep theirs.

@@ -61,6 +61,8 @@ const features = new Float32Array(F.size);
 const heard: HeardPosition = { seconds: 0, token: 0 };
 let overlay: TrackOverlay | null = null;
 let overlaySettings: OverlaySettings = DEFAULT_OVERLAY;
+/** Whether the overlay's settings came yet: the first ones are no change. */
+let overlayKnown = false;
 /** Until then (performance.now()), the overlay shows in full: its settings just changed. */
 let overlayPreview = 0;
 const overlayTracks = new Map<number, OverlayTrack>();
@@ -352,8 +354,11 @@ scope.addEventListener('message', (event) => {
         message.image?.close();
         break;
       case 'overlay': {
-        const changed = JSON.stringify(message.settings) !== JSON.stringify(overlaySettings);
-        // The first settings are no change; a change shows the overlay for a moment.
+        // The first settings are no change, though they differ from the defaults (they come
+        // after the start); a change shows the overlay for a moment.
+        const changed =
+          overlayKnown && JSON.stringify(message.settings) !== JSON.stringify(overlaySettings);
+        overlayKnown = true;
         if (changed && overlay && message.settings.on) {
           overlayPreview = performance.now() + OVERLAY_PREVIEW_MS;
         }

@@ -539,6 +539,48 @@ test('the display settings: resolution, auto-quality and reduce flashing (VE-06,
 /** Where the track overlay sits by default: at the bottom left. */
 const OVERLAY_TEXT: Region = { x: 0.04, y: 0.78, width: 0.4, height: 0.18 };
 
+test('the title fades in once, also right after the start (LS-18)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'vibe-visualizer:settings:v1',
+      JSON.stringify({ overlay: { on: true, fade: 1.5 } }),
+    ),
+  );
+  await startWithClassicLook(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  const title = async () => (await measure(page, await stage.screenshot(), [OVERLAY_TEXT]))[0]!;
+
+  // The settings kept from before are no change: no sample title shows after the start.
+  for (let k = 0; k < 4; k++) {
+    expect((await title()).bright).toBeLessThan(0.005);
+    await page.waitForTimeout(200);
+  }
+
+  // A track played right away: its title comes up from nothing, and only once.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(30, { title: 'Sunrise', artist: 'The Testers' }),
+  });
+  const item = page.getByTestId('queue-item');
+  await expect(item).toHaveAttribute('data-status', 'ready');
+  await item.dblclick();
+  const seen: number[] = [];
+  for (let k = 0; k < 14; k++) {
+    seen.push((await title()).bright);
+    await page.waitForTimeout(150);
+  }
+  expect(seen[0], seen.join(' ')).toBeLessThan(0.005);
+  const shown = seen.findIndex((bright) => bright > 0.01);
+  expect(shown, seen.join(' ')).toBeGreaterThan(0);
+  expect(Math.min(...seen.slice(shown)), seen.join(' ')).toBeGreaterThan(0.005);
+  expect(errors).toEqual([]);
+});
+
 test('a track can be named, and the visuals show its title and cover art (LS-15, LS-18)', async ({
   page,
 }) => {
