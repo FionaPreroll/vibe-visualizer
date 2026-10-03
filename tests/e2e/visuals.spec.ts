@@ -130,7 +130,7 @@ test('visual settings and presets survive a reload', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('tab', { name: 'Visuals' }).click();
   const preset = page.getByTestId('preset-select');
-  await expect(preset).toHaveValue('Classic Rainbow');
+  await expect(preset).toHaveValue('Blue-Pink Vortex');
 
   await preset.selectOption('Inferno');
   await page.reload();
@@ -151,7 +151,7 @@ test('visual settings and presets survive a reload', async ({ page }) => {
   await page.getByRole('button', { name: 'Delete this preset' }).click();
   await expect(preset.locator('option', { hasText: 'Mine' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Reset to defaults' }).click();
-  await expect(preset).toHaveValue('Classic Rainbow');
+  await expect(preset).toHaveValue('Blue-Pink Vortex');
   expect(errors).toEqual([]);
 });
 
@@ -160,6 +160,8 @@ test('logo and background images survive a reload', async ({ page }) => {
   await acknowledge(page);
   await page.goto('/');
   await page.getByRole('tab', { name: 'Visuals' }).click();
+  // A look with an image behind (the default has the Kaleidoscope behind).
+  await page.getByTestId('preset-select').selectOption('Classic Rainbow');
   await page.getByText('Logo', { exact: true }).click();
   await page.getByText('Background', { exact: true }).click();
 
@@ -248,7 +250,7 @@ test('favourite presets, a random pick, and your presets in a file (PR-03, PR-04
   await page.getByRole('tab', { name: 'Visuals' }).click();
   const preset = page.getByTestId('preset-select');
   const star = page.getByTestId('preset-favourite');
-  await expect(preset).toHaveValue('Classic Rainbow');
+  await expect(preset).toHaveValue('Blue-Pink Vortex');
 
   // Two favourites, starred in the list too.
   await star.click();
@@ -261,7 +263,7 @@ test('favourite presets, a random pick, and your presets in a file (PR-03, PR-04
 
   // With favourites, the random pick takes one of them: the other one.
   await page.getByTestId('preset-random').click();
-  await expect(preset).toHaveValue('Classic Rainbow');
+  await expect(preset).toHaveValue('Blue-Pink Vortex');
   await page.getByTestId('preset-random').click();
   await expect(preset).toHaveValue('Inferno');
   await page.reload();
@@ -325,7 +327,7 @@ test('the presets switch with the music, in the preview and the export (PR-02)',
   await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
   await page.getByRole('tab', { name: 'Visuals' }).click();
   const preset = page.getByTestId('preset-select');
-  await expect(preset).toHaveValue('Classic Rainbow');
+  await expect(preset).toHaveValue('Blue-Pink Vortex');
 
   // Every 5 seconds of music, to the next preset.
   await page.getByText('Preset switching', { exact: true }).click();
@@ -340,10 +342,10 @@ test('the presets switch with the music, in the preview and the export (PR-02)',
 
   // Nothing switches without music.
   await page.waitForTimeout(6000);
-  await expect(preset).toHaveValue('Classic Rainbow');
+  await expect(preset).toHaveValue('Blue-Pink Vortex');
   await page.getByTestId('play-button').click();
   const started = Date.now();
-  await expect(preset).toHaveValue('Neon Night', { timeout: 15_000 });
+  await expect(preset).toHaveValue('Classic Rainbow', { timeout: 15_000 });
   expect(Date.now() - started).toBeGreaterThan(4000);
   // The switching survives a reload, and the export says it switches too.
   await page.reload();
@@ -368,6 +370,9 @@ test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page 
   await page.getByRole('tab', { name: 'Visuals' }).click();
   const stored = () =>
     page.evaluate(() => JSON.parse(localStorage.getItem('vibe-visualizer:visuals:v1') ?? '{}'));
+  // From a look with an image behind (the default has the Kaleidoscope behind already).
+  await page.getByTestId('preset-select').selectOption('Classic Rainbow');
+  await expect.poll(async () => (await stored()).backgroundSource).toBe('image');
 
   await page.getByText('Background', { exact: true }).click();
   await page

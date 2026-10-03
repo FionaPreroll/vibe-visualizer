@@ -566,22 +566,27 @@ export interface KaleidoPreset {
   builtIn: boolean;
 }
 
+/** The look of `scene` with some of its common parameters and its own ones changed. */
+export function kaleidoLook(
+  scene: KaleidoSceneId,
+  common: Record<string, ParamValue> = {},
+  params: Record<string, ParamValue> = {},
+): KaleidoSettings {
+  const base = sceneDefaults(scene);
+  return sanitizeKaleido({
+    scene,
+    common: { ...base.common, ...common },
+    scenes: { ...base.scenes, [scene]: { ...base.scenes[scene], ...params } },
+  });
+}
+
 function preset(
   name: string,
   scene: KaleidoSceneId,
   common: Record<string, ParamValue> = {},
   params: Record<string, ParamValue> = {},
 ): KaleidoPreset {
-  const base = sceneDefaults(scene);
-  return {
-    name,
-    builtIn: true,
-    settings: sanitizeKaleido({
-      scene,
-      common: { ...base.common, ...common },
-      scenes: { ...base.scenes, [scene]: { ...base.scenes[scene], ...params } },
-    }),
-  };
+  return { name, builtIn: true, settings: kaleidoLook(scene, common, params) };
 }
 
 export const BUILT_IN_KALEIDO_PRESETS: readonly KaleidoPreset[] = [

@@ -9,10 +9,118 @@ import {
   sanitizeSettings,
 } from './visual-settings';
 
+/** The preset "bluepink" as the app exported it, which became the default. */
+const BLUE_PINK_EXPORT = {
+  backgroundSource: 'kaleidoscope',
+  layerLook: {
+    scene: 'vortex',
+    common: {
+      segments: 1,
+      mirror: true,
+      spin: 0.3,
+      zoom: 1,
+      centerX: 0,
+      centerY: 0,
+      flow: -0.4,
+      twist: 0.25,
+      trails: 0.6,
+      palette: 'neon',
+      gradient: ['#26000a', '#6e0a16', '#0c3a1c', '#2fcf62', '#dcffd4'],
+      hueCycle: 0,
+      barShift: 0.15,
+      reactivity: 1,
+      intensity: 1,
+      bloom: 0.5,
+    },
+    scenes: {
+      vortex: { arms: 3, swirl: 0.7, strands: 0.6, fiber: 0.5, core: 0.6, coreColor: '#b388ff' },
+      crystal: { points: 8, starSize: 0.16, shards: 0.6, sparks: 0.5 },
+      ribbons: {
+        ribbons: 4,
+        lobes: 5,
+        weave: 0.65,
+        thickness: 0.35,
+        depth: 0.7,
+        blossoms: 0.6,
+        flowers: 0.5,
+      },
+    },
+  },
+  backgroundFit: 'cover',
+  backgroundBlur: 0.15,
+  backgroundDim: 0.3,
+  backgroundPulse: 0.3,
+  backgroundX: 0,
+  backgroundY: 0,
+  backgroundTint: '#8f3dff',
+  backgroundTintAmount: 0,
+  shake: 0,
+  drift: 0,
+  ringStyle: 'lines',
+  ringDirection: 'outward',
+  bars: 96,
+  thickness: 0.5,
+  palette: 'neon',
+  customColors: [
+    '#e8fbff',
+    '#b3f0ff',
+    '#7ddfff',
+    '#45c2ff',
+    '#2a8cff',
+    '#3056e8',
+    '#3a33c2',
+    '#2e1f8f',
+  ],
+  topColor: '#ffffff',
+  layers: 8,
+  layerDelay: 0.16,
+  layerSpread: 0.04,
+  hueCycle: 0,
+  ringRadius: 0.1472,
+  amplitude: 0.4575,
+  minFrequency: 30,
+  maxFrequency: 12000,
+  mirror: true,
+  rotation: 0,
+  spin: 0,
+  glow: 0.6,
+  glowRadius: 0.2,
+  centerX: 0,
+  centerY: 0,
+  sensitivity: 1.1,
+  attack: 0.02,
+  release: 0.16,
+  smoothing: 0.35,
+  threshold: 0.35,
+  tilt: -0.2,
+  logoSize: 0.92,
+  logoZoom: 1,
+  logoPanX: 0,
+  logoPanY: 0,
+  rimWidth: 0.04,
+  rimColor: '#ffffff',
+  logoShadow: 0.5,
+  bassPulse: 0.5,
+  logoSpin: 33.333333333333336,
+  particles: 90,
+  particleSize: 1,
+  particleSpeed: 1,
+  bloom: 0.25,
+};
+
+const CLASSIC_RAINBOW = BUILT_IN_PRESETS.find(
+  (preset) => preset.name === 'Classic Rainbow',
+)!.settings;
+
 describe('visual settings', () => {
-  it('falls back to the defaults for missing or broken input', () => {
+  it('starts with Blue-Pink Vortex, as it was exported from the app', () => {
+    expect(BUILT_IN_PRESETS[0]!.name).toBe('Blue-Pink Vortex');
+    expect(DEFAULT_LOGO_SPECTRUM).toEqual(BLUE_PINK_EXPORT);
     expect(sanitizeSettings(null)).toEqual(DEFAULT_LOGO_SPECTRUM);
     expect(sanitizeSettings('nonsense')).toEqual(DEFAULT_LOGO_SPECTRUM);
+  });
+
+  it('fills what a stored look lacks or breaks from Classic Rainbow, the default before', () => {
     expect(
       sanitizeSettings({
         palette: 'plaid',
@@ -22,7 +130,15 @@ describe('visual settings', () => {
         glow: Number.NaN,
         unknown: 1,
       }),
-    ).toEqual(DEFAULT_LOGO_SPECTRUM);
+    ).toEqual(CLASSIC_RAINBOW);
+    // A look from before the Kaleidoscope behind and the turning logo stays without them.
+    expect(sanitizeSettings({ palette: 'fire', layers: 4 })).toMatchObject({
+      palette: 'fire',
+      layers: 4,
+      backgroundSource: 'image',
+      layerLook: null,
+      logoSpin: 0,
+    });
   });
 
   it('clamps numbers to their ranges and rounds counts', () => {
@@ -64,9 +180,9 @@ describe('visual settings', () => {
     expect(
       sanitizeSettings({ ringStyle: 'zigzag', ringDirection: 'up', backgroundTint: 'pink' }),
     ).toMatchObject({
-      ringStyle: DEFAULT_LOGO_SPECTRUM.ringStyle,
-      ringDirection: DEFAULT_LOGO_SPECTRUM.ringDirection,
-      backgroundTint: DEFAULT_LOGO_SPECTRUM.backgroundTint,
+      ringStyle: CLASSIC_RAINBOW.ringStyle,
+      ringDirection: CLASSIC_RAINBOW.ringDirection,
+      backgroundTint: CLASSIC_RAINBOW.backgroundTint,
     });
   });
 

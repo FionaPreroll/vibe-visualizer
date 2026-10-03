@@ -126,6 +126,8 @@ test('the video shows the track overlay and the cover art (LS-15, LS-18, LS-19)'
     // The overlay with its progress and time, and the cover art as the logo.
     const settings = { coverLogo: true, overlay: { on: true, progress: true, time: true } };
     localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+    // A logo that stands still, so that the cover's quarters are where they are measured.
+    localStorage.setItem('vibe-visualizer:visuals:v1', JSON.stringify({ logoSpin: 0 }));
   });
   await page.goto('/');
   await page.getByTestId('file-input').setInputFiles({
@@ -194,6 +196,8 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
     // Each track's title over its part, and its cover art as the logo.
     const settings = { coverLogo: true, overlay: { on: true } };
     localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+    // A logo that stands still, so that the covers' quarters are where they are measured.
+    localStorage.setItem('vibe-visualizer:visuals:v1', JSON.stringify({ logoSpin: 0 }));
   });
   await page.goto('/');
   const cyan = createPng(64, 64, () => [30, 220, 230]);
@@ -471,13 +475,11 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
     buffer: createTaggedWav(8, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
   });
   await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
-  // The Logo Spectrum with the Kaleidoscope behind it (VE-08): both scenes carry over.
+  // The Logo Spectrum with the Kaleidoscope behind it (VE-08), so both scenes carry over: Bloom
+  // Halo. Its logo stands still, as does that of the preset after it, Ribbon Lines, so that the
+  // cover can be found at the end.
   await page.getByRole('tab', { name: 'Visuals' }).click();
-  await page.getByText('Background', { exact: true }).click();
-  await page
-    .getByRole('radiogroup', { name: 'Background shows' })
-    .getByRole('radio', { name: 'Kaleidoscope' })
-    .click();
+  await page.getByTestId('preset-select').selectOption('Bloom Halo');
   // The presets switch every 5 s (PR-02): the resumed part goes on switching where it was.
   await page.getByText('Preset switching', { exact: true }).click();
   await page.getByTestId('auto-presets').check();
