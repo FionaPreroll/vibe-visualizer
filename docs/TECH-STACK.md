@@ -93,6 +93,8 @@ The main thread only starts, pauses, resumes and cancels the worker, decodes the
 - **At the start:** `core/env/requirements.ts` checks SharedArrayBuffer with cross-origin isolation, AudioWorklet, OffscreenCanvas and WebGL 2 (tried on a small OffscreenCanvas) before the app mounts; a page says what is missing.
 - **Errors nobody handled:** `ui/problems.ts` listens for `error` and `unhandledrejection` from the first moment (`main.ts`) and shows them with details to copy and a mail link. Svelte boundaries (`ui/Guard.svelte`) keep an error of the stage, the side panel, the waveform or the transport bar in that part.
 - **Storage:** `navigator.storage.persist()`, once a session, at the first image of the user's own or the start of an export (Firefox asks the user, so not at the start). A failed write of the settings is reported once.
+- **System check:** the help shows what the browser offers the app (graphics, the encoders, storage), from `core/env/capabilities.ts`, with a report to copy for a bug report.
+- **Content security policy:** `public/_headers` allows only what the app itself loads, its WebAssembly, and `blob:`/`data:` for the user's files and images. The preview server sends the same headers, so the e2e tests run with them.
 - **Updates:** `vite-plugins/build-id.ts` names each build (`__BUILD_ID__`) and writes `version.json`. A tab compares the two when it is shown again and every half hour, and when the export's worker cannot start: a tab from before a deploy may no longer find the files of the workers it loads late.
 
 ## 3. Key decisions and alternatives
@@ -113,7 +115,7 @@ The main thread only starts, pauses, resumes and cancels the worker, decodes the
 src/
   core/          framework-free TypeScript
     audio/       ring buffer, resampler, shared decoder loop, live input (audio inputs, screen-share
-                 audio), rate player (spike), test signal, Signalsmith Stretch binding
+                 audio), rate player and test signal (for tests), Signalsmith Stretch binding
       dsp/       sound chain: tempo stage, DJ filter, delay, reverb, limiter, sound settings and
                  presets
       engine/    media worker, engine AudioWorklet, AudioEngine facade
@@ -133,12 +135,13 @@ src/
     control/     DJ controllers in the app: deck 1 of the DDJ-FLX2 on the player, its lights
     player/      Player: connects the state with the engine; the play order (shuffle, repeat)
     state/       store with timestamped actions, app state, persistence, backups
-    env/, util/, video/
+    env/         what the app needs of the browser, the system check, the build's name
+    util/
   ui/            Svelte app: shell, top bar, stage, analysis view, queue, sound, visuals and live
                  panels, transport with waveform and cues, detail waveform, export, A/V sync,
                  welcome and help dialogs, default logo
-  spikes/        Spike Lab and the P0 prototypes (throwaway)
-vite-plugins/    extraction of the Signalsmith Stretch WASM core
+vite-plugins/    extraction of the Signalsmith Stretch WASM core, the build's name, the production
+                 headers for the preview server
 packages/
   dj-controllers/  library for DJ controllers: Web MIDI, profiles (DDJ-FLX2), events, lights
 tests/e2e/       Playwright tests
@@ -153,7 +156,7 @@ docs/            FEATURES.md, TECH-STACK.md, ANALYSIS.md, CONTROLLERS.md (propos
 
 ## 5. Spikes (P0)
 
-Before P1 we test the risky parts in small throwaway prototypes. They live in the Spike Lab (the app's start page for now) and report pass/fail per criterion:
+Before P1 we tested the risky parts in small throwaway prototypes, in the Spike Lab, which reported pass or fail per criterion. The Spike Lab was removed before v1.0; its look at the browser became the system check in the help.
 
 | Spike | Question | Passes when |
 |---|---|---|
@@ -182,7 +185,6 @@ What this means:
 
 The listening test (S2) and the upload of an export to YouTube and TikTok (S3) passed later, on 2026-10-03, as did Chrome on Windows and Firefox on Linux.
 
-The development container (headless Chromium, software GPU) and CI run all five spikes on every push; their frame rates and encoder speeds are not meaningful.
 
 ## 6. Open points
 
