@@ -84,6 +84,52 @@ test('queue: adds files, reports unsupported ones, reorders and removes', async 
   expect(errors).toEqual([]);
 });
 
+test('queue: scrolls while a track is dragged to its edge, so it can go far (PL-03) @firefox', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await page.goto('/');
+  const wav = createWav(1, 44100);
+  await page.getByTestId('file-input').setInputFiles(
+    Array.from({ length: 30 }, (_, k) => ({
+      name: `Track ${String(k + 1).padStart(2, '0')}.wav`,
+      mimeType: 'audio/wav',
+      buffer: wav,
+    })),
+  );
+  const items = page.getByTestId('queue-item');
+  await expect(items).toHaveCount(30);
+  const list = page.getByTestId('queue-list');
+  /** How far the list is from its end (pixels). */
+  const toEnd = () =>
+    list.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop);
+  expect(await toEnd()).toBeGreaterThan(1000);
+
+  // The first track, held over the tracks at the bottom of the list: the list scrolls on to its
+  // end, under the resting pointer.
+  const from = (await items.nth(0).boundingBox())!;
+  const box = (await list.boundingBox())!;
+  await page.mouse.move(from.x + 40, from.y + from.height / 2);
+  await page.mouse.down();
+  const bottom = box.y + box.height - 30;
+  await page.mouse.move(from.x + 40, bottom, { steps: 8 });
+  // The pointer rests; a little wiggle keeps the drag events coming as they do in a browser.
+  for (let k = 0; k < 120 && (await toEnd()) > 1; k++) {
+    await page.mouse.move(from.x + 40 + (k % 2), bottom);
+    await page.waitForTimeout(50);
+  }
+  expect(await toEnd()).toBeLessThanOrEqual(1);
+  // Let go there, over the lower half of the last track: it goes to the end of the queue. (A
+  // last move, and a moment for the drag to take it, as a hand gives it.)
+  await page.mouse.move(from.x + 40, bottom);
+  await page.waitForTimeout(200);
+  await page.mouse.up();
+  await expect(items.nth(0)).toContainText('Track 02');
+  await expect(items.nth(29)).toContainText('Track 01');
+  expect(errors).toEqual([]);
+});
+
 test('playback: plays, seeks, shows the analysis and moves on to the next track @firefox', async ({
   page,
 }) => {
