@@ -177,7 +177,7 @@ export class Exporter {
     } catch (error) {
       // A worker that could not start stays dead: the next look starts a new one.
       if (this.current.status !== 'running') this.terminate();
-      if ((await newerBuild()) !== true) throw error;
+      if ((await newerBuild()) === null) throw error;
       throw new Error(`${errorMessage(error)} ${UPDATED}.`, { cause: error });
     }
   }
@@ -502,7 +502,7 @@ export class Exporter {
       } else {
         const manifest = await readManifest();
         const resumable = manifest !== null && !manifest.progress.finished;
-        const updated = (await newerBuild()) === true;
+        const updated = (await newerBuild()) !== null;
         this.set({
           status: 'failed',
           message: updated

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import changelog from '../../CHANGELOG.md?raw';
 import guide from '../../docs/USER-GUIDE.md?raw';
-import { guideSections, renderMarkdown, slug } from './markdown';
+import { guideSections, renderChangelog, renderMarkdown, slug } from './markdown';
 
 describe('user guide', () => {
   it('splits the guide into its sections', () => {
@@ -16,8 +17,8 @@ describe('user guide', () => {
       'exporting-videos',
       'dj-controller',
       'backup',
-      'when-something-goes-wrong',
       'keyboard-shortcuts',
+      'when-something-goes-wrong',
       'about',
     ]);
     expect(sections[0]!.markdown).not.toContain('## ');
@@ -58,5 +59,18 @@ describe('user guide', () => {
     expect(renderMarkdown('[mail me](mailto:a@b.com)')).toBe(
       '<p><a href="mailto:a@b.com" target="_blank" rel="noopener noreferrer">mail me</a></p>',
     );
+  });
+});
+
+describe('changelog', () => {
+  it('shows each day as a heading with its changes, newest first, without the title', () => {
+    const html = renderChangelog(changelog);
+    expect(html).not.toContain('<h1');
+    expect(html).not.toContain('# Changelog');
+    const days = [...html.matchAll(/<h3>(\d{1,2} \w+ \d{4})<\/h3>/g)].map((match) => match[1]!);
+    expect(days.length).toBeGreaterThanOrEqual(5);
+    const dates = days.map((day) => Date.parse(`${day} UTC`));
+    expect(dates).toEqual([...dates].sort((a, b) => b - a));
+    expect(html).toContain('<li><strong>A new default look:</strong>');
   });
 });

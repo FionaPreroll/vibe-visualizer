@@ -12,10 +12,11 @@
     /** Saves the picture on the stage (EX-10). */
     onPicture: () => void;
     onExport: () => void;
+    onSettings: () => void;
     onHelp: () => void;
     onController: () => void;
   }
-  let { onFullscreen, onPicture, onExport, onHelp, onController }: Props = $props();
+  let { onFullscreen, onPicture, onExport, onSettings, onHelp, onController }: Props = $props();
 
   const player = usePlayer();
   const app = player.store;
@@ -176,6 +177,15 @@
       {:else}
         Export
       {/if}
+    </button>
+    <button
+      class="toggle"
+      onclick={onSettings}
+      aria-label="Settings"
+      title="Settings: the app's name, backups"
+      data-testid="settings-button"
+    >
+      <Icon name="gear" size={18} />
     </button>
     <button
       class="toggle help"

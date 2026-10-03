@@ -1,4 +1,5 @@
 import { bugs } from '../../package.json';
+import { APP_VERSION } from '../core/env/version';
 
 /** Where bug reports and ideas go: the `bugs.email` of package.json. */
 export const BUG_EMAIL: string = bugs.email;
@@ -14,7 +15,7 @@ export function bugReportLink(appName: string, details?: string): string {
   const subject = `${appName}: bug report`;
   const facts = details
     ? ['Details:', details.slice(0, DETAILS_LENGTH)]
-    : [`Browser: ${navigator.userAgent}`, `Page: ${location.href}`];
+    : [`Version: v${APP_VERSION}`, `Browser: ${navigator.userAgent}`, `Page: ${location.href}`];
   const body = ['What happened, and what did you expect?', '', '', ...facts].join('\n');
   return `mailto:${BUG_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }

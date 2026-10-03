@@ -214,6 +214,7 @@ test('? shows the shortcuts and the help, and the A/V sync offset is kept (UI-04
   await expect(content).toContainText('For drum & bass choose 120–200');
   await page.getByTestId('help-nav-about').click();
   await expect(page.getByTestId('help-bug')).toHaveAttribute('href', /^mailto:fipreroll\+app@/);
+  await page.getByTestId('help-nav-getting-started').click();
   await page.getByTestId('help-welcome').click();
   await expect(help).toBeHidden();
   await expect(page.getByTestId('welcome')).toBeVisible();

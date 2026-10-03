@@ -19,7 +19,7 @@
 | Thread communication | SharedArrayBuffer ring buffers for realtime data; a small RPC helper for control calls | No memory allocation on the audio thread, so no crackles. The spikes use a 100-line helper; whether Comlink is worth it is decided in P1 |
 | Storage | localStorage for settings, presets, and each file's cues, markers, tempo and grid correction; IndexedDB (a thin wrapper, no library needed) for the queue and its file handles; Origin Private File System for the analysis cache, images and render segments. A backup (UI-06) is one JSON file: the app's localStorage entries as stored, the images and, if chosen, the analysis cache (base64) | Persistent, large, usable from workers; file handles can only be kept in IndexedDB, so the queue cannot go into a backup |
 | Fonts | Pacifico for the default logo; Montserrat, Bebas Neue, Playfair Display, Space Mono and Orbitron (with Pacifico) for the track overlay. All SIL Open Font License 1.1, from `@fontsource/*` | Bundled with the app, so no request goes to a font service (NF-01). The logo is drawn on a canvas from the app's name; the overlay's fonts load in the render and export workers when first used |
-| In-app help | The user guide (`docs/USER-GUIDE.md`) imported as text, with a small Markdown renderer of our own | One text for GitHub and the app; it knows the few constructs the guide uses and escapes everything else |
+| In-app help | The user guide (`docs/USER-GUIDE.md`) and the changelog (`CHANGELOG.md`) imported as text, with a small Markdown renderer of our own | One text for GitHub and the app; it knows the few constructs the guide uses and escapes everything else. The help only explains, in three parts (the guide, troubleshooting with the system check, and about: the version, what's new, the licences); the app's own settings and the backup are in the settings dialog |
 | DJ controllers | Web MIDI, with our own library (`packages/dj-controllers`, a pnpm workspace package without dependencies) | A profile per controller as plain data; semantic events and lights, pickup. The mappings of Mixxx are GPL-licensed and serve only as a check |
 | Validation | Zod 4 | Checks imported preset and project files; TypeScript types come from the schemas |
 | FFT | fft.js (MIT) | Fast radix-4 FFT in plain JS; easy to replace |
@@ -29,7 +29,7 @@
 | CI | GitHub Actions | Type check, lint, unit and end-to-end tests for each pull request and after each merge to main, the main paths in Firefox in a job of their own (with a virtual display for WebGL, and a sound server, without which Firefox on Linux plays no sound); the README screenshots and the soak test when their workflows are run by hand |
 | Hosting | Cloudflare Workers with static assets (free), built by Workers Builds | A Preview per branch; can send the COOP/COEP headers that SharedArrayBuffer requires (GitHub Pages can't) |
 
-**Licences:** all dependencies are MIT, ISC, Apache-2.0 or MPL-2.0 (Mediabunny); the bundled fonts are under the SIL Open Font License 1.1. The optional AAC fallback contains FFmpeg's AAC encoder (LGPL) as a separate WebAssembly module. No GPL code.
+**Licences:** the app itself has none yet: all rights reserved. Its dependencies are MIT or MPL-2.0 (Mediabunny); the bundled fonts are under the SIL Open Font License 1.1. The optional AAC fallback contains FFmpeg's AAC encoder (LGPL 2.1 or later) as a separate WebAssembly module, loaded only when a browser has no AAC encoder of its own. No GPL code. The build lists every part of others that is in the app, with its licence texts: `vite-plugins/third-party-notices.ts` reads the packages from the modules of the main build and of the workers' builds, and adds what is compiled into the WebAssembly (FFmpeg, Emscripten and musl) and the helpers of Vite and Rolldown. Texts that a package does not ship are in `licenses/`. It writes `licenses.json`, which **Help → Licences** shows, and `licenses.txt`; a package without a licence text fails the build. For the LGPL, FFmpeg's entry says where its source is and offers it on request; for the MPL, Mediabunny's entries point to their npm packages, which hold their source.
 
 ## 2. Architecture sketch
 
@@ -95,7 +95,7 @@ The main thread only starts, pauses, resumes and cancels the worker, decodes the
 - **Storage:** `navigator.storage.persist()`, once a session, at the first image of the user's own or the start of an export (Firefox asks the user, so not at the start). A failed write of the settings is reported once.
 - **System check:** the help shows what the browser offers the app (graphics, the encoders, storage), from `core/env/capabilities.ts`, with a report to copy for a bug report.
 - **Content security policy:** `public/_headers` allows only what the app itself loads, its WebAssembly, and `blob:`/`data:` for the user's files and images, and for the worker of the AAC encoder that exports use where the browser has none (Firefox, Chromium on Linux). The preview server sends the same headers, so the e2e tests run with them.
-- **Updates:** `vite-plugins/build-id.ts` names each build (`__BUILD_ID__`) and writes `version.json`. A tab compares the two when it is shown again and every half hour, and when the export's worker cannot start: a tab from before a deploy may no longer find the files of the workers it loads late.
+- **Updates:** `vite-plugins/build-info.ts` names and versions each build (`__BUILD_ID__`, `__APP_VERSION__`) and writes both to `version.json`. The version is 0.9, then the day and the time of the build in UTC (`0.9.20261003.1432`): something to show and report until v1.0 is settled after the first feedback; the notice of a new version says from which to which. A tab compares the two when it is shown again and every half hour, and when the export's worker cannot start: a tab from before a deploy may no longer find the files of the workers it loads late.
 
 ## 3. Key decisions and alternatives
 
@@ -135,13 +135,14 @@ src/
     control/     DJ controllers in the app: deck 1 of the DDJ-FLX2 on the player, its lights
     player/      Player: connects the state with the engine; the play order (shuffle, repeat)
     state/       store with timestamped actions, app state, persistence, backups
-    env/         what the app needs of the browser, the system check, the build's name
+    env/         what the app needs of the browser, the system check, the build's version
     util/
   ui/            Svelte app: shell, top bar, stage, analysis view, queue, sound, visuals and live
                  panels, transport with waveform and cues, detail waveform, export, A/V sync,
-                 welcome and help dialogs, default logo
-vite-plugins/    extraction of the Signalsmith Stretch WASM core, the build's name, the production
-                 headers for the preview server
+                 settings, welcome and help dialogs, default logo
+vite-plugins/    extraction of the Signalsmith Stretch WASM core, the build's name and version,
+                 the parts of others with their licences, the production headers for the preview
+                 server
 packages/
   dj-controllers/  library for DJ controllers: Web MIDI, profiles (DDJ-FLX2), events, lights
 tests/e2e/       Playwright tests

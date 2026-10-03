@@ -38,6 +38,11 @@ export function slug(title: string): string {
     .replace(/^-|-$/g, '');
 }
 
+/** The changelog (CHANGELOG.md) as the help shows it: without its title, a heading for each day. */
+export function renderChangelog(markdown: string): string {
+  return renderMarkdown(markdown.replace(/^# .*\n/, '').replace(/^## /gm, '### '));
+}
+
 /** HTML for the Markdown of a section. */
 export function renderMarkdown(markdown: string): string {
   const html: string[] = [];

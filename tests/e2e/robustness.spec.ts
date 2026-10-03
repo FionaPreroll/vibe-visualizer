@@ -228,19 +228,29 @@ test('a tab from before a deploy learns of the new version (NF-09)', async ({ pa
     page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
 
   // The server has this very build: nothing to say.
-  const served = (await (await page.request.get('/version.json')).json()) as { build: string };
+  const served = (await (await page.request.get('/version.json')).json()) as {
+    build: string;
+    version: string;
+  };
   expect(served.build).toMatch(/^[a-z0-9]+-[a-z0-9]+$/);
+  // The version: 0.9, then the day and the time of the build.
+  expect(served.version).toMatch(/^0\.9\.\d{8}\.\d{4}$/);
   await showAgain();
   await page.waitForTimeout(500);
   await expect(notice).toHaveCount(0);
 
   // A newer build is deployed, without the worker files of this one.
-  await page.route('**/version.json', (route) => route.fulfill({ json: { build: 'newer' } }));
+  await page.route('**/version.json', (route) =>
+    route.fulfill({ json: { build: 'newer', version: '0.9.20991231.2359' } }),
+  );
   await page.route('**/assets/export.worker-*.js', (route) => route.fulfill({ status: 404 }));
   await page.reload();
   await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
   await showAgain();
-  await expect(notice).toContainText('A new version of FibeStation is out.');
+  // It says from which version to which.
+  await expect(notice).toContainText(
+    `A new version of FibeStation is out: v${served.version} → v0.9.20991231.2359`,
+  );
 
   // The export's worker cannot start: the dialog says that a reload helps.
   await page.getByTestId('export-button').click();
@@ -271,8 +281,12 @@ test('the help has a system check of this browser, to copy for a bug report (NF-
   await page.getByTestId('system-check-copy').click();
   await expect(page.getByTestId('system-check-copy')).toHaveText('Copied');
   const report = await page.evaluate(() => navigator.clipboard.readText());
-  expect(report).toMatch(/^FibeStation: system check, \d{4}-/);
+  expect(report).toMatch(/^FibeStation v0\.9\.\d{8}\.\d{4}: system check, \d{4}-/);
   expect(report).toContain('\n- Graphics: WebGL 2 on ');
+  // About says which version runs, and when it was built.
+  await page.getByTestId('help-nav-about').click();
+  await expect(page.getByTestId('about-version')).toHaveText(/^FibeStation v0\.9\.\d{8}\.\d{4}$/);
+  await expect(page.getByTestId('about-info')).toContainText('UTC');
 });
 
 test('the content security policy lets the app do all it does (NF-01)', async ({ page }) => {

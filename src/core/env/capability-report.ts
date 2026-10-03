@@ -1,4 +1,5 @@
 import type { CapabilityReport } from './capabilities';
+import { APP_VERSION } from './version';
 
 const yesNo = (value: boolean) => (value ? 'yes' : 'no');
 
@@ -41,5 +42,9 @@ export function capabilityRows(report: CapabilityReport): { label: string; value
 /** The system check as text, for a bug report. */
 export function capabilityText(report: CapabilityReport, appName: string): string {
   const rows = capabilityRows(report).map((row) => `- ${row.label}: ${row.value}`);
-  return [`${appName}: system check, ${new Date().toISOString()}`, '', ...rows].join('\n');
+  return [
+    `${appName} v${APP_VERSION}: system check, ${new Date().toISOString()}`,
+    '',
+    ...rows,
+  ].join('\n');
 }

@@ -40,6 +40,7 @@
     import: 'M12 20V9M7 14l5-5 5 5M5 4h14',
     pencil: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
     camera: 'M3 8h4l2-3h6l2 3h4v11H3zM12 10a3.5 3.5 0 110 7 3.5 3.5 0 010-7z',
+    gear: 'M9.9 5.1L10.2 2.7L13.8 2.7L14.1 5.1L15.4 5.6L17.3 4.1L19.9 6.7L18.4 8.6L18.9 9.9L21.3 10.2L21.3 13.8L18.9 14.1L18.4 15.4L19.9 17.3L17.3 19.9L15.4 18.4L14.1 18.9L13.8 21.3L10.2 21.3L9.9 18.9L8.6 18.4L6.7 19.9L4.1 17.3L5.6 15.4L5.1 14.1L2.7 13.8L2.7 10.2L5.1 9.9L5.6 8.6L4.1 6.7L6.7 4.1L8.6 5.6ZM12 9a3 3 0 110 6 3 3 0 010-6z',
   } as const;
   /** Icons drawn as lines instead of filled shapes. */
   const STROKED: readonly string[] = [
@@ -60,6 +61,7 @@
     'import',
     'pencil',
     'camera',
+    'gear',
   ];
   export type IconName = keyof typeof ICONS;
 </script>
