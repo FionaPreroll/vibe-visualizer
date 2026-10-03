@@ -17,8 +17,8 @@ describe('user guide', () => {
       'exporting-videos',
       'dj-controller',
       'backup',
-      'when-something-goes-wrong',
       'keyboard-shortcuts',
+      'when-something-goes-wrong',
       'about',
     ]);
     expect(sections[0]!.markdown).not.toContain('## ');

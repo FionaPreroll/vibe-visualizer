@@ -81,7 +81,7 @@ src/core/       framework-free core: audio engine (media worker, AudioWorklet, r
                 Spectrum and Kaleidoscope scenes), export (export worker, formats, job
                 storage), player (play order) and state, Signalsmith Stretch binding, utilities
 src/ui/         Svelte app: top bar, stage, queue, sound, visuals and live panels, transport
-                with waveforms and cues, export, sync, welcome and help dialogs
+                with waveforms and cues, export, sync, settings, welcome and help dialogs
 packages/       dj-controllers: library for DJ controllers (Web MIDI, profiles, lights)
 vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core, the build's
                 name and version (version.json), the parts of others with their licences

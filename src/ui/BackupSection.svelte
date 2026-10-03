@@ -14,7 +14,7 @@
 
   /**
    * Saving and restoring a backup of everything the app keeps in this browser (UI-06), in the
-   * help below the guide's words on it. A backup restored replaces it all; the app reloads then.
+   * settings. A backup restored replaces it all; the app reloads then.
    */
   const player = usePlayer();
   const app = player.store;

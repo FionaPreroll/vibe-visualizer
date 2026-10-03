@@ -12,7 +12,7 @@ FibeStation turns music into visuals: a logo with a spectrum ring, or kaleidosco
 
 To visualise music from somewhere else (a DJ mixer, another app or a browser tab), use the **Live** tab instead of the queue.
 
-The app is called *FibeStation* until you rename it: double-click the name in the top bar. The default logo shows the name too.
+The app is called *FibeStation* until you rename it: in **Settings** (the gear in the top bar), or with a double-click on the name in the top bar. The default logo shows the name too. **Settings** also makes and restores backups; this help only explains.
 
 It works best in Chrome or Edge on a computer with a good graphics card, above all for the Kaleidoscope. Firefox works too; in Firefox the queue's files have to be added again after a reload.
 
@@ -121,9 +121,13 @@ If a control does not do what it should, open **MIDI monitor** in the dialog, co
 
 ## Backup
 
-**Save a backup** puts everything the app keeps in this browser into one file, to move it to another browser or computer, or to keep it safe: the settings, your presets, the cues, markers, tempos and names of your tracks, and the background and logo images. **With the track analysis** adds the waveforms and beat grids found, so no track needs to be analysed again; the file gets larger (about 0.3 MB for five minutes of music). The music files and the queue are not in it: add the files again where you restore it, and their cues and markers come back with them.
+In **Settings** (the gear in the top bar), **Save a backup** puts everything the app keeps in this browser into one file, to move it to another browser or computer, or to keep it safe: the settings, your presets, the cues, markers, tempos and names of your tracks, and the background and logo images. **With the track analysis** adds the waveforms and beat grids found, so no track needs to be analysed again; the file gets larger (about 0.3 MB for five minutes of music). The music files and the queue are not in it: add the files again where you restore it, and their cues and markers come back with them.
 
 **Restore a backup** replaces everything the app keeps in this browser with what is in the file; it says what that is first. Then the app reloads. The queue stays as it is, and so does the analysis of the tracks if the backup has none.
+
+## Keyboard shortcuts
+
+Press **?** for the full list. The main ones: Space play and pause, ← and → seek 5 s (30 s with Shift), N next, P previous, 1–8 hot cues, I and O the in and out markers, Q snap to the beat, W the detail waveform, − and + the tempo, V the next view, [ and ] the presets, F fullscreen, Ctrl+Z undo.
 
 ## When something goes wrong
 
@@ -134,10 +138,6 @@ If a control does not do what it should, open **MIDI monitor** in the dialog, co
 - **Storage:** the app asks the browser to keep its data, so that it is not cleared when the disk runs low (Firefox asks you, the first time you add an image or export). When the browser's storage is full, a message says that changes are not saved.
 - **System check:** below, what this browser offers the app: the graphics, the encoders for videos, and the storage. **Copy the report** puts it on the clipboard for a bug report.
 - **The browser:** the app needs a current browser, with WebGL 2. If something is missing, it says what instead of starting. When it is WebGL 2 in Chrome, Edge or Firefox, turn on graphics acceleration in the browser's settings.
-
-## Keyboard shortcuts
-
-Press **?** for the full list. The main ones: Space play and pause, ← and → seek 5 s (30 s with Shift), N next, P previous, 1–8 hot cues, I and O the in and out markers, Q snap to the beat, W the detail waveform, − and + the tempo, V the next view, [ and ] the presets, F fullscreen, Ctrl+Z undo.
 
 ## About
 

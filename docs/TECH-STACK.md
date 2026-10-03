@@ -19,7 +19,7 @@
 | Thread communication | SharedArrayBuffer ring buffers for realtime data; a small RPC helper for control calls | No memory allocation on the audio thread, so no crackles. The spikes use a 100-line helper; whether Comlink is worth it is decided in P1 |
 | Storage | localStorage for settings, presets, and each file's cues, markers, tempo and grid correction; IndexedDB (a thin wrapper, no library needed) for the queue and its file handles; Origin Private File System for the analysis cache, images and render segments. A backup (UI-06) is one JSON file: the app's localStorage entries as stored, the images and, if chosen, the analysis cache (base64) | Persistent, large, usable from workers; file handles can only be kept in IndexedDB, so the queue cannot go into a backup |
 | Fonts | Pacifico for the default logo; Montserrat, Bebas Neue, Playfair Display, Space Mono and Orbitron (with Pacifico) for the track overlay. All SIL Open Font License 1.1, from `@fontsource/*` | Bundled with the app, so no request goes to a font service (NF-01). The logo is drawn on a canvas from the app's name; the overlay's fonts load in the render and export workers when first used |
-| In-app help | The user guide (`docs/USER-GUIDE.md`) imported as text, with a small Markdown renderer of our own | One text for GitHub and the app; it knows the few constructs the guide uses and escapes everything else |
+| In-app help | The user guide (`docs/USER-GUIDE.md`) and the changelog (`CHANGELOG.md`) imported as text, with a small Markdown renderer of our own | One text for GitHub and the app; it knows the few constructs the guide uses and escapes everything else. The help only explains, in three parts (the guide, troubleshooting with the system check, and about: the version, what's new, the licences); the app's own settings and the backup are in the settings dialog |
 | DJ controllers | Web MIDI, with our own library (`packages/dj-controllers`, a pnpm workspace package without dependencies) | A profile per controller as plain data; semantic events and lights, pickup. The mappings of Mixxx are GPL-licensed and serve only as a check |
 | Validation | Zod 4 | Checks imported preset and project files; TypeScript types come from the schemas |
 | FFT | fft.js (MIT) | Fast radix-4 FFT in plain JS; easy to replace |
@@ -135,13 +135,14 @@ src/
     control/     DJ controllers in the app: deck 1 of the DDJ-FLX2 on the player, its lights
     player/      Player: connects the state with the engine; the play order (shuffle, repeat)
     state/       store with timestamped actions, app state, persistence, backups
-    env/         what the app needs of the browser, the system check, the build's name
+    env/         what the app needs of the browser, the system check, the build's version
     util/
   ui/            Svelte app: shell, top bar, stage, analysis view, queue, sound, visuals and live
                  panels, transport with waveform and cues, detail waveform, export, A/V sync,
-                 welcome and help dialogs, default logo
-vite-plugins/    extraction of the Signalsmith Stretch WASM core, the build's name, the production
-                 headers for the preview server
+                 settings, welcome and help dialogs, default logo
+vite-plugins/    extraction of the Signalsmith Stretch WASM core, the build's name and version,
+                 the parts of others with their licences, the production headers for the preview
+                 server
 packages/
   dj-controllers/  library for DJ controllers: Web MIDI, profiles (DDJ-FLX2), events, lights
 tests/e2e/       Playwright tests

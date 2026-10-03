@@ -53,3 +53,40 @@ test('About names the version; the help lists the parts of others and what is ne
   expect(text).toContain('FFmpeg libavcodec');
   expect(errors).toEqual([]);
 });
+
+test('the help only explains: the name and the backup are in the settings', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+
+  // The help in three parts: the guide, what to do when something goes wrong, and about the app.
+  await page.getByTestId('shortcuts-button').click();
+  const help = page.getByTestId('help');
+  await expect(help.locator('nav .group')).toHaveText(['Guide', 'Troubleshooting', 'About']);
+  await page.getByTestId('help-nav-backup').click();
+  await expect(help.getByTestId('backup')).toHaveCount(0);
+  // Its page on backups opens the settings, where they are made.
+  await page.getByTestId('help-settings').click();
+  await expect(help).toBeHidden();
+  const settings = page.getByTestId('settings');
+  await expect(settings).toBeVisible();
+  await expect(settings.getByTestId('backup-save')).toBeVisible();
+
+  // The name of the app, in the top bar and the window's title.
+  const name = settings.getByTestId('settings-app-name');
+  await expect(name).toHaveValue('FibeStation');
+  await name.fill('Night Visuals');
+  await name.press('Enter');
+  await expect(page.getByTestId('app-name')).toHaveText('Night Visuals');
+  await expect(page).toHaveTitle('Night Visuals');
+  // Nothing typed: the name it has by default.
+  await name.fill('  ');
+  await name.press('Enter');
+  await expect(page.getByTestId('app-name')).toHaveText('FibeStation');
+
+  // What is in a backup: the help, at its page on it.
+  await settings.getByTestId('settings-backup-help').click();
+  await expect(settings).toBeHidden();
+  await expect(page.getByTestId('help-content')).toHaveAttribute('data-section', 'backup');
+  expect(errors).toEqual([]);
+});

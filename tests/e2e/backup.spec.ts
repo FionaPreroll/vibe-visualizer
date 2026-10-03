@@ -36,9 +36,9 @@ function analysed(page: Page): Promise<string[]> {
   });
 }
 
+/** The backup is in the settings (the gear in the top bar). */
 async function openBackup(page: Page) {
-  await page.getByTestId('shortcuts-button').click();
-  await page.getByTestId('help-nav-backup').click();
+  await page.getByTestId('settings-button').click();
   await expect(page.getByTestId('backup')).toBeVisible();
 }
 
@@ -134,7 +134,7 @@ test('a backup holds everything the app keeps, and brings it back (UI-06)', asyn
   await expect(confirm).toContainText('1 image and the analysis of 1 track');
   await expect(confirm).toContainText('replaces everything the app keeps in this browser');
   await Promise.all([page.waitForEvent('load'), page.getByTestId('backup-restore').click()]);
-  await expect(page.getByTestId('help')).toBeHidden();
+  await expect(page.getByTestId('settings')).toBeHidden();
   const restored = await entries(page);
   for (const key of ['vibe-visualizer:visuals:v1', 'vibe-visualizer:presets:v1', trackKey]) {
     expect(restored[key]).toEqual(kept[key]);

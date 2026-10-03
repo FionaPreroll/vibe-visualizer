@@ -8,6 +8,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 - **Versions:** each build has a version. **About** shows it, and the note of a new version says from which version to which.
 - **Licences:** **Help → Licences** lists the parts of others in the app, with their licences.
 - **What's new:** this list, in the help.
+- **Settings:** the gear in the top bar holds the app's name and the backup, which were in the help. The help only explains now, in three parts: the guide, what to do when something goes wrong, and about the app.
 - **The app recovers by itself:** after the graphics card was reset, the visuals start again within a second, and an export goes on from where it was. When the sound stops by itself (the audio device was unplugged, the system took the sound), the music pauses with a message.
 - **It says what went wrong:** an error the app did not expect shows, with details to copy and a mail to report it. A browser without something the app needs gets a page that says what it lacks. When the browser's storage is full, a message says so. A tab from before an update offers to reload.
 - **System check:** the help shows what this browser offers the app (the graphics, the encoders, the storage), to copy into a bug report.

@@ -24,6 +24,7 @@
   import { providePlayer } from './player-context';
   import ProblemNotice from './ProblemNotice.svelte';
   import QueuePanel from './QueuePanel.svelte';
+  import SettingsDialog from './SettingsDialog.svelte';
   import { nextVisualMode, stepPreset } from './shortcuts';
   import { provideCapture, StageCapture } from './stage-capture';
   import SoundPanel from './SoundPanel.svelte';
@@ -49,6 +50,7 @@
   let exportOpen = $state(false);
   let helpOpen = $state(false);
   let controllerOpen = $state(false);
+  let settingsOpen = $state(false);
   /** The help's section: where it was left, or the shortcuts for "?". */
   let helpSection = $state('getting-started');
   let welcomeOpen = $state(false);
@@ -315,6 +317,7 @@
     onFullscreen={toggleFullscreen}
     onPicture={takePicture}
     onExport={() => (exportOpen = true)}
+    onSettings={() => (settingsOpen = true)}
     onHelp={() => (helpOpen = true)}
     onController={() => (controllerOpen = true)}
   />
@@ -448,11 +451,21 @@
       helpOpen = true;
     }}
   />
+  <SettingsDialog
+    open={settingsOpen}
+    onclose={() => (settingsOpen = false)}
+    onhelp={(section) => {
+      settingsOpen = false;
+      helpSection = section;
+      helpOpen = true;
+    }}
+  />
   <HelpDialog
     open={helpOpen}
     bind:section={helpSection}
     onclose={() => (helpOpen = false)}
     onwelcome={() => (welcomeOpen = true)}
+    onsettings={() => (settingsOpen = true)}
   />
   <DropOverlay />
   <WelcomeIntro
