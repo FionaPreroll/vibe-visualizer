@@ -23,6 +23,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:firefox": "playwright test --project=firefox",
+    "test:soak": "playwright test -c playwright.soak.config.ts",
     "eval:drums": "vitest run tests/eval --silent=false",
     "screenshots": "playwright test -c playwright.screenshots.config.ts"
   },
