@@ -4,6 +4,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 ## 3 October 2026
 
+- **The queue scrolls** while you drag a track to its top or bottom, so a track can go far in one go.
 - **A new default look:** *Blue-Pink Vortex*, neon lines around a logo that turns like a record, in front of a Vortex of its own. *Classic Rainbow*, the look before, stays a preset, and looks you saved keep theirs.
 - **Versions:** each build has a version. **About** shows it, and the note of a new version says from which version to which.
 - **Licences:** **Help → Licences** lists the parts of others in the app, with their licences.

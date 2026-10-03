@@ -19,7 +19,7 @@ It works best in Chrome or Edge on a computer with a good graphics card, above a
 ## Queue and playback
 
 - **Playing:** double-click a track, or select it and press **Enter**. Space plays and pauses, **N** and **P** go to the next and previous track, the arrow keys jump 5 s (30 s with Shift).
-- **Order:** drag tracks to reorder them (or **Alt+↑** and **Alt+↓**). Folders are read with their subfolders and sorted by track number, or else by file name, so "2 …" comes before "10 …".
+- **Order:** drag tracks to reorder them (or **Alt+↑** and **Alt+↓**); held at the top or the bottom of the list, it scrolls, and let go below the last track, it goes to the end. Folders are read with their subfolders and sorted by track number, or else by file name, so "2 …" comes before "10 …".
 - **Gapless:** tracks follow each other without a gap, also between files with different sample rates.
 - **Shuffle and repeat:** the buttons next to Stop (or **S** and **R**): shuffle plays every track once per round; repeat plays the queue again, or the track.
 - **After a reload** the queue and the current track are still there. In Chrome and Edge the files come back too (after a browser restart, click **Allow** once in the queue); other browsers keep the entries, and adding the files or their folder again brings them back, with their cues.
