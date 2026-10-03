@@ -86,6 +86,15 @@ Realtime data moves through SharedArrayBuffer ring buffers; control commands go 
 
 The main thread only starts, pauses, resumes and cancels the worker, decodes the Logo Spectrum images (SVG needs the DOM) and keeps a screen wake lock (EX-06).
 
+**Robustness** (v1.0 stabilization: NF-09, NF-10, NF-02)
+
+- **Lost graphics context:** the render worker reports it, and the stage starts a new worker on a new canvas a second later; the code that starts it sends everything anew (settings, images, covers, tracks). Three times a minute at most, then it waits for "Try again". A frame or a start that fails counts the same; an error of a single message is only reported. In the export, the video pass starts again in a new context from its last finished segment, as a resume does; it gives up after four losses without a segment finished in between. The context is checked again before a segment is finished.
+- **Audio:** the worklet catches errors of a block (which stays silent) and of a message, and reports them once a second at most. The engine listens for `processorerror`, for the context's `error` event (Chromium: the device failed) and for its state (`suspended`, Safari's `interrupted`) while the music should play; the player then pauses and says why. The sound chain takes new settings only once it could read them whole.
+- **At the start:** `core/env/requirements.ts` checks SharedArrayBuffer with cross-origin isolation, AudioWorklet, OffscreenCanvas and WebGL 2 (tried on a small OffscreenCanvas) before the app mounts; a page says what is missing.
+- **Errors nobody handled:** `ui/problems.ts` listens for `error` and `unhandledrejection` from the first moment (`main.ts`) and shows them with details to copy and a mail link. Svelte boundaries (`ui/Guard.svelte`) keep an error of the stage, the side panel, the waveform or the transport bar in that part.
+- **Storage:** `navigator.storage.persist()`, once a session, at the first image of the user's own or the start of an export (Firefox asks the user, so not at the start). A failed write of the settings is reported once.
+- **Updates:** `vite-plugins/build-id.ts` names each build (`__BUILD_ID__`) and writes `version.json`. A tab compares the two when it is shown again and every half hour, and when the export's worker cannot start: a tab from before a deploy may no longer find the files of the workers it loads late.
+
 ## 3. Key decisions and alternatives
 
 | Decision | Chosen | Alternatives and why not |
@@ -159,8 +168,8 @@ Before P1 we test the risky parts in small throwaway prototypes. They live in th
 | Spike | Result | Key numbers |
 |---|---|---|
 | S1 Streaming audio | pass | 1-hour MP3: 71.5 MB for page and workers; start 8 ms; cue jumps 5 ms; seeks without cache 13 ms; 0 dropouts; full decode 515× real time (3 hours in about 21 s); decoded length exact |
-| S2 Key lock | pass (listening test open) | 0.9 % of one CPU core at 0.5–1.5×; bit-identical output in AudioWorklet and worker |
-| S3 Encoding | pass (upload test open) | Hardware H.264: 1080p60 at 177 fps (2.9× real time), 4K30 at 53 fps (1.8×), 1080×1920 at 186 fps (6.2×); native AAC 154×, WebAssembly fallback 16× |
+| S2 Key lock | pass | 0.9 % of one CPU core at 0.5–1.5×; bit-identical output in AudioWorklet and worker |
+| S3 Encoding | pass | Hardware H.264: 1080p60 at 177 fps (2.9× real time), 4K30 at 53 fps (1.8×), 1080×1920 at 186 fps (6.2×); native AAC 154×, WebAssembly fallback 16× |
 | S4 Rendering | pass | 1080p live at 59.7 fps (1 % low 39 fps); 4K offline at 117 fps; float render targets available |
 | S5 Long render | pass | 3-hour export: 18 segments, 21,600 of 21,600 frames, audio 10,800.06 s; resumed 8 times; joined in 19 s |
 
@@ -171,14 +180,14 @@ What this means:
 - **A/V sync (AN-06):** Chrome on macOS reports an output latency of 0 ms, so the offset cannot be detected automatically there. P1 needs a calibration step.
 - **Frame pacing:** the 1 % low of 39 fps in the live test probably comes from shader warm-up in the first frames. P1 measures it without the warm-up.
 
+The listening test (S2) and the upload of an export to YouTube and TikTok (S3) passed later, on 2026-10-03, as did Chrome on Windows and Firefox on Linux.
+
 The development container (headless Chromium, software GPU) and CI run all five spikes on every push; their frame rates and encoder speeds are not meaningful.
 
 ## 6. Open points
 
-- Manual checks: the listening test (S2) passed with the test signal; loading files into the S2 player failed and is fixed. The S3 sample plays in sync in QuickTime; the YouTube/TikTok upload is still open.
-- Second-priority machines (Q14): Chrome on Windows and Firefox on Linux. A hosted preview makes this easiest.
 - Hosting: the Worker is connected to the repository (Workers Builds); `wrangler.jsonc` configures it.
 - Listening test of tempo and effects on the main machine: vinyl and key lock at 0.5–1.5×, the reverb's character, the delay in time with the beat, no clicks when changing anything.
 - A real DDJ-FLX2: its profile follows the MIDI message list; the MIDI monitor in the DJ controller dialog shows what does not match.
 - The Screenshots workflow can be started once it is on `main`: GitHub offers manual workflows from the default branch.
-- Export on the main machine: the tests cover both paths, VP9 + Opus (WebM) in the development container, which has no H.264 encoder, and H.264 + AAC (MP4) in CI. The render speed on Chrome/macOS and a YouTube/TikTok upload of an export are still to be checked.
+- Export on the main machine: the tests cover both paths, VP9 + Opus (WebM) in the development container, which has no H.264 encoder, and H.264 + AAC (MP4) in CI. The upload of an export to YouTube and TikTok passed (2026-10-03); the render speed on Chrome/macOS is still to be measured.
