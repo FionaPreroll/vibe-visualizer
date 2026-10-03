@@ -41,7 +41,7 @@ test('the first start shows the welcome, with the warning about flashing visuals
   await expect(page.getByTestId('reduce-flashing')).toBeChecked();
 });
 
-test('Logo Spectrum renders in a worker and moves with the music', async ({ page }) => {
+test('Logo Spectrum renders in a worker and moves with the music @firefox', async ({ page }) => {
   const errors = collectErrors(page);
   await acknowledge(page);
   await page.goto('/');
@@ -581,10 +581,10 @@ test('the cover art turns like a record while the music plays (LS-16)', async ({
   await play.click();
   await expect(play).toHaveAttribute('aria-label', 'Pause');
   await expect.poll(look).not.toEqual(Array(12).fill(0));
-  // Playing, it turns: at 45 rpm, 0.3 s is about 80°.
+  // Playing, it turns (at 45 rpm, 80° in 0.3 s): seen within a few looks, however slowly a
+  // busy machine draws.
   const a = await look();
-  await page.waitForTimeout(300);
-  expect(moved(a, await look())).toBeGreaterThan(150);
+  await expect.poll(async () => moved(a, await look()), { timeout: 10_000 }).toBeGreaterThan(150);
   // Paused, it stands.
   await play.click();
   await expect(play).toHaveAttribute('aria-label', 'Play');

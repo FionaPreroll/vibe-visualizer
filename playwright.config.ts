@@ -29,6 +29,24 @@ export default defineConfig({
         },
       },
     },
+    {
+      // The second browser (NF-02): the main paths, the tests tagged @firefox.
+      name: 'firefox',
+      grep: /@firefox/,
+      use: {
+        ...devices['Desktop Firefox'],
+        // Headless, Firefox has no WebGL without a GPU: CI gives it a virtual display instead.
+        headless: !process.env['PW_FIREFOX_DISPLAY'],
+        launchOptions: {
+          firefoxUserPrefs: {
+            // Software WebGL without a GPU; sound without a user gesture.
+            'webgl.force-enabled': true,
+            'media.autoplay.default': 0,
+            'media.autoplay.block-webaudio': false,
+          },
+        },
+      },
+    },
   ],
   webServer: {
     command: 'pnpm build && pnpm preview --port 4173 --strictPort',

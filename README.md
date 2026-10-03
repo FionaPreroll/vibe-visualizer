@@ -66,7 +66,9 @@ Run the spikes, click **Copy report** and paste the report into the chat.
 | `pnpm check` | Type check (Svelte and TypeScript) |
 | `pnpm lint`, `pnpm format` | ESLint, Prettier |
 | `pnpm test` | Unit tests (Vitest) |
-| `pnpm test:e2e` | End-to-end tests (Playwright); run the spikes in quick mode |
+| `pnpm test:e2e` | End-to-end tests in Chromium (Playwright); run the spikes in quick mode |
+| `pnpm test:e2e:firefox` | The main paths in Firefox, the end-to-end tests tagged `@firefox` |
+| `pnpm test:soak` | The soak test: plays for 30 minutes (`SOAK_MINUTES`), and the memory must stay flat |
 | `pnpm screenshots` | The README screenshots (docs/screenshots), taken in the app while a synthetic track plays |
 | `pnpm eval:drums` | Drum detection, beat tracking and beat grid scores on real recordings (needs the MDB Drums dataset), and the beat grid on your own electronic tracks (`EDM_DIR`); see [ANALYSIS.md](docs/ANALYSIS.md#5-evaluation) |
 
