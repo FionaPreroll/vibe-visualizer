@@ -56,6 +56,8 @@ export type RenderRequest =
   | { type: 'running'; running: boolean }
   /** The picture of the next frame, scaled to `width` × `height`, as a PNG (EX-10). */
   | { type: 'capture'; id: number; width: number; height: number }
+  /** Loses the graphics context on purpose, as a reset of the graphics card does (for tests). */
+  | { type: 'loseContext' }
   | { type: 'dispose' };
 
 /** Messages from the render worker. */
@@ -75,4 +77,10 @@ export type RenderEvent =
     }
   /** The picture asked for with the same `id`; null and why if there is none. */
   | { type: 'capture'; id: number; png: Blob | null; message?: string }
-  | { type: 'error'; message: string };
+  /**
+   * The graphics context was lost: the graphics card was reset, or the browser took the context
+   * back. The worker draws no more; a new one takes over (NF-09).
+   */
+  | { type: 'lost' }
+  /** Something failed; `fatal`: the worker stopped drawing (it failed to start, or a frame). */
+  | { type: 'error'; message: string; fatal: boolean };
