@@ -494,6 +494,10 @@ test('a track can be named, and the visuals show its title and cover art (LS-15,
 }) => {
   const errors = collectErrors(page);
   await acknowledge(page);
+  // A logo that stands still, so that the cover's quarters are where they are measured.
+  await page.addInitScript(() =>
+    localStorage.setItem('vibe-visualizer:visuals:v1', JSON.stringify({ logoSpin: 0 })),
+  );
   await page.goto('/');
   const stage = page.getByTestId('visual-stage');
   await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });

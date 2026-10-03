@@ -420,6 +420,8 @@ test('the picture on the stage is saved as a PNG thumbnail (EX-10)', async ({ pa
   await page.addInitScript(() => {
     const settings = { coverLogo: true, overlay: { on: true } };
     localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+    // A logo that stands still, so that the cover's quarters are where they are measured.
+    localStorage.setItem('vibe-visualizer:visuals:v1', JSON.stringify({ logoSpin: 0 }));
   });
   await page.goto('/');
   await page.getByTestId('file-input').setInputFiles({
