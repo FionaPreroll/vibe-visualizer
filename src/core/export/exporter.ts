@@ -1,6 +1,7 @@
 import type { BeatGrid } from '../analysis/beat-grid';
 import type { SoundSettings } from '../audio/dsp/sound-settings';
 import { decodeImage, type StoredImages } from '../render/visual-assets';
+import { keepStorage } from '../state/keep-storage';
 import { WorkerClient } from '../util/worker-rpc';
 import {
   CANCELLED,
@@ -470,6 +471,8 @@ export class Exporter {
       },
     });
     void this.keepAwake();
+    // Its segments wait in browser storage until it is finished.
+    void keepStorage();
     try {
       return await client.call<ExportResult>(method, args, {
         transfer,

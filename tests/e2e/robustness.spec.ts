@@ -164,3 +164,55 @@ test('an error nobody handles shows, with details to copy and report (NF-10)', a
   await notice.getByRole('button', { name: 'Dismiss' }).click();
   await expect(notice).toHaveCount(0);
 });
+
+test('the app asks to keep its data, and says when it cannot store (NF-09, NF-10)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    // How often the browser was asked to keep the data, which it is not yet.
+    const asked = { count: 0 };
+    Object.assign(window, { asked });
+    navigator.storage.persisted = async () => false;
+    navigator.storage.persist = async () => {
+      asked.count++;
+      return true;
+    };
+    // The storage is full for the settings.
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (this: Storage, key: string, value: string) {
+      if (key === 'vibe-visualizer:settings:v1') {
+        throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+      }
+      setItem.call(this, key, value);
+    };
+  });
+  await page.goto('/');
+  await expect(page.getByTestId('visual-stage')).toHaveAttribute('data-status', 'running', {
+    timeout: 15_000,
+  });
+  const asked = () =>
+    page.evaluate(() => (window as unknown as { asked: { count: number } }).asked.count);
+  expect(await asked()).toBe(0);
+
+  // A setting changed cannot be stored: said once.
+  await page.getByRole('tab', { name: 'Sound' }).click();
+  const alert = page.getByTestId('app-error');
+  await expect(alert).toContainText("The browser's storage is full: changes are not saved");
+  await alert.getByRole('button', { name: 'Dismiss' }).click();
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.waitForTimeout(300);
+  await expect(alert).toHaveCount(0);
+
+  // An image of your own is worth keeping: the browser is asked, once.
+  await page.getByText('Logo', { exact: true }).click();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#f0c"/></svg>`;
+  for (const name of ['one.svg', 'two.svg']) {
+    await page.getByTestId('logo-input').setInputFiles({
+      name,
+      mimeType: 'image/svg+xml',
+      buffer: Buffer.from(svg),
+    });
+    await expect(page.getByTitle(name)).toBeVisible();
+  }
+  expect(await asked()).toBe(1);
+});

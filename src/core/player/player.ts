@@ -66,6 +66,7 @@ import {
   saveSound,
   saveTrackData,
   saveVisuals,
+  whenStorageFails,
 } from '../state/persistence';
 import { createStore, type Store } from '../state/store';
 import { errorMessage } from '../util/format';
@@ -198,6 +199,13 @@ export class Player {
       this.trouble = message;
       this.reportError(message);
     };
+    whenStorageFails((error) =>
+      this.reportError(
+        error instanceof DOMException && error.name === 'QuotaExceededError'
+          ? "The browser's storage is full: changes are not saved, and are gone after a reload. Free some space on the disk."
+          : 'This browser does not let the app store anything: changes are gone after a reload.',
+      ),
+    );
     this.updateTrackerRange();
     let lastSettings = this.state.settings;
     let lastVisuals = this.state.visuals;

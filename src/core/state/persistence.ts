@@ -156,12 +156,26 @@ function read(key: string): unknown {
   }
 }
 
+let onWriteFailed: ((error: unknown) => void) | null = null;
+let writeFailed = false;
+
+/**
+ * Tells `handler` when a value could not be stored (NF-10): the storage is full, or the browser
+ * does not allow it. Once a session.
+ */
+export function whenStorageFails(handler: ((error: unknown) => void) | null): void {
+  onWriteFailed = handler;
+}
+
 function write(key: string, value: unknown): void {
   if (!saving) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {
+  } catch (error) {
     // Storage full or blocked: the value stays for this session only.
+    if (writeFailed) return;
+    writeFailed = true;
+    onWriteFailed?.(error);
   }
 }
 
