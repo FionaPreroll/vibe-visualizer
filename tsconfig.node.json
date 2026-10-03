@@ -17,6 +17,7 @@
     "vite.config.ts",
     "playwright.config.ts",
     "playwright.screenshots.config.ts",
+    "playwright.soak.config.ts",
     "vite-plugins/**/*.ts",
     "tests/**/*.ts"
   ]
