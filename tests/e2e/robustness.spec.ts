@@ -309,6 +309,21 @@ test('the content security policy lets the app do all it does (NF-01)', async ({
   await page.getByTestId('shortcuts-button').click();
   await page.getByTestId('help-nav-when-something-goes-wrong').click();
   await expect(page.getByTestId('system-check')).toContainText('WebGL 2 on');
+  // The AAC encoder of browsers without one (Firefox, Chromium on Linux) runs WebAssembly in a
+  // worker it makes from a blob:. Not every export here needs it, so it is tried on its own.
+  const started = await page.evaluate(
+    () =>
+      new Promise<string>((resolve) => {
+        const script = `WebAssembly.instantiate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]))
+          .then(() => postMessage('running'), (error) => postMessage(String(error)));`;
+        const worker = new Worker(
+          URL.createObjectURL(new Blob([script], { type: 'text/javascript' })),
+        );
+        worker.onmessage = (event) => resolve(String(event.data));
+        worker.onerror = () => resolve('failed to load');
+      }),
+  );
+  expect(started).toBe('running');
   expect(await page.evaluate(() => (window as unknown as { blocked: string[] }).blocked)).toEqual(
     [],
   );
