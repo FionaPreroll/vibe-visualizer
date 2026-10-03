@@ -186,8 +186,6 @@
     >
       ?
     </button>
-    <!-- The Spike Lab (P0 prototypes) is for development; built apps reach it at #/lab. -->
-    {#if import.meta.env.DEV}<a class="lab" href="#/lab">Spike Lab</a>{/if}
   </nav>
 </header>
 
@@ -283,10 +281,5 @@
     margin-left: 8px;
     padding: 5px 12px;
     font-variant-numeric: tabular-nums;
-  }
-  .lab {
-    margin-left: 8px;
-    font-size: 13px;
-    color: var(--muted);
   }
 </style>
