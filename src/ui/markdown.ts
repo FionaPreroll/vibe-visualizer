@@ -38,8 +38,11 @@ export function slug(title: string): string {
     .replace(/^-|-$/g, '');
 }
 
-/** The changelog (CHANGELOG.md) as the help shows it: without its title, a heading for each day. */
-export function renderChangelog(markdown: string): string {
+/**
+ * A document of its own as the help shows it, such as the changelog (CHANGELOG.md, a section for
+ * each day) or the privacy policy (PRIVACY.md): without its title, its sections as headings.
+ */
+export function renderDocument(markdown: string): string {
   return renderMarkdown(markdown.replace(/^# .*\n/, '').replace(/^## /gm, '### '));
 }
 

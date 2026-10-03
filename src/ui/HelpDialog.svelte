@@ -1,12 +1,13 @@
 <script lang="ts">
   import changelog from '../../CHANGELOG.md?raw';
   import guide from '../../docs/USER-GUIDE.md?raw';
+  import privacy from '../../PRIVACY.md?raw';
   import { bugReportLink, BUG_EMAIL } from './app-info';
   import AboutInfo from './AboutInfo.svelte';
   import { backdropClose } from './backdrop';
   import Icon from './Icon.svelte';
   import LicencesList from './LicencesList.svelte';
-  import { guideSections, renderChangelog, renderMarkdown } from './markdown';
+  import { guideSections, renderDocument, renderMarkdown } from './markdown';
   import { usePlayer } from './player-context';
   import ShortcutList from './ShortcutList.svelte';
   import SystemCheck from './SystemCheck.svelte';
@@ -14,10 +15,10 @@
   /**
    * The help (UI-11): the user guide (docs/USER-GUIDE.md, the same text as on GitHub) by
    * section, with the full list of keyboard shortcuts (UI-04) as one of them; what to do when
-   * something goes wrong, with the system check; and about the app: its version, what changed
-   * and the licences of the parts of others. It only explains: settings are in the settings, the
-   * side panel and the dialogs. "?" opens it on the shortcuts, the ? in the top bar where it was
-   * left.
+   * something goes wrong, with the system check; and about the app: its version, what changed,
+   * the licences of the parts of others, and what it does with data. It only explains: settings
+   * are in the settings, the side panel and the dialogs. "?" opens it on the shortcuts, the ? in
+   * the top bar where it was left.
    */
   interface Props {
     open: boolean;
@@ -40,17 +41,20 @@
   const TROUBLE_ID = 'when-something-goes-wrong';
   const NEW_ID = 'whats-new';
   const LICENCES_ID = 'licences';
+  const PRIVACY_ID = 'privacy';
   const sections = [
     ...guideSections(guide).map((entry) => ({ ...entry, html: renderMarkdown(entry.markdown) })),
-    // Not in the guide: what changed (CHANGELOG.md), and the parts of others, from the build.
-    { id: NEW_ID, title: "What's new", markdown: '', html: renderChangelog(changelog) },
+    // Not in the guide: what changed (CHANGELOG.md), the parts of others (from the build), and
+    // what the app does with data (PRIVACY.md).
+    { id: NEW_ID, title: "What's new", markdown: '', html: renderDocument(changelog) },
     { id: LICENCES_ID, title: 'Licences', markdown: '', html: '' },
+    { id: PRIVACY_ID, title: 'Privacy', markdown: '', html: renderDocument(privacy) },
   ];
   /** The sections in groups: how to use the app, what to do when it fails, and about it. */
   const GROUPS = [
     { name: 'Guide', ids: null },
     { name: 'Troubleshooting', ids: [TROUBLE_ID] },
-    { name: 'About', ids: [ABOUT_ID, NEW_ID, LICENCES_ID] },
+    { name: 'About', ids: [ABOUT_ID, NEW_ID, LICENCES_ID, PRIVACY_ID] },
   ];
   const grouped = GROUPS.map(({ name, ids }) => ({
     name,
@@ -148,6 +152,7 @@
           <button onclick={() => (section = LICENCES_ID)} data-testid="help-licences"
             >Licences</button
           >
+          <button onclick={() => (section = PRIVACY_ID)} data-testid="help-privacy">Privacy</button>
         </div>
       {/if}
     </article>

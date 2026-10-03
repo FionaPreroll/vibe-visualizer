@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('vibe-visualizer:welcome:v1', '1'));
 });
 
-test('About names the version; the help lists the parts of others and what is new', async ({
+test('About names the version; the help lists the parts of others, what is new and privacy', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -46,6 +46,13 @@ test('About names the version; the help lists the parts of others and what is ne
   await expect(content).toHaveAttribute('data-section', 'whats-new');
   await expect(content.locator('.guide h3').first()).toHaveText(/^\d{1,2} \w+ 20\d\d$/);
   await expect(content).toContainText('A new default look');
+
+  // Privacy, from About: what the app keeps, and what goes over the network.
+  await page.getByTestId('help-nav-about').click();
+  await page.getByTestId('help-privacy').click();
+  await expect(content).toHaveAttribute('data-section', 'privacy');
+  await expect(content.locator('.guide h3').first()).toHaveText('Who is responsible');
+  await expect(content).toContainText('Your music, images and settings stay on your computer');
 
   // All of it as text, next to the app.
   const text = await (await page.request.get('/licenses.txt')).text();

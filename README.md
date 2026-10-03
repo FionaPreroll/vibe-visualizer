@@ -105,3 +105,7 @@ docs/           user guide (also the in-app help), feature list, tech stack, aud
 ## Licence
 
 None yet: all rights reserved. The parts of others in the app keep their own licences; the build lists them with their texts in `licenses.txt`, and the app shows them under **Help → Licences**.
+
+## Privacy
+
+[PRIVACY.md](PRIVACY.md) says what the app keeps and what goes over the network: everything stays in the browser, and the app connects only to its own site, which Cloudflare hosts. The app shows it under **Help → Privacy**.
