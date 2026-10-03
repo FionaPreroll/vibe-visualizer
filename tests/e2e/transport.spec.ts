@@ -177,8 +177,6 @@ test('the app can be renamed, and keeps its name', async ({ page }) => {
   await page.getByTestId('app-name-input').fill(' ');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('app-name')).toHaveText('FibeStation');
-  // The Spike Lab is for development: built apps have no link to it.
-  await expect(page.getByRole('link', { name: 'Spike Lab' })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

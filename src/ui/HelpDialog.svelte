@@ -7,6 +7,7 @@
   import { guideSections, renderMarkdown } from './markdown';
   import { usePlayer } from './player-context';
   import ShortcutList from './ShortcutList.svelte';
+  import SystemCheck from './SystemCheck.svelte';
 
   /**
    * The help (UI-11): the user guide (docs/USER-GUIDE.md, the same text as on GitHub) by
@@ -28,6 +29,7 @@
   const SHORTCUTS_ID = 'keyboard-shortcuts';
   const ABOUT_ID = 'about';
   const BACKUP_ID = 'backup';
+  const TROUBLE_ID = 'when-something-goes-wrong';
   const sections = guideSections(guide).map((entry) => ({
     ...entry,
     html: renderMarkdown(entry.markdown),
@@ -87,6 +89,9 @@
       {/if}
       {#if current.id === BACKUP_ID}
         <BackupSection />
+      {/if}
+      {#if current.id === TROUBLE_ID}
+        <SystemCheck />
       {/if}
       {#if current.id === ABOUT_ID}
         <div class="actions">

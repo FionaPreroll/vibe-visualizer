@@ -252,3 +252,24 @@ test('a tab from before a deploy learns of the new version (NF-09)', async ({ pa
   await expect(notice).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('the help has a system check of this browser, to copy for a bug report (NF-10)', async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await page.getByTestId('shortcuts-button').click();
+  await page.getByTestId('help-nav-when-something-goes-wrong').click();
+  const check = page.getByTestId('system-check');
+  await expect(check).toContainText('WebGL 2 on');
+  await expect(check).toContainText(
+    'SharedArrayBuffer: yes, AudioWorklet: yes, OffscreenCanvas: yes',
+  );
+  await expect(check).toContainText('H.264 1080p60 (YouTube)');
+  await page.getByTestId('system-check-copy').click();
+  await expect(page.getByTestId('system-check-copy')).toHaveText('Copied');
+  const report = await page.evaluate(() => navigator.clipboard.readText());
+  expect(report).toMatch(/^FibeStation: system check, \d{4}-/);
+  expect(report).toContain('\n- Graphics: WebGL 2 on ');
+});

@@ -1,6 +1,6 @@
 /**
  * Tiny request/response protocol between the main thread and a worker, with progress events and
- * transferable results. Enough for the spikes; P1 may replace it with Comlink.
+ * transferable results.
  */
 
 interface Request {
