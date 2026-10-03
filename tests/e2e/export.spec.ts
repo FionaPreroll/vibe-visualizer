@@ -70,7 +70,7 @@ async function inspect(data: Buffer) {
   };
 }
 
-test('exports the range between the markers as a video file', async ({ page }) => {
+test('exports the range between the markers as a video file @firefox', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/');
   await addTrack(page, 10);

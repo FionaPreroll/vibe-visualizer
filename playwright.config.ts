@@ -29,6 +29,22 @@ export default defineConfig({
         },
       },
     },
+    {
+      // The second browser (NF-02): the main paths, the tests tagged @firefox.
+      name: 'firefox',
+      grep: /@firefox/,
+      use: {
+        ...devices['Desktop Firefox'],
+        launchOptions: {
+          firefoxUserPrefs: {
+            // Software WebGL for headless runs without a GPU; sound without a user gesture.
+            'webgl.force-enabled': true,
+            'media.autoplay.default': 0,
+            'media.autoplay.block-webaudio': false,
+          },
+        },
+      },
+    },
   ],
   webServer: {
     command: 'pnpm build && pnpm preview --port 4173 --strictPort',

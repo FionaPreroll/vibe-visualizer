@@ -56,7 +56,7 @@ test('queue: adds files, reports unsupported ones, reorders and removes', async 
   expect(errors).toEqual([]);
 });
 
-test('playback: plays, seeks, shows the analysis and moves on to the next track', async ({
+test('playback: plays, seeks, shows the analysis and moves on to the next track @firefox', async ({
   page,
 }) => {
   const errors = collectErrors(page);
