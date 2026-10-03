@@ -95,6 +95,10 @@ docs/           user guide (also the in-app help), feature list, tech stack, aud
                 DJ controller proposal, screenshots
 ```
 
+## Changelog
+
+[CHANGELOG.md](CHANGELOG.md) says what changed, by day, newest first; the help shows it under **What's new**. Each pull request adds what users notice to it. Until 1.0 the version is 0.9 with the day and the time of the build (UTC), as About shows it.
+
 ## Licence
 
 None yet: all rights reserved. The parts of others in the app keep their own licences; the build lists them with their texts in `licenses.txt`, and the app shows them under **Help → Licences**.

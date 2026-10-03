@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('vibe-visualizer:welcome:v1', '1'));
 });
 
-test('About names the version and lists the parts of others with their licences', async ({
+test('About names the version; the help lists the parts of others and what is new', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -40,6 +40,12 @@ test('About names the version and lists the parts of others with their licences'
   await expect(ffmpeg.locator('pre').first()).toContainText('GNU LESSER GENERAL PUBLIC LICENSE');
   // Mediabunny's: its source, as the app uses it.
   await expect(licence('mediabunny')).toContainText('https://www.npmjs.com/package/mediabunny/v/');
+
+  // What's new: the changelog, a day at a time, newest first.
+  await page.getByTestId('help-nav-whats-new').click();
+  await expect(content).toHaveAttribute('data-section', 'whats-new');
+  await expect(content.locator('.guide h3').first()).toHaveText(/^\d{1,2} \w+ 20\d\d$/);
+  await expect(content).toContainText('A new default look');
 
   // All of it as text, next to the app.
   const text = await (await page.request.get('/licenses.txt')).text();

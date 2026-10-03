@@ -1,4 +1,5 @@
 <script lang="ts">
+  import changelog from '../../CHANGELOG.md?raw';
   import guide from '../../docs/USER-GUIDE.md?raw';
   import { bugReportLink, BUG_EMAIL } from './app-info';
   import AboutInfo from './AboutInfo.svelte';
@@ -6,7 +7,7 @@
   import BackupSection from './BackupSection.svelte';
   import Icon from './Icon.svelte';
   import LicencesList from './LicencesList.svelte';
-  import { guideSections, renderMarkdown } from './markdown';
+  import { guideSections, renderChangelog, renderMarkdown } from './markdown';
   import { usePlayer } from './player-context';
   import ShortcutList from './ShortcutList.svelte';
   import SystemCheck from './SystemCheck.svelte';
@@ -35,7 +36,8 @@
   const LICENCES_ID = 'licences';
   const sections = [
     ...guideSections(guide).map((entry) => ({ ...entry, html: renderMarkdown(entry.markdown) })),
-    // The parts of others, from the build: not in the guide.
+    // Not in the guide: what changed (CHANGELOG.md), and the parts of others, from the build.
+    { id: 'whats-new', title: "What's new", markdown: '', html: renderChangelog(changelog) },
     { id: LICENCES_ID, title: 'Licences', markdown: '', html: '' },
   ];
   const current = $derived(sections.find((entry) => entry.id === section) ?? sections[0]!);
