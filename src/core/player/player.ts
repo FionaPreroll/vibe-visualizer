@@ -179,6 +179,8 @@ export class Player {
   };
   /** Increases with every start or stop of live input; stale attempts are dropped. */
   private liveToken = 0;
+  /** The engine's last trouble (NF-09): its message goes once the music plays again. */
+  private trouble: string | null = null;
 
   constructor() {
     this.store = createStore<AppState, AppAction>(
@@ -189,6 +191,13 @@ export class Player {
     this.engine.inputGainDecibels = this.state.settings.inputGain;
     this.engine.syncOffset = this.state.settings.syncOffset / 1000;
     this.engine.sound = this.state.sound;
+    // The sound stopped without being asked to (NF-09): the music pauses, and the error says
+    // why. Play starts it again.
+    this.engine.onTrouble = (message) => {
+      if (this.state.playing) this.pause();
+      this.trouble = message;
+      this.reportError(message);
+    };
     this.updateTrackerRange();
     let lastSettings = this.state.settings;
     let lastVisuals = this.state.visuals;
@@ -930,6 +939,10 @@ export class Player {
       this.anchorScrub();
       this.engine.paused = false;
       this.dispatch({ type: 'player/playing', playing: true });
+      if (this.trouble !== null && this.state.error === this.trouble) {
+        this.dispatch({ type: 'player/error', message: null });
+      }
+      this.trouble = null;
       return;
     }
     // The current entry, unless its file is not there (then the first one that plays).

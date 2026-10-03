@@ -6,7 +6,7 @@ import { WorkerClient } from '../../util/worker-rpc';
 import { DEFAULT_SOUND, type SoundSettings } from '../dsp/sound-settings';
 import { AudioRingMonitor, createAudioRing } from '../ring-buffer';
 import { createEngineControl, EngineControl } from './engine-control';
-import type { EngineMessage, EngineProcessorOptions } from './engine.worklet';
+import type { EngineEvent, EngineMessage, EngineProcessorOptions } from './engine.worklet';
 import workletUrl from './engine.worklet.ts?worker&url';
 import type { LoadResult, NextFile } from './media.worker';
 import MediaWorker from './media.worker.ts?worker';
@@ -50,6 +50,12 @@ export class AudioEngine {
   private nudgeFactor = 1;
   private trackerRange: TrackerRange | null = null;
   private offset = 0;
+  /**
+   * Told when the sound stops without being asked to (NF-09): the engine failed, the audio
+   * output failed, or the browser or the system took the sound away. The message says what
+   * happened and what to do.
+   */
+  onTrouble: ((message: string) => void) | null = null;
 
   constructor() {
     this.timeline = new FeatureTimelineReader(this.timelineBuffer);
@@ -94,6 +100,17 @@ export class AudioEngine {
       outputChannelCount: [2],
       processorOptions: options,
     });
+    node.port.onmessage = (event: MessageEvent<EngineEvent>) => {
+      this.onTrouble?.(`The sound engine failed (${event.data.message}). ${this.again}`);
+    };
+    node.addEventListener('processorerror', () => {
+      this.onTrouble?.('The sound engine stopped. Reload the page to go on.');
+    });
+    context.addEventListener('statechange', () => this.checkState(context));
+    // Chromium tells when the audio device fails, for example when it was unplugged.
+    context.addEventListener('error', () => {
+      this.onTrouble?.(`The audio output failed. Check the output device. ${this.again}`);
+    });
     const gain = context.createGain();
     gain.gain.value = this.volumeLevel;
     node.connect(gain).connect(context.destination);
@@ -112,6 +129,26 @@ export class AudioEngine {
     this.gain = gain;
     this.inputGain = inputGain;
     this.monitorGain = monitorGain;
+  }
+
+  /**
+   * The browser suspends the audio, or the system interrupts it (a call, another app taking the
+   * device; Safari says "interrupted"): while the music should play, it is a trouble. Play
+   * resumes it.
+   */
+  private checkState(context: AudioContext): void {
+    if (this.control.paused && !this.live) return;
+    const state = context.state as AudioContextState | 'interrupted';
+    if (state === 'interrupted') {
+      this.onTrouble?.(`The system interrupted the sound. ${this.again}`);
+    } else if (state === 'suspended') {
+      this.onTrouble?.(`The browser paused the sound. ${this.again}`);
+    }
+  }
+
+  /** How the sound comes back after a trouble. */
+  private get again(): string {
+    return this.live ? 'Start the live input again to go on.' : 'Press Play to go on.';
   }
 
   /** True while the engine analyses a live input instead of a file. */

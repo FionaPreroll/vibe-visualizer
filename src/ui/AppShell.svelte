@@ -365,7 +365,7 @@
       {/if}
     </div>
     {#if $app.error}
-      <div class="error" role="alert">
+      <div class="error" role="alert" data-testid="app-error">
         <Icon name="alert" size={18} />
         <span>{$app.error}</span>
         <button onclick={() => player.dismissError()} aria-label="Dismiss">

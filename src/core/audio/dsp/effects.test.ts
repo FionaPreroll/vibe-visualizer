@@ -4,7 +4,12 @@ import { DjFilter } from './dj-filter';
 import { DspCore } from './dsp-core';
 import { Limiter, LIMITER_CEILING, LIMITER_LOOKAHEAD } from './limiter';
 import { FdnReverb } from './reverb';
-import { DEFAULT_SOUND, SOUND_PRESETS, syncedDelaySeconds } from './sound-settings';
+import {
+  DEFAULT_SOUND,
+  SOUND_PRESETS,
+  syncedDelaySeconds,
+  type SoundSettings,
+} from './sound-settings';
 import {
   ArraySource,
   collect,
@@ -258,6 +263,33 @@ describe('sound chain', () => {
       expect(render(preset.settings)[0]).toEqual(first[0]);
       expect(peak(first[0]!)).toBeLessThanOrEqual(LIMITER_CEILING);
     }
+  });
+
+  /** Half a second of noise through `dsp`, from the start of a stream. */
+  function play(dsp: DspCore) {
+    dsp.snap();
+    dsp.reset();
+    const source = new ArraySource(noise(RATE));
+    return collect(RATE / 2, (block, size) => {
+      dsp.renderMusic(source, block, size);
+      dsp.renderEffects(block, size);
+    });
+  }
+
+  it('sounds after a change of settings as with the new ones from the start', () => {
+    const echo = { ...DEFAULT_SOUND, delayOn: true, delaySync: false, delayMs: 300 };
+    const changed = new DspCore(RATE, null);
+    changed.setSettings({ ...echo, delayMs: 120 });
+    changed.setSettings(echo);
+    const fresh = new DspCore(RATE, null);
+    fresh.setSettings(echo);
+    expect(play(changed)[0]).toEqual(play(fresh)[0]);
+  });
+
+  it('keeps its settings when new ones cannot be read', () => {
+    const dsp = new DspCore(RATE, null);
+    expect(() => dsp.setSettings(null as unknown as SoundSettings)).toThrow();
+    expect(play(dsp)[0]).toEqual(play(new DspCore(RATE, null))[0]);
   });
 
   it('reports the heard position behind the limiter', () => {

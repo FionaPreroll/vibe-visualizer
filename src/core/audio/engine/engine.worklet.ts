@@ -31,8 +31,15 @@ export type EngineMessage =
       loudness: TrackLoudness | null;
     };
 
+/** Messages from the engine to the main thread. */
+export type EngineEvent =
+  /** Playing a block or taking a message failed; the block stayed silent (NF-09). */
+  { type: 'error'; message: string };
+
 /** Beat grids and loudness kept (the playing file, the next ones, the one before). */
 const KEEP_GRIDS = 6;
+/** Errors are reported once a second at most: a failing block repeats 375 times a second. */
+const ERROR_REPORT_SECONDS = 1;
 
 /**
  * Plays the stream from the media worker through the sound chain (tempo, filter, delay, reverb,
@@ -73,6 +80,8 @@ class EngineProcessor extends AudioWorkletProcessor {
   /** How loud each file gets, by token: the analysis's auto-gain stays above its levels. */
   private readonly loudness = new Map<number, TrackLoudness>();
   private readonly onAnalysisFrame: (offset: number) => void;
+  /** Context time from which the next error is reported. */
+  private reportFrom = 0;
 
   constructor(options: AudioWorkletNodeOptions) {
     super();
@@ -88,7 +97,13 @@ class EngineProcessor extends AudioWorkletProcessor {
       console.error('Key lock is not available', error); // vinyl mode still works
     }
     this.dsp = new DspCore(sampleRate, stretch);
-    this.port.onmessage = (event: MessageEvent<EngineMessage>) => this.receive(event.data);
+    this.port.onmessage = (event: MessageEvent<EngineMessage>) => {
+      try {
+        this.receive(event.data);
+      } catch (error) {
+        this.report(error);
+      }
+    };
     // Bound once: no allocation per analysis frame.
     this.onAnalysisFrame = (offset: number) => {
       // The music is ahead of what is heard: it may already be in the next file.
@@ -142,8 +157,27 @@ class EngineProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
+    // An error would end the processor for good: the block stays silent instead, and the
+    // engine goes on with the next one (NF-09).
+    try {
+      this.render(inputs, outputs);
+    } catch (error) {
+      for (const channel of outputs[0] ?? []) channel.fill(0);
+      this.report(error);
+    }
+    return true;
+  }
+
+  private report(error: unknown): void {
+    if (currentTime < this.reportFrom) return;
+    this.reportFrom = currentTime + ERROR_REPORT_SECONDS;
+    const message = error instanceof Error ? error.message : String(error);
+    this.port.postMessage({ type: 'error', message } satisfies EngineEvent);
+  }
+
+  private render(inputs: Float32Array[][], outputs: Float32Array[][]): void {
     const output = outputs[0];
-    if (!output || output.length === 0) return true;
+    if (!output || output.length === 0) return;
     const frames = output[0]!.length;
     if (this.music[0]!.length !== frames) {
       this.music = [new Float32Array(frames), new Float32Array(frames)];
@@ -202,7 +236,6 @@ class EngineProcessor extends AudioWorkletProcessor {
       this.heardToken,
     );
     if (this.consumer.ended && heard >= this.consumer.takenFrames) this.consumer.markPlayedOut();
-    return true;
   }
 
   /** Live input: analyses the input (mono inputs count for both channels). */
