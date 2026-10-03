@@ -1,4 +1,5 @@
 import type { BeatGrid, TempoRangeId } from '../analysis/beat-grid';
+import type { TrackLoudness } from '../analysis/track-loudness';
 import { applyGridEdit, NO_GRID_EDIT, sameGridEdit, type GridEdit } from '../analysis/grid-edit';
 import { WAVEFORM_RATE, WAVEFORM_STRIDE, type Waveform } from '../analysis/waveform';
 import { WorkerClient } from '../util/worker-rpc';
@@ -17,6 +18,8 @@ export interface TrackAnalysisState {
   tempo: number | null;
   /** The tempo range the grid was found in (AN-12). */
   range: TempoRangeId;
+  /** How loud the track gets, for the auto-gain of the visuals; null: not known (yet). */
+  loudness: TrackLoudness | null;
 }
 
 export type TrackAnalyses = ReadonlyMap<string, TrackAnalysisState>;
@@ -83,6 +86,7 @@ export class TrackAnalyzer {
         seconds: 0,
         waveform: null,
         grid: null,
+        loudness: null,
         ...grid,
       });
     }
@@ -163,6 +167,7 @@ export class TrackAnalyzer {
         grid: applyGridEdit(result.grid, this.edits.get(fingerprint) ?? NO_GRID_EDIT),
         tempo: result.tempo,
         range: result.range,
+        loudness: result.loudness,
       });
     } catch {
       // A grid that could not be redone keeps the one it had.

@@ -1,6 +1,7 @@
 import { Analyzer } from '../analysis/analyzer';
 import { computeBeatGrid, type OnsetFeatures } from '../analysis/beat-grid';
 import { GridFeatureCollector } from '../analysis/grid-features';
+import { LoudnessCollector, type TrackLoudness } from '../analysis/track-loudness';
 import { WAVEFORM_STRIDE, WaveformBuilder, type Waveform } from '../analysis/waveform';
 import { decodeAtRate, openInput } from '../audio/decode-stream';
 import { exposeWorker, withTransfer } from '../util/worker-rpc';
@@ -14,11 +15,11 @@ import {
 
 /**
  * Analyses whole tracks in the background (TR-03, AN-07, NF-06): decodes the file at its own
- * rate, builds the waveform and collects the onset strength of every analysis frame, then
- * computes the beat grid. The waveform is reported as it grows, so long mixes show it
- * progressively. Results are cached per fingerprint. The onset features of recent tracks stay in
- * memory, so a tempo the user corrects (TMP-06) or another tempo range (AN-12) gives a new grid
- * without decoding again.
+ * rate, builds the waveform, collects the onset strength of every analysis frame and how loud
+ * the track gets, then computes the beat grid. The waveform is reported as it grows, so long
+ * mixes show it progressively. Results are cached per fingerprint. The onset features of recent
+ * tracks stay in memory, so a tempo the user corrects (TMP-06) or another tempo range (AN-12)
+ * gives a new grid without decoding again.
  */
 
 export interface AnalysisProgress {
@@ -39,6 +40,7 @@ interface Kept {
   features: OnsetFeatures;
   duration: number;
   waveform: Waveform;
+  loudness: TrackLoudness | null;
   bytes: number;
 }
 
@@ -105,6 +107,7 @@ async function analyse(
       grid: computeBeatGrid(known.features, options),
       tempo: args.tempo,
       range: args.range,
+      loudness: known.loudness,
     };
     await writeCachedAnalysis(result);
     return transferable(result);
@@ -118,7 +121,11 @@ async function analyse(
     const analyzer = new Analyzer(rate);
     const waveform = new WaveformBuilder(rate, expected);
     const features = new GridFeatureCollector(analyzer, (expected * rate) / analyzer.hop + 16);
-    const onFrame = () => features.push();
+    const loudness = new LoudnessCollector(analyzer);
+    const onFrame = () => {
+      features.push();
+      loudness.push();
+    };
     let samples = 0;
     let sent = 0;
     let reported = performance.now();
@@ -145,10 +152,12 @@ async function analyse(
     const shape = { rate: finished.rate, length: finished.length };
     const whole = { ...shape, data: finished.data.slice(0, finished.length * WAVEFORM_STRIDE) };
     const duration = samples / rate;
+    const loud = loudness.finish();
     keep(args.fingerprint, {
       features: onsets,
       duration,
       waveform: whole,
+      loudness: loud,
       bytes: byteSize(onsets, whole),
     });
     const result: TrackAnalysisResult = {
@@ -158,6 +167,7 @@ async function analyse(
       grid: computeBeatGrid(onsets, options),
       tempo: args.tempo,
       range: args.range,
+      loudness: loud,
     };
     await writeCachedAnalysis(result);
     return transferable(result);

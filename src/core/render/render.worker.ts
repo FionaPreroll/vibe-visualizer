@@ -64,6 +64,12 @@ let overlaySettings: OverlaySettings = DEFAULT_OVERLAY;
 /** Until then (performance.now()), the overlay shows in full: its settings just changed. */
 let overlayPreview = 0;
 const overlayTracks = new Map<number, OverlayTrack>();
+/** Files of the stream whose loudness is still being found out: the picture stays calm. */
+const calmTokens = new Set<number>();
+/** How far the picture moves with the music (0…1): shake, zoom and pulse. */
+let motion = 1;
+/** Time constant of its easing back in (s). */
+const MOTION_SECONDS = 0.4;
 let overlayRate = 1;
 /** Cover art by token (LS-15), and the token whose cover the Logo Spectrum has. */
 const covers = new Map<number, ImageBitmap>();
@@ -142,8 +148,11 @@ function frame(now: number): void {
   const token = sampled && !clock?.live ? heard.token : 0;
   applySettings(dt);
   const played = playedSince(dt, sampled, clock?.live === true);
+  // Calm at once for a file whose loudness is not known yet; moving again eases in.
+  const calm = token !== 0 && calmTokens.has(token);
+  motion = calm ? 0 : motion + (1 - motion) * (1 - Math.exp(-dt / MOTION_SECONDS));
   try {
-    const input = { time: (now - startTime) / 1000, dt, features, played };
+    const input = { time: (now - startTime) / 1000, dt, features, played, motion };
     if (active === 'logoSpectrum') {
       showCover(token);
       drawLayer(input);
@@ -348,7 +357,11 @@ scope.addEventListener('message', (event) => {
       }
       case 'tracks': {
         overlayTracks.clear();
-        for (const { token, track } of message.tracks) if (track) overlayTracks.set(token, track);
+        calmTokens.clear();
+        for (const { token, track, calm } of message.tracks) {
+          if (track) overlayTracks.set(token, track);
+          if (calm) calmTokens.add(token);
+        }
         overlayRate = message.rate;
         // The covers of files that left the stream go.
         for (const [token, image] of covers) {

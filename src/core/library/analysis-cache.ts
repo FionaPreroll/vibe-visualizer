@@ -1,4 +1,6 @@
 import { TEMPO_RANGE_IDS, type BeatGrid, type TempoRangeId } from '../analysis/beat-grid';
+import { BAND_NAMES } from '../analysis/features';
+import { sanitizeLoudness, type TrackLoudness } from '../analysis/track-loudness';
 import { WAVEFORM_STRIDE, type Waveform } from '../analysis/waveform';
 
 /**
@@ -17,6 +19,8 @@ export interface TrackAnalysisResult {
   tempo: number | null;
   /** The tempo range the grid was found in (AN-12). */
   range: TempoRangeId;
+  /** How loud the track gets, for the auto-gain of the visuals; null: too little sound. */
+  loudness: TrackLoudness | null;
 }
 
 /** What a beat grid is computed with: a tempo from the user (TMP-06), or else the range. */
@@ -41,14 +45,17 @@ export function sameGrid(a: GridRequest, b: GridRequest): boolean {
 /** The directory of the cache in the Origin Private File System: `<fingerprint>.bin` files. */
 export const ANALYSIS_DIRECTORY = 'track-analysis';
 const MAGIC = 0x56564741; // "VVGA"
-const VERSION = 3;
+const VERSION = 4;
 /** Cached tracks kept; the least recently written go first. */
 const MAX_ENTRIES = 60;
-const HEADER_BYTES = 40;
+/** The loudness in the header: the loudest spectrum band, the energy, then each band. */
+const LOUDNESS_OFFSET = 40;
+const LOUDNESS_VALUES = 2 + BAND_NAMES.length;
+const HEADER_BYTES = LOUDNESS_OFFSET + LOUDNESS_VALUES * 4;
 
 /**
- * Serialises a result: a header, the waveform, then the beats, their confidence and their
- * positions in the bar.
+ * Serialises a result: a header (with the loudness), the waveform, then the beats, their
+ * confidence and their positions in the bar.
  */
 export function encodeAnalysis(result: TrackAnalysisResult): ArrayBuffer {
   const waveformBytes = result.waveform.length * WAVEFORM_STRIDE;
@@ -66,6 +73,13 @@ export function encodeAnalysis(result: TrackAnalysisResult): ArrayBuffer {
   view.setFloat32(20, result.tempo ?? 0, true);
   view.setFloat64(24, result.duration, true);
   view.setUint32(32, TEMPO_RANGE_IDS.indexOf(result.range), true);
+  const loudness = result.loudness;
+  view.setUint32(36, loudness ? 1 : 0, true);
+  if (loudness) {
+    for (const [i, db] of [loudness.spectrum, loudness.energy, ...loudness.bands].entries()) {
+      view.setFloat32(LOUDNESS_OFFSET + 4 * i, db, true);
+    }
+  }
   new Uint8Array(buffer, HEADER_BYTES, waveformBytes).set(
     result.waveform.data.subarray(0, waveformBytes),
   );
@@ -95,6 +109,15 @@ export function decodeAnalysis(
   const duration = view.getFloat64(24, true);
   const range = TEMPO_RANGE_IDS[view.getUint32(32, true)];
   if (!range) return null;
+  const db = (i: number) => view.getFloat32(LOUDNESS_OFFSET + 4 * i, true);
+  const loudness =
+    view.getUint32(36, true) === 1
+      ? sanitizeLoudness({
+          spectrum: db(0),
+          energy: db(1),
+          bands: BAND_NAMES.map((_, n) => db(2 + n)),
+        })
+      : null;
   const waveformBytes = length * WAVEFORM_STRIDE;
   const beatsOffset = align(HEADER_BYTES + waveformBytes, 8);
   const confidenceOffset = beatsOffset + beats * 8;
@@ -115,6 +138,7 @@ export function decodeAnalysis(
     },
     tempo: tempo > 0 ? tempo : null,
     range,
+    loudness,
   };
 }
 

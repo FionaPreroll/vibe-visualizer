@@ -2,6 +2,7 @@ import FFT from 'fft.js';
 import { BeatTracker, type TrackerRange } from './beat-tracker';
 import { DRUM_TICK, DrumDetector, type DrumDetectorOptions } from './drums';
 import { BAND_NAMES, BAND_RANGES, F, SPECTRUM_BANDS, WAVEFORM_POINTS } from './features';
+import { sameLoudness, type TrackLoudness } from './track-loudness';
 
 /**
  * Turns an audio stream into analysis frames at a fixed hop (default every 512 samples, about
@@ -29,6 +30,8 @@ const FLOOR_DB = -70;
 
 /** Decay times of the kick, snare and hi-hat envelopes, in seconds. */
 export const DRUM_DECAY_SECONDS: readonly number[] = [0.12, 0.1, 0.06];
+/** Frames after a kick in which its level is taken (its energy builds up for a few ms). */
+const KICK_LEVEL_FRAMES = 3;
 const BEAT_DECAY = 0.1;
 /** Hops quieter than this (RMS, about -80 dBFS) count as silence for the beat tracker. */
 const SILENCE_RMS = 1e-4;
@@ -99,6 +102,15 @@ export class Analyzer {
   snare = 0;
   /** The spectrum of the last frame in dB (tilted as in the frame, but not auto-gained). */
   readonly spectrumDb = new Float64Array(SPECTRUM_BANDS);
+  /** The levels of the last frame before the auto-gain (dB), for a track's loudness. */
+  readonly bandDb = new Float64Array(BAND_NAMES.length);
+  loudestDb = FLOOR_DB;
+  energyDb = FLOOR_DB;
+  /** How loud the track analysed now gets (null: unknown), see {@link setLoudness}. */
+  private loudness: TrackLoudness | null = null;
+  /** How loud the last kick was against the track's loud parts (0…1), and frames since it. */
+  private kickLevel = 1;
+  private sinceKick = KICK_LEVEL_FRAMES;
 
   constructor(sampleRate: number, options: AnalyzerOptions = {}) {
     this.sampleRate = sampleRate;
@@ -165,6 +177,24 @@ export class Analyzer {
     this.beats.setRange(range);
   }
 
+  /**
+   * How loud the track analysed now gets, from the analysis of its file; null for live input
+   * or a file not analysed yet. With it, the auto-gain does not go below the track's levels, so
+   * a quiet part stays as quiet against the loud parts as it sounds, and a kick moves the
+   * visuals as much as it is loud. The next track's loudness sets the auto-gain to its levels.
+   */
+  setLoudness(loudness: TrackLoudness | null): void {
+    const known = this.loudness;
+    if (loudness === known || (loudness && known && sameLoudness(loudness, known))) return;
+    this.loudness = loudness;
+    if (!loudness) return;
+    this.spectrumReference = loudness.spectrum;
+    this.energyReference = loudness.energy;
+    for (let n = 0; n < this.bandReference.length; n++) {
+      this.bandReference[n] = loudness.bands[n] ?? this.bandReference[n]!;
+    }
+  }
+
   reset(): void {
     this.history.fill(0);
     this.writeIndex = 0;
@@ -183,6 +213,8 @@ export class Analyzer {
     this.hopKick = 0;
     this.hopSnare = 0;
     this.sinceBeat = 1e9;
+    this.kickLevel = 1;
+    this.sinceKick = KICK_LEVEL_FRAMES;
   }
 
   /**
@@ -261,7 +293,9 @@ export class Analyzer {
       this.spectrumDb[b] = tilted;
       if (tilted > loudest) loudest = tilted;
     }
-    this.spectrumReference = this.follow(this.spectrumReference, loudest);
+    const loudness = this.loudness;
+    this.loudestDb = loudest;
+    this.spectrumReference = this.follow(this.spectrumReference, loudest, loudness?.spectrum);
     for (let b = 0; b < SPECTRUM_BANDS; b++) {
       frame[F.spectrum + b] = normalize(this.spectrumDb[b]!, this.spectrumReference, 50);
     }
@@ -274,14 +308,28 @@ export class Analyzer {
       for (let i = 0; i < list.length; i++) sum += this.power[list[i]!]!;
       total += sum;
       const db = 10 * Math.log10(sum + 1e-12);
-      this.bandReference[n] = this.follow(this.bandReference[n]!, db);
+      this.bandDb[n] = db;
+      this.bandReference[n] = this.follow(this.bandReference[n]!, db, loudness?.bands[n]);
       frame[F.bands + n] = normalize(db, this.bandReference[n]!, 30);
     }
     const totalDb = 10 * Math.log10(total + 1e-12);
-    this.energyReference = this.follow(this.energyReference, totalDb);
+    this.energyDb = totalDb;
+    this.energyReference = this.follow(this.energyReference, totalDb, loudness?.energy);
     frame[F.energy] = normalize(totalDb, this.energyReference, 36);
     frame[F.rms] = Math.sqrt(this.hopSquares / this.hop);
     frame[F.peak] = this.hopPeak;
+
+    // A kick is as strong as it is loud in the low end, where the track's loudness is known
+    // (else the auto-gain has it at about full strength anyway): its level builds up for a few
+    // frames.
+    const low = Math.max(frame[F.bands]!, frame[F.bands + 1]!);
+    if (this.hopHits[0]) {
+      this.kickLevel = loudness ? low : 1;
+      this.sinceKick = 0;
+    } else if (this.sinceKick < KICK_LEVEL_FRAMES) {
+      this.sinceKick++;
+      if (loudness) this.kickLevel = Math.max(this.kickLevel, low);
+    }
 
     // Drums: envelopes decay from the estimated onset time.
     for (let d = 0; d < 3; d++) {
@@ -289,7 +337,8 @@ export class Analyzer {
       frame[F.kick + d] =
         onset < 0
           ? 0
-          : Math.exp(-(this.samples - onset) / (DRUM_DECAY_SECONDS[d]! * this.sampleRate));
+          : (d === 0 ? this.kickLevel : 1) *
+            Math.exp(-(this.samples - onset) / (DRUM_DECAY_SECONDS[d]! * this.sampleRate));
       frame[F.kickHit + d] = this.hopHits[d]!;
       this.hopHits[d] = 0;
     }
@@ -340,10 +389,13 @@ export class Analyzer {
     return this.power[k]! * (1 - t) + this.power[k + 1]! * t;
   }
 
-  /** Auto-gain reference: jumps up to louder levels, falls slowly when it gets quieter. */
-  private follow(reference: number, level: number): number {
+  /**
+   * Auto-gain reference: jumps up to louder levels, falls slowly when it gets quieter, but not
+   * below the track's level (`least`) where that is known.
+   */
+  private follow(reference: number, level: number, least = FLOOR_DB): number {
     const next = level > reference ? level : reference - this.releasePerHop;
-    return Math.max(FLOOR_DB, next);
+    return Math.max(FLOOR_DB, least, next);
   }
 }
 

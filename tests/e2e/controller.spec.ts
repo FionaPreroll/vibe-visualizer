@@ -315,3 +315,16 @@ test('the MIDI monitor shows what a controller sends', async ({ page }) => {
   await expect(monitor).toContainText('not used');
   await expect(monitor).toContainText('first half of a value');
 });
+
+test('what the controls do is in the help, which the dialog opens', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('controller-button').click();
+  const dialog = page.getByTestId('controller-dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByTestId('controller-help').click();
+  await expect(dialog).toBeHidden();
+  const content = page.getByTestId('help-content');
+  await expect(content).toHaveAttribute('data-section', 'dj-controller');
+  await expect(content).toContainText('PLAY/PAUSE');
+  await expect(content).toContainText('MIDI monitor');
+});

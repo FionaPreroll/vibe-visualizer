@@ -1,6 +1,6 @@
 # Vibe Visualizer — Audio Analysis
 
-> **Status:** analysis v2 (2026-09-25): new drum detection and a live beat tracker, measured on a synthetic EDM mix and on real recordings. Beat grid for files (2026-09-29, P3 M2): each file's beats are computed from the whole track in the background. One tempo per track, straight grids, tempo ranges and corrections by hand (2026-09-30, UX C), measured on electronic music too. Features: AN-01–05, AN-07, AN-11/12, TMP-06 and TR-11 in [FEATURES.md](FEATURES.md).
+> **Status:** analysis v2 (2026-09-25): new drum detection and a live beat tracker, measured on a synthetic EDM mix and on real recordings. Beat grid for files (2026-09-29, P3 M2): each file's beats are computed from the whole track in the background. One tempo per track, straight grids, tempo ranges and corrections by hand (2026-09-30, UX C), measured on electronic music too. The loudness of each file for the auto-gain, so quiet parts stay quiet (2026-10-03). Features: AN-01–05, AN-07, AN-11/12, TMP-06 and TR-11 in [FEATURES.md](FEATURES.md).
 
 The analyzer turns the audio that is playing into one **analysis frame** every 512 samples (about 94 frames per second at 48 kHz). The renderer reads the frame for the moment you hear. The same code runs live in the AudioWorklet and in the export, so both look the same (see [TECH-STACK.md](TECH-STACK.md), "one core, two clocks").
 
@@ -13,13 +13,15 @@ Layout: `F` in `src/core/analysis/features.ts`. Values are 0…1 unless noted.
 | `spectrum` (64) | Log-spaced spectrum, 30 Hz – 16 kHz, auto-gained |
 | `bands` (6) | Energy of sub, bass, low-mid, mid, high-mid and treble, auto-gained |
 | `energy`, `rms`, `peak` | Overall loudness (auto-gained); RMS and peak of the last hop (linear) |
-| `kick`, `snare`, `hat` | Drum envelopes: 1 at the onset of a hit, then decaying (120, 100 and 60 ms) |
+| `kick`, `snare`, `hat` | Drum envelopes: 1 at the onset of a hit (a kick only as loud as the track's loud parts, see below), then decaying (120, 100 and 60 ms) |
 | `kickHit`, `snareHit`, `hatHit` | 1 in the frame that reports a hit |
 | `beat`, `beatHit` | Beat envelope (1 on the beat, decaying over 100 ms) and the beat event |
 | `beatPhase` | Position within the beat: 0 on the beat, rising to 1 just before the next |
 | `bpm` | Tempo in beats per minute (not normalised) |
 | `beatConfidence` | How clearly the music follows the tracked beat; 0 in silence. Beats are only reported above 0.1 |
 | `waveform` (128) | Time-domain snapshot for oscilloscope-style elements |
+
+**Auto-gain (AN-05).** The spectrum, the bands and the energy are measured in dB against a reference of their own that jumps up to a louder level at once and falls by 3 dB per second; 0…1 covers the 30 dB (bands), 36 dB (energy) or 50 dB (spectrum) below it. So quiet and loud material both look lively, and live input at any level. For a file, that made a quiet start as big as the drop, because the reference only knew the quiet part: the camera shake and the bass zoom swung as far in a soft intro as in the drop. So the analysis of the whole file (§4) also measures how loud the track gets: for the loudest spectrum band, the energy and each band, the level that 95 % of the frames with sound stay below (`src/core/analysis/track-loudness.ts`). While the file plays, and in its exports, the references start at these levels and do not fall below them, and a kick's envelope peaks at how loud the low end (sub and bass) is in the frames of its onset instead of at 1. On a techno groove at −24 dB followed by the same at full level, the intro's bass falls from 0.65 to 0.05 and its kicks from 0.82 to 0.22, while the drop stays as it was. Live input, and a file in the seconds before its analysis is done, keep the auto-gain alone; for such a file, the Logo Spectrum's picture does not move with the music meanwhile (no shake, no zoom of the background and no pulse of the logo on the bass), and eases back in once the loudness is known.
 
 ## 2. Drum detection
 

@@ -37,7 +37,7 @@ It works best in Chrome or Edge on a computer with a good graphics card, above a
 
 ## Beat grid and tempo
 
-Each file is analysed as a whole in the background. The visuals then follow its beats and its tempo instead of guessing them live, and the grid knows where the bars start. A single track keeps one tempo, and a track with a fixed tempo gets a straight grid, as in DJ software; a long mix keeps its tempo changes.
+Each file is analysed as a whole in the background. The visuals then follow its beats and its tempo instead of guessing them live, and the grid knows where the bars start. The analysis also measures how loud the track gets, so a quiet intro moves the visuals less than the drop; until it is done (the first seconds of a new file), the Logo Spectrum does not shake, zoom or pulse with the bass. A single track keeps one tempo, and a track with a fixed tempo gets a straight grid, as in DJ software; a long mix keeps its tempo changes.
 
 - **The BPM** of each track shows in the queue. Where the grid changes tempo, it shows each one ("178 · 119"), and the timeline marks the changes.
 - **Correcting the tempo:** click the BPM. Double it, halve it, multiply or divide it by 1.5 (for a track read at a related tempo, such as 87 instead of 174), hold one of the tempos the grid found for the whole track, type the tempo, or tap it (click **Tap** on every beat, or press Space while it has the focus), then **Set**. *Automatic* goes back to the tempo found. The grid follows at once, and the choice is kept for the file.

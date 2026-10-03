@@ -1,20 +1,25 @@
 <script lang="ts">
   import type { MonitorEntry } from '../core/control/controller-service';
+  import { backdropClose } from './backdrop';
   import { useControllers } from './controller-context';
   import Icon from './Icon.svelte';
 
   /**
-   * DJ controllers (CTL-03): connect one, see which devices the browser reports, what the
-   * controls of the DDJ-FLX2 do, and every MIDI message in a monitor (to check a device).
+   * DJ controllers (CTL-03): connect one, see which devices the browser reports, and every MIDI
+   * message in a monitor (to check a device). What the controls do is in the help, which the
+   * dialog opens.
    */
   interface Props {
     open: boolean;
     onclose: () => void;
+    /** Opens the help on the DJ controller. */
+    onhelp: () => void;
   }
-  let { open, onclose }: Props = $props();
+  let { open, onclose, onhelp }: Props = $props();
 
   const controllers = useControllers();
   let dialog: HTMLDialogElement | undefined = $state();
+  const backdrop = backdropClose(() => onclose());
   let copied = $state(false);
 
   $effect(() => {
@@ -30,24 +35,6 @@
     denied: 'The browser did not allow access to MIDI devices',
     unsupported: 'This browser has no Web MIDI',
   };
-
-  const MAPPING: readonly [string, string][] = [
-    ['PLAY/PAUSE', 'Play and pause; it lights while the music plays and blinks while paused'],
-    [
-      'CUE',
-      'As on a CDJ, with the in marker as the cue point: paused, it sets the cue point at the playhead; held at the cue point, it plays until let go; while playing, back to the cue point and pause',
-    ],
-    [
-      'Pads (HOT CUE mode)',
-      'Hot cues 1–8: a dark pad sets its cue at the playhead (turn the jog wheel to the spot first), a lit pad jumps to it',
-    ],
-    ['SHIFT + pad', 'Delete the hot cue'],
-    ['CFX', 'The DJ filter: low-pass to the left, high-pass to the right, off in the middle'],
-    ['Tempo slider', 'The tempo, within the range set in the Sound tab'],
-    ['Channel fader', 'The volume'],
-    ['Jog wheel', 'Seek: a turn of its top is 1.8 s, like a record'],
-    ['SHIFT + jog wheel', 'Seek 16 times as fast'],
-  ];
 
   function describe(entry: MonitorEntry): string {
     return entry.control ?? (entry.known ? 'first half of a value' : 'not used');
@@ -71,7 +58,7 @@
   bind:this={dialog}
   aria-labelledby="controller-title"
   {onclose}
-  onclick={(event) => event.target === dialog && onclose()}
+  {...backdrop}
   data-testid="controller-dialog"
 >
   <header>
@@ -137,17 +124,9 @@
       {/if}
     {/if}
 
-    <h3>Pioneer DJ DDJ-FLX2, deck 1</h3>
-    <table>
-      <tbody>
-        {#each MAPPING as [control, action] (control)}
-          <tr><th scope="row">{control}</th><td>{action}</td></tr>
-        {/each}
-      </tbody>
-    </table>
-    <p class="muted">
-      Knobs and faders take over once they reach the app's value, so nothing jumps. Deck 2, the EQ
-      knobs and the crossfader do nothing yet.
+    <p class="muted controls">
+      What each control does is in the help.
+      <button onclick={onhelp} data-testid="controller-help">The controls of the DDJ-FLX2</button>
     </p>
 
     <details data-testid="controller-monitor">
@@ -209,10 +188,6 @@
     margin: 0;
     font-size: 20px;
   }
-  h3 {
-    margin: 18px 0 8px;
-    font-size: 15px;
-  }
   .close {
     padding: 4px;
     background: transparent;
@@ -261,26 +236,12 @@
     display: flex;
     gap: 10px;
   }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-  }
-  th,
-  td {
-    padding: 5px 0;
-    border-bottom: 1px solid var(--border);
-    text-align: left;
-    vertical-align: top;
-  }
-  th {
-    width: 38%;
-    padding-right: 12px;
-    font-weight: 600;
-  }
-  table + p {
-    margin-top: 10px;
-    font-size: 13px;
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-top: 14px;
   }
   details {
     margin-top: 14px;

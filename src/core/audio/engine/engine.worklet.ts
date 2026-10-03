@@ -3,6 +3,7 @@ import type { TrackerRange } from '../../analysis/beat-tracker';
 import { FeatureTimelineWriter } from '../../analysis/feature-timeline';
 import { F } from '../../analysis/features';
 import { GridBeats } from '../../analysis/grid-beats';
+import type { TrackLoudness } from '../../analysis/track-loudness';
 import { DspCore } from '../dsp/dsp-core';
 import type { SoundSettings } from '../dsp/sound-settings';
 import { AudioRingConsumer } from '../ring-buffer';
@@ -21,15 +22,16 @@ export type EngineMessage =
   | { type: 'nudge'; factor: number }
   /** The tempo range of the live beat tracking (AN-12, TMP-06); null for its own. */
   | { type: 'tempo-range'; range: TrackerRange | null }
-  /** The beat grid of the file with `token` (null: forget it). */
+  /** The beat grid of the file with `token` and how loud it gets (null: forget them). */
   | {
       type: 'grid';
       token: number;
       beats: Float64Array | null;
       confidence: Float32Array | null;
+      loudness: TrackLoudness | null;
     };
 
-/** Beat grids kept (the playing file, the next ones, the one before). */
+/** Beat grids and loudness kept (the playing file, the next ones, the one before). */
 const KEEP_GRIDS = 6;
 
 /**
@@ -68,6 +70,8 @@ class EngineProcessor extends AudioWorkletProcessor {
   private nextBase = 0;
   /** Beat grids of the files (AN-07), by token: they replace the live beat tracking. */
   private readonly grids = new Map<number, GridBeats>();
+  /** How loud each file gets, by token: the analysis's auto-gain stays above its levels. */
+  private readonly loudness = new Map<number, TrackLoudness>();
   private readonly onAnalysisFrame: (offset: number) => void;
 
   constructor(options: AudioWorkletNodeOptions) {
@@ -99,8 +103,9 @@ class EngineProcessor extends AudioWorkletProcessor {
       if (this.blockRate > 0) {
         this.grids.get(token)?.apply(this.analyzer.frame, seconds, this.blockRate);
       }
-      // Live input comes from no file.
+      // Live input comes from no file. The next frames are measured against this file's levels.
       const file = this.control.live ? 0 : token;
+      this.analyzer.setLoudness(this.loudness.get(file) ?? null);
       this.timeline.write(this.blockStart + offset, seconds, this.analyzer.frame, file);
     };
   }
@@ -112,17 +117,27 @@ class EngineProcessor extends AudioWorkletProcessor {
       this.dsp.nudge = message.factor;
     } else if (message.type === 'tempo-range') {
       this.analyzer.setTempoRange(message.range);
-    } else if (message.beats && message.confidence) {
+    } else {
+      this.keepFile(message);
+    }
+  }
+
+  /** The beat grid and the loudness of a file (null: forget them), of the last few files. */
+  private keepFile(message: Extract<EngineMessage, { type: 'grid' }>): void {
+    const { token } = message;
+    this.grids.delete(token);
+    this.loudness.delete(token);
+    if (message.beats && message.confidence) {
       const beats = new GridBeats();
       beats.set({ beats: message.beats, confidence: message.confidence });
-      this.grids.delete(message.token);
-      this.grids.set(message.token, beats);
-      for (const token of this.grids.keys()) {
-        if (this.grids.size <= KEEP_GRIDS) break;
-        this.grids.delete(token);
+      this.grids.set(token, beats);
+    }
+    if (message.loudness) this.loudness.set(token, message.loudness);
+    for (const kept of [this.grids, this.loudness]) {
+      for (const key of kept.keys()) {
+        if (kept.size <= KEEP_GRIDS) break;
+        kept.delete(key);
       }
-    } else {
-      this.grids.delete(message.token);
     }
   }
 

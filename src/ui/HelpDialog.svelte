@@ -1,6 +1,7 @@
 <script lang="ts">
   import guide from '../../docs/USER-GUIDE.md?raw';
   import { bugReportLink, BUG_EMAIL } from './app-info';
+  import { backdropClose } from './backdrop';
   import BackupSection from './BackupSection.svelte';
   import Icon from './Icon.svelte';
   import { guideSections, renderMarkdown } from './markdown';
@@ -34,6 +35,7 @@
   const current = $derived(sections.find((entry) => entry.id === section) ?? sections[0]!);
 
   let dialog: HTMLDialogElement | undefined = $state();
+  const backdrop = backdropClose(() => onclose());
   let content: HTMLElement | undefined = $state();
 
   $effect(() => {
@@ -54,13 +56,7 @@
   }
 </script>
 
-<dialog
-  bind:this={dialog}
-  aria-labelledby="help-title"
-  {onclose}
-  onclick={(event) => event.target === dialog && onclose()}
-  data-testid="help"
->
+<dialog bind:this={dialog} aria-labelledby="help-title" {onclose} {...backdrop} data-testid="help">
   <header>
     <h2 id="help-title">Help</h2>
     <button class="close" onclick={onclose} aria-label="Close">

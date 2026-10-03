@@ -20,6 +20,7 @@ import type { BeatGrid } from '../analysis/beat-grid';
 import { FeatureSampler } from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
 import { GridBeats } from '../analysis/grid-beats';
+import { sanitizeLoudness } from '../analysis/track-loudness';
 import { decodeGrid, encodeGrid } from '../library/analysis-cache';
 import { openInput } from '../audio/decode-stream';
 import { DspCore } from '../audio/dsp/dsp-core';
@@ -419,12 +420,14 @@ async function audioPass(
   progress: (update: ExportProgress) => void,
 ): Promise<void> {
   const { timing, codecs, format, sound, parts } = manifest;
-  // With a file's beat grid, the beats come from it, as during playback.
+  // With a file's beat grid, the beats come from it, as during playback; with its loudness, the
+  // auto-gain stays above its levels.
   const gridBeats = grids.map((grid) => {
     const beats = new GridBeats();
     beats.set(grid);
     return beats;
   });
+  const loudness = parts.map((part) => sanitizeLoudness(part.loudness));
   // The frame of its file each part starts at, and where in the stream it starts.
   const partFrom = parts.map((part, i) =>
     i === 0 ? timing.sourceStart : Math.round(part.range.start * EXPORT_RATE),
@@ -516,6 +519,7 @@ async function audioPass(
         const frame = partFrom[index]! + (index === 0 ? at : at - starts[index]!);
         beats.apply(analyzer.frame, frame / EXPORT_RATE, sound.rate);
       }
+      analyzer.setLoudness(loudness[index] ?? null);
       if (stored++ < timing.analysisFrames) records.add(analyzer.frame);
     };
     while (stored < timing.analysisFrames || rendered < encodeEnd) {

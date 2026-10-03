@@ -1,9 +1,9 @@
 import { AudioEngine } from '../audio/engine/audio-engine';
 import type { KaleidoSettings } from './kaleido-settings';
 import type { ImageKind } from './logo-spectrum';
-import type { OverlaySettings, OverlayTrack } from './overlay-settings';
+import type { OverlaySettings } from './overlay-settings';
 import type { AutoPresets } from './preset-director';
-import type { RenderEvent, RenderRequest, SceneKind } from './render-protocol';
+import type { RenderEvent, RenderRequest, SceneKind, StreamTrack } from './render-protocol';
 
 type CaptureEvent = Extract<RenderEvent, { type: 'capture' }>;
 import RenderWorker from './render.worker.ts?worker';
@@ -88,7 +88,7 @@ export class Renderer {
   }
 
   /** The tracks of the files in the stream, by the engine's token, and their tempo. */
-  setTracks(tracks: { token: number; track: OverlayTrack | null }[], rate: number): void {
+  setTracks(tracks: StreamTrack[], rate: number): void {
     this.send({ type: 'tracks', tracks, rate });
   }
 
