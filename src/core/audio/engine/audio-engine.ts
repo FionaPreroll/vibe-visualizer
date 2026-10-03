@@ -1,4 +1,5 @@
 import type { BeatGrid } from '../../analysis/beat-grid';
+import type { TrackLoudness } from '../../analysis/track-loudness';
 import type { TrackerRange } from '../../analysis/beat-tracker';
 import { createFeatureTimeline, FeatureTimelineReader } from '../../analysis/feature-timeline';
 import { WorkerClient } from '../../util/worker-rpc';
@@ -207,15 +208,17 @@ export class AudioEngine {
   }
 
   /**
-   * The beat grid of the file with `token` (AN-07): while it plays, the analysis takes its
-   * beats from it. Null forgets it.
+   * The beat grid of the file with `token` (AN-07) and how loud it gets: while it plays, the
+   * analysis takes its beats from the grid, and its auto-gain does not go below the file's
+   * levels. Null forgets them.
    */
-  setBeatGrid(token: number, grid: BeatGrid | null): void {
+  setFileAnalysis(token: number, grid: BeatGrid | null, loudness: TrackLoudness | null): void {
     this.post({
       type: 'grid',
       token,
       beats: grid?.beats ?? null,
       confidence: grid?.confidence ?? null,
+      loudness,
     });
   }
 

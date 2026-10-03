@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { createTestSignal } from '../audio/test-signal';
 import { hashFloat32 } from '../util/hash';
 import { Analyzer } from './analyzer';
+import { createPattern } from './eval/patterns';
 import { F, SPECTRUM_BANDS } from './features';
+import { LoudnessCollector, type TrackLoudness } from './track-loudness';
 
 const RATE = 48000;
 
@@ -59,6 +61,59 @@ describe('Analyzer', () => {
     last[F.bpm] = 0;
     last[F.beatPhase] = 0;
     expect(Math.max(...last)).toBe(0);
+  });
+
+  it('keeps a quiet intro quiet against the drop when the levels of the track are known', () => {
+    // A techno groove at -24 dB, then the same at full level.
+    const groove = createPattern('techno', 8, RATE);
+    const length = groove.left.length;
+    const track = [new Float32Array(2 * length), new Float32Array(2 * length)] as const;
+    for (const [channel, source] of [groove.left, groove.right].entries()) {
+      track[channel]!.set(source.map((sample) => sample * 0.06));
+      track[channel]!.set(source, length);
+    }
+    const run = (levels: TrackLoudness | null) => {
+      const analyzer = new Analyzer(RATE);
+      analyzer.setLoudness(levels);
+      const collector = new LoudnessCollector(analyzer);
+      const frames: { at: number; low: number; kick: number; energy: number }[] = [];
+      for (let offset = 0; offset < 2 * length; offset += 512) {
+        const count = Math.min(512, 2 * length - offset);
+        const [left, right] = track.map((channel) => channel.subarray(offset));
+        analyzer.process(left!, right!, count, (done) => {
+          collector.push();
+          const frame = analyzer.frame;
+          frames.push({
+            at: (offset + done) / RATE,
+            low: (frame[F.bands]! + frame[F.bands + 1]!) / 2,
+            kick: frame[F.kick]!,
+            energy: frame[F.energy]!,
+          });
+        });
+      }
+      const half = length / RATE;
+      const part = (from: number, to: number) => {
+        const list = frames.filter(({ at }) => at >= from && at < to);
+        const mean = (key: 'low' | 'energy') =>
+          list.reduce((sum, frame) => sum + frame[key], 0) / list.length;
+        const kick = Math.max(...list.map((frame) => frame.kick));
+        return { low: mean('low'), energy: mean('energy'), kick };
+      };
+      return { intro: part(2, half), drop: part(half + 1, 2 * half), levels: collector.finish() };
+    };
+
+    // The auto-gain alone makes the intro as big as the drop (live input keeps it that way).
+    const alone = run(null);
+    expect(alone.intro.low).toBeCloseTo(alone.drop.low, 1);
+    expect(alone.intro.kick).toBeCloseTo(alone.drop.kick, 1);
+    // With the levels of the whole track, the intro is as quiet as it sounds, the drop as before.
+    const known = run(alone.levels);
+    expect(known.intro.low).toBeLessThan(0.15);
+    expect(known.intro.energy).toBeLessThan(0.3);
+    expect(known.intro.kick).toBeLessThan(0.35);
+    expect(known.drop.low).toBeCloseTo(alone.drop.low, 1);
+    expect(known.drop.kick).toBeCloseTo(alone.drop.kick, 1);
+    expect(known.drop.energy).toBeCloseTo(alone.drop.energy, 1);
   });
 
   it('is independent of the block size', () => {

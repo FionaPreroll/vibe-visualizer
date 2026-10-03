@@ -24,9 +24,13 @@ describe('track analysis cache', () => {
       },
       tempo: null,
       range: 'auto',
+      loudness: { spectrum: -14.625, energy: -0.875, bands: [-4.875, -1.375, -32, -30, -27, -18] },
     };
     const read = decodeAnalysis(encodeAnalysis(result), 'f00d');
     expect(read).toEqual(result);
+    // A file too quiet to tell how loud it gets.
+    const silent = { ...result, loudness: null };
+    expect(decodeAnalysis(encodeAnalysis(silent), 'f00d')?.loudness).toBeNull();
     // With a tempo the user gave (TMP-06), and in a tempo range (AN-12).
     const corrected = { ...result, tempo: 174 };
     expect(decodeAnalysis(encodeAnalysis(corrected), 'f00d')?.tempo).toBe(174);
@@ -45,6 +49,11 @@ describe('track analysis cache', () => {
   it('ignores anything that is not a current analysis', () => {
     expect(decodeAnalysis(new ArrayBuffer(8), 'x')).toBeNull();
     expect(decodeAnalysis(new ArrayBuffer(64), 'x')).toBeNull();
+    // An entry of the version before (without the loudness) is analysed anew.
+    const older = new ArrayBuffer(128);
+    new DataView(older).setUint32(0, 0x56564741, true);
+    new DataView(older).setUint32(4, 3, true);
+    expect(decodeAnalysis(older, 'x')).toBeNull();
   });
 });
 

@@ -13,6 +13,7 @@ import {
   shiftBars,
   type GridEdit,
 } from '../analysis/grid-edit';
+import type { TrackLoudness } from '../analysis/track-loudness';
 import { rateLimits, TEMPO_STEP, type SoundSettings } from '../audio/dsp/sound-settings';
 import { AudioEngine, type NextFile } from '../audio/engine/audio-engine';
 import {
@@ -150,8 +151,11 @@ export class Player {
     release: () => void;
     timer: ReturnType<typeof setTimeout>;
   } | null = null;
-  /** Beat grids the engine has, by token. */
-  private readonly sentGrids = new Map<number, BeatGrid | null>();
+  /** The beat grids and loudness the engine has, by token. */
+  private readonly sentGrids = new Map<
+    number,
+    { grid: BeatGrid | null; loudness: TrackLoudness | null }
+  >();
   /** Tracks played in this shuffle round, oldest first (PL-04). */
   private played: string[] = [];
   private busy = false;
@@ -263,10 +267,13 @@ export class Player {
     if (next) wanted.set(next.token, next.id);
     for (const [token, id] of wanted) {
       const track = this.state.tracks.find((entry) => entry.id === id) ?? null;
-      const grid = this.analysisOf(track)?.grid ?? null;
-      if (this.sentGrids.has(token) && this.sentGrids.get(token) === grid) continue;
-      this.sentGrids.set(token, grid);
-      this.engine.setBeatGrid(token, grid);
+      const analysis = this.analysisOf(track);
+      const grid = analysis?.grid ?? null;
+      const loudness = analysis?.loudness ?? null;
+      const sent = this.sentGrids.get(token);
+      if (sent && sent.grid === grid && sent.loudness === loudness) continue;
+      this.sentGrids.set(token, { grid, loudness });
+      this.engine.setFileAnalysis(token, grid, loudness);
     }
     for (const token of this.sentGrids.keys()) {
       if (!wanted.has(token)) this.sentGrids.delete(token);

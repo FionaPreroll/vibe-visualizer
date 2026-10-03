@@ -241,7 +241,7 @@
       ),
     );
     const requested: RequestPart[] = tracks.map((entry, index) => ({
-      part: planned[index]!,
+      part: { ...planned[index]!, loudness: player.analysisOf(entry)?.loudness ?? null },
       file: files[index]!,
       grid: player.analysisOf(entry)?.grid ?? null,
       cover: covers[index] ?? null,

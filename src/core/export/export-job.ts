@@ -1,4 +1,5 @@
 import { F } from '../analysis/features';
+import type { TrackLoudness } from '../analysis/track-loudness';
 import { LIMITER_LOOKAHEAD } from '../audio/dsp/limiter';
 import {
   DEFAULT_SOUND,
@@ -99,6 +100,8 @@ export interface ExportPart {
   range: { start: number; end: number };
   /** The part stops at an out marker, before the end of its file: it crosses into what follows. */
   cut: boolean;
+  /** How loud its file gets, if it has been analysed: the analysis's auto-gain stays above it. */
+  loudness?: TrackLoudness | null;
 }
 
 export interface ExportTiming {
