@@ -1,8 +1,15 @@
 name: CI
 
 on:
+  # Branches are checked in their pull requests, and main after each merge.
   push:
+    branches: [main]
   pull_request:
+
+# A newer push to a pull request stops the run for the commit before.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
