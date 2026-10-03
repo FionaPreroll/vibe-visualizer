@@ -128,3 +128,39 @@ test('a browser without a feature the app needs says so instead (NF-02)', async 
   await expect(page.getByTestId('visual-stage')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('an error nobody handles shows, with details to copy and report (NF-10)', async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await expect(page.getByTestId('visual-stage')).toHaveAttribute('data-status', 'running', {
+    timeout: 15_000,
+  });
+  const notice = page.getByTestId('problem');
+  await page.evaluate(() => {
+    setTimeout(() => {
+      throw new Error('Test failure');
+    });
+  });
+  await expect(notice).toContainText('Something went wrong: Test failure');
+  await page.getByTestId('problem-copy').click();
+  await expect(page.getByTestId('problem-copy')).toHaveText('Copied');
+  const details = await page.evaluate(() => navigator.clipboard.readText());
+  expect(details).toContain('App: Test failure');
+  expect(details).toContain(`Browser: ${await page.evaluate(() => navigator.userAgent)}`);
+  await expect(page.getByTestId('problem-report')).toHaveAttribute(
+    'href',
+    /^mailto:fipreroll\+app@gmail\.com\?subject=.*App%3A%20Test%20failure/,
+  );
+
+  // A promise rejected without a handler counts too; a cancelled one does not.
+  await page.evaluate(() => {
+    void Promise.reject(new DOMException('The user aborted a request.', 'AbortError'));
+    void Promise.reject(new Error('Rejected'));
+  });
+  await expect(notice).toContainText('Something went wrong (2 times): Rejected');
+  await notice.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(notice).toHaveCount(0);
+});

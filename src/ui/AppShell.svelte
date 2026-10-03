@@ -14,12 +14,14 @@
   import DetailWaveform from './DetailWaveform.svelte';
   import DropOverlay from './DropOverlay.svelte';
   import ExportDialog from './ExportDialog.svelte';
+  import Guard from './Guard.svelte';
   import HelpDialog from './HelpDialog.svelte';
   import LivePanel from './LivePanel.svelte';
   import { provideExporter } from './exporter-context';
   import Icon from './Icon.svelte';
   import { savePicture } from './picture';
   import { providePlayer } from './player-context';
+  import ProblemNotice from './ProblemNotice.svelte';
   import QueuePanel from './QueuePanel.svelte';
   import { nextVisualMode, stepPreset } from './shortcuts';
   import { provideCapture, StageCapture } from './stage-capture';
@@ -323,16 +325,18 @@
     aria-label="Visual stage"
     onpointermove={onPointerMove}
   >
-    {#if $app.settings.visualMode === 'analysis'}
-      <AnalysisView />
-    {:else}
-      <VisualStage
-        mode={$app.settings.visualMode}
-        aspect={$app.settings.aspect}
-        safeAreas={$app.settings.safeAreas}
-        paused={$exporter.status === 'running'}
-      />
-    {/if}
+    <Guard where="The visuals">
+      {#if $app.settings.visualMode === 'analysis'}
+        <AnalysisView />
+      {:else}
+        <VisualStage
+          mode={$app.settings.visualMode}
+          aspect={$app.settings.aspect}
+          safeAreas={$app.settings.safeAreas}
+          paused={$exporter.status === 'running'}
+        />
+      {/if}
+    </Guard>
     {#if $app.tracks.length === 0 && $app.live.status === 'off'}
       <div class="welcome" data-testid="empty-hint">
         <div class="card">
@@ -343,6 +347,7 @@
       </div>
     {/if}
     <div class="notes">
+      <ProblemNotice />
       {#if $app.undo}
         <div class="undo" role="status" data-testid="undo-toast">
           <span>{$app.undo}</span>
@@ -410,23 +415,27 @@
         </button>
       </div>
       <div class="panel-body" role="tabpanel">
-        {#if $app.settings.panel === 'queue'}
-          <QueuePanel />
-        {:else if $app.settings.panel === 'sound'}
-          <SoundPanel />
-        {:else if $app.settings.panel === 'visuals'}
-          <VisualsPanel />
-        {:else}
-          <LivePanel />
-        {/if}
+        <Guard where="The side panel">
+          {#if $app.settings.panel === 'queue'}
+            <QueuePanel />
+          {:else if $app.settings.panel === 'sound'}
+            <SoundPanel />
+          {:else if $app.settings.panel === 'visuals'}
+            <VisualsPanel />
+          {:else}
+            <LivePanel />
+          {/if}
+        </Guard>
       </div>
     </aside>
   {/if}
 
   {#if $app.settings.detailWaveform && $app.currentId !== null && $app.live.status === 'off'}
-    <div class="detail-row"><DetailWaveform /></div>
+    <div class="detail-row">
+      <Guard where="The waveform"><DetailWaveform /></Guard>
+    </div>
   {/if}
-  <TransportBar />
+  <Guard where="The transport bar"><TransportBar /></Guard>
   <ExportDialog open={exportOpen} onclose={() => (exportOpen = false)} />
   <ControllerDialog
     open={controllerOpen}

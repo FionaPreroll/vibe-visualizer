@@ -11,6 +11,7 @@
   import { BUILT_IN_PRESETS } from '../core/render/visual-settings';
   import { usePlayer } from './player-context';
   import { kaleidoPresets, logoSpectrumPresets } from './preset-store';
+  import { reportProblem } from './problems';
   import { liveScale } from './render-quality';
   import SafeAreas from './SafeAreas.svelte';
   import { useCapture } from './stage-capture';
@@ -149,7 +150,7 @@
         recover(event.message);
       } else {
         // It draws on: the error is only reported.
-        console.error('Render worker:', event.message);
+        reportProblem(new Error(event.message), 'The render worker');
       }
     };
 
