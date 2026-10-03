@@ -43,20 +43,6 @@ pnpm dev
 
 Then open http://localhost:5173 in Chrome or Firefox. The dev server sends the cross-origin isolation headers the audio engine needs.
 
-## Spike Lab (P0)
-
-The Spike Lab (http://localhost:5173/#/lab; the development server also links it in the top bar) has five small prototypes that test the risky parts on your machine.
-
-| Spike | Tests | You need |
-|---|---|---|
-| S1 Streaming audio | Playing a long file while decoding it in pieces: cue jumps, dropouts, memory | An audio file, ideally a 1–3 hour mix |
-| S2 Key lock | Time-stretching speed and bit-identical output live vs. offline; tempo slider for listening | Nothing (a file is optional for listening) |
-| S3 Encoding | H.264 + AAC speed at 1080p60, 4K30 and 1080×1920; writes an A/V sync sample MP4 | Upload the sample to YouTube/TikTok (private) |
-| S4 Rendering | WebGL2 feedback + kaleidoscope + bloom, live at 1080p and offline at 4K | Nothing (flashing visuals) |
-| S5 Long render | A multi-hour export in resumable segments, joined without re-encoding | About 1 GB of free disk space for the 3-hour run |
-
-Run the spikes, click **Copy report** and paste the report into the chat.
-
 ## Scripts
 
 | Command | What it does |
@@ -66,7 +52,7 @@ Run the spikes, click **Copy report** and paste the report into the chat.
 | `pnpm check` | Type check (Svelte and TypeScript) |
 | `pnpm lint`, `pnpm format` | ESLint, Prettier |
 | `pnpm test` | Unit tests (Vitest) |
-| `pnpm test:e2e` | End-to-end tests in Chromium (Playwright); run the spikes in quick mode |
+| `pnpm test:e2e` | End-to-end tests in Chromium (Playwright) |
 | `pnpm test:e2e:firefox` | The main paths in Firefox, the end-to-end tests tagged `@firefox` |
 | `pnpm test:soak` | The soak test: plays for 30 minutes (`SOAK_MINUTES`), and the memory must stay flat |
 | `pnpm screenshots` | The README screenshots (docs/screenshots), taken in the app while a synthetic track plays |
@@ -83,7 +69,7 @@ The app is a static site, hosted on Cloudflare Workers as static assets (`wrangl
 | Preview command (other branches, with preview builds on) | `npx wrangler preview` |
 | Root directory | `/` |
 
-The Worker's name in the dashboard must match `name` in `wrangler.jsonc`. `public/_headers` sets the cross-origin isolation headers that the audio engine needs; GitHub Pages cannot send them.
+The Worker's name in the dashboard must match `name` in `wrangler.jsonc`. Wrangler is a dev dependency, so `npx wrangler` takes the version in the lockfile. `public/_headers` sets the cross-origin isolation headers that the audio engine needs (GitHub Pages cannot send them) and a content security policy; the preview server sends the same headers.
 
 ## Project layout
 
@@ -96,9 +82,9 @@ src/core/       framework-free core: audio engine (media worker, AudioWorklet, r
                 storage), player (play order) and state, Signalsmith Stretch binding, utilities
 src/ui/         Svelte app: top bar, stage, queue, sound, visuals and live panels, transport
                 with waveforms and cues, export, sync, welcome and help dialogs
-src/spikes/     Spike Lab and the P0 prototypes
 packages/       dj-controllers: library for DJ controllers (Web MIDI, profiles, lights)
-vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core
+vite-plugins/   build-time extraction of the Signalsmith Stretch WebAssembly core, the build's
+                name (version.json), the production headers for the preview server
 tests/e2e/      Playwright tests
 tests/eval/     analysis evaluation on real recordings
 tests/screenshots/

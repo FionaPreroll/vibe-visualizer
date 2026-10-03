@@ -132,6 +132,7 @@ If a control does not do what it should, open **MIDI monitor** in the dialog, co
 - **Something went wrong:** an error the app did not expect shows at the bottom. **Copy details** copies what a bug report needs, and **Report…** opens a mail with it. A part of the app that failed shows **Try again**, while the rest goes on.
 - **A new version is out:** when the app was updated while it is open, a note offers to **Reload**.
 - **Storage:** the app asks the browser to keep its data, so that it is not cleared when the disk runs low (Firefox asks you, the first time you add an image or export). When the browser's storage is full, a message says that changes are not saved.
+- **System check:** below, what this browser offers the app: the graphics, the encoders for videos, and the storage. **Copy the report** puts it on the clipboard for a bug report.
 - **The browser:** the app needs a current browser, with WebGL 2. If something is missing, it says what instead of starting. When it is WebGL 2 in Chrome, Edge or Firefox, turn on graphics acceleration in the browser's settings.
 
 ## Keyboard shortcuts
