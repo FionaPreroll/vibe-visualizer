@@ -705,3 +705,74 @@ test('the cover art turns like a record while the music plays (LS-16)', async ({
   expect(moved(b, await look())).toBeLessThan(20);
   expect(errors).toEqual([]);
 });
+
+test('a track can be given a cover of your own, kept for the file (LS-21)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await startWithClassicLook(page);
+  await page.addInitScript(() =>
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify({ coverLogo: true })),
+  );
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  const file = { name: 'Plain.wav', mimeType: 'audio/wav', buffer: createWav(30) };
+  await page.getByTestId('file-input').setInputFiles(file);
+  const item = page.getByTestId('queue-item');
+  await expect(item).toHaveAttribute('data-status', 'ready');
+  await expect(page.getByTestId('queue-cover')).toHaveCount(0);
+  await page.getByTestId('play-button').click();
+  const quarters = logoQuarters((await stage.boundingBox())!);
+  expect(showsCover(await measure(page, await stage.screenshot(), quarters))).toBe(false);
+
+  // A file that is no image is refused; an image shows at once in the dialog, and once saved, in
+  // the queue, the transport and as the logo.
+  await item.hover();
+  await page.getByTestId('queue-rename').click();
+  const dialog = page.getByTestId('track-name-dialog');
+  await expect(dialog).toContainText('Title, artist and cover');
+  await expect(page.getByTestId('track-cover-remove')).toBeDisabled();
+  const input = page.getByTestId('track-cover-input');
+  await input.setInputFiles({
+    name: 'notes.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  });
+  await expect(page.getByTestId('track-cover-problem')).toContainText(
+    'please use a PNG, JPEG, WebP or SVG image',
+  );
+  await input.setInputFiles({ name: 'cover.png', mimeType: 'image/png', buffer: COVER });
+  await expect(page.getByTestId('track-cover-preview')).toBeVisible();
+  await expect(page.getByTestId('track-cover-problem')).toHaveCount(0);
+  await expect(page.getByTestId('queue-cover')).toHaveCount(0);
+  await page.getByTestId('track-name-save').click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId('queue-cover')).toBeVisible();
+  await expect(page.getByTestId('now-cover')).toBeVisible();
+  await expect
+    .poll(async () => showsCover(await measure(page, await stage.screenshot(), quarters)), {
+      timeout: 10_000,
+    })
+    .toBe(true);
+
+  // Kept for the file: it is back with it after a reload.
+  await page.reload();
+  await page.getByRole('tab', { name: 'Queue' }).click();
+  await page.getByTestId('file-input').setInputFiles(file);
+  await expect(item).toHaveAttribute('data-status', 'ready');
+  await expect(page.getByTestId('queue-cover')).toBeVisible();
+
+  // Taken away again: the file has none, so none shows.
+  await item.hover();
+  await page.getByTestId('queue-rename').click();
+  await page.getByTestId('track-cover-remove').click();
+  await expect(page.getByTestId('track-cover-preview')).toHaveCount(0);
+  await page.getByTestId('track-name-save').click();
+  await expect(page.getByTestId('queue-cover')).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('tab', { name: 'Queue' }).click();
+  await page.getByTestId('file-input').setInputFiles(file);
+  await expect(item).toHaveAttribute('data-status', 'ready');
+  await expect(page.getByTestId('queue-cover')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

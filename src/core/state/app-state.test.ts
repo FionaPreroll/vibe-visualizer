@@ -10,6 +10,7 @@ import {
   reducer,
   restoredTrack,
   shownArtist,
+  shownCover,
   shownTitle,
   trackEdit,
   trackRange,
@@ -156,6 +157,44 @@ describe('app state', () => {
     expect(state.tracks.map((track) => track.tempo)).toEqual([174, 174, null]);
     expect(state.tracks.map((track) => track.fixedTempo)).toEqual([true, true, false]);
     expect(state.tracks.map((track) => track.gridEdit)).toEqual([edit, edit, NO_GRID_EDIT]);
+  });
+
+  it("shows the cover the user gave a file, on every entry of it, instead of the file's (LS-21)", () => {
+    let state = withTracks('a', 'b', 'c');
+    state = {
+      ...state,
+      tracks: state.tracks.map((track, i) => ({
+        ...track,
+        fingerprint: i < 2 ? 'same' : 'other',
+        coverUrl: i === 0 ? 'blob:file' : null,
+      })),
+    };
+    expect(state.tracks.map(shownCover)).toEqual(['blob:file', null, null]);
+    state = reducer(state, { type: 'tracks/cover', fingerprint: 'same', url: 'blob:mine' });
+    expect(state.tracks.map(shownCover)).toEqual(['blob:mine', 'blob:mine', null]);
+    // Probed again as the same file, it keeps it; as another file (changed since), it does not.
+    const probed = (id: string, fingerprint: string) =>
+      reducer(state, {
+        type: 'tracks/probed',
+        id,
+        info: {
+          status: 'ready',
+          reason: null,
+          title: null,
+          artist: null,
+          album: null,
+          duration: 60,
+          sampleRate: 44100,
+          codec: 'mp3',
+          format: 'MP3',
+          coverUrl: null,
+          fingerprint,
+        },
+      });
+    expect(shownCover(probed('t1', 'same').tracks[1]!)).toBe('blob:mine');
+    expect(shownCover(probed('t1', 'changed').tracks[1]!)).toBeNull();
+    state = reducer(state, { type: 'tracks/cover', fingerprint: 'same', url: null });
+    expect(state.tracks.map(shownCover)).toEqual(['blob:file', null, null]);
   });
 
   it('moves tracks', () => {

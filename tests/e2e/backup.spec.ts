@@ -50,7 +50,7 @@ test('a backup holds everything the app keeps, and brings it back (UI-06)', asyn
   await expect(page.getByTestId('queue-bpm')).toHaveText('120 BPM', { timeout: 15_000 });
   await expect.poll(() => analysed(page)).toHaveLength(1);
 
-  // A cue, a preset of your own and a background image.
+  // A cue, a preset of your own, a background image and a cover of your own.
   const play = page.getByTestId('play-button');
   await play.click();
   await expect
@@ -59,6 +59,24 @@ test('a backup holds everything the app keeps, and brings it back (UI-06)', asyn
   await page.keyboard.press('1');
   await expect(page.getByTestId('cue-marker')).toHaveCount(1);
   await play.click();
+  const cover = page.getByTestId('queue-cover');
+  const giveCover = async (image: boolean) => {
+    await page.getByTestId('queue-item').hover();
+    await page.getByTestId('queue-rename').click();
+    if (image) {
+      await page.getByTestId('track-cover-input').setInputFiles({
+        name: 'cover.png',
+        mimeType: 'image/png',
+        buffer: createPng(32, 32, (x) => [x * 8, 90, 160]),
+      });
+      await expect(page.getByTestId('track-cover-preview')).toBeVisible();
+    } else {
+      await page.getByTestId('track-cover-remove').click();
+    }
+    await page.getByTestId('track-name-save').click();
+  };
+  await giveCover(true);
+  await expect(cover).toBeVisible();
   await page.getByRole('tab', { name: 'Visuals' }).click();
   const preset = page.getByTestId('preset-select');
   await preset.selectOption('Neon Night');
@@ -95,14 +113,15 @@ test('a backup holds everything the app keeps, and brings it back (UI-06)', asyn
   await page.getByTestId('backup-analysis').check();
   const full = await save();
   await expect(page.getByTestId('backup-message')).toHaveText(
-    'Saved the settings, 1 preset, the cues, markers, tempos and names of 1 track, 1 image and ' +
-      'the analysis of 1 track.',
+    'Saved the settings, 1 preset, the cues, markers, tempos and names of 1 track, 1 image, ' +
+      '1 cover and the analysis of 1 track.',
   );
   const storage = full.backup['storage'] as Record<string, string>;
   for (const key of ['vibe-visualizer:visuals:v1', 'vibe-visualizer:presets:v1', trackKey]) {
     expect(JSON.parse(storage[key]!)).toEqual(kept[key]);
   }
   expect(Object.keys(full.backup['images'] as object)).toEqual(['background']);
+  expect(Object.keys(full.backup['covers'] as object)).toHaveLength(1);
   expect(Object.keys(full.backup['analysis'] as object)).toEqual(await analysed(page));
 
   // A file that is not a backup is refused.
@@ -116,7 +135,7 @@ test('a backup holds everything the app keeps, and brings it back (UI-06)', asyn
   );
   await page.keyboard.press('Escape');
 
-  // Then all of it changes: no cue, another look, no image, no analysis.
+  // Then all of it changes: no cue, another look, no images, no analysis.
   await page.keyboard.press('Shift+Digit1');
   await expect(page.getByTestId('cue-marker')).toHaveCount(0);
   await preset.selectOption('Classic Rainbow');
@@ -126,12 +145,15 @@ test('a backup holds everything the app keeps, and brings it back (UI-06)', asyn
     const root = await navigator.storage.getDirectory();
     await root.removeEntry('track-analysis', { recursive: true });
   });
+  await page.getByRole('tab', { name: 'Queue' }).click();
+  await giveCover(false);
+  await expect(cover).toHaveCount(0);
 
   // The backup says what it holds before it replaces everything; the app reloads.
   await openBackup(page);
   await page.getByTestId('backup-input').setInputFiles(full.path);
   const confirm = page.getByTestId('backup-confirm');
-  await expect(confirm).toContainText('1 image and the analysis of 1 track');
+  await expect(confirm).toContainText('1 image, 1 cover and the analysis of 1 track');
   await expect(confirm).toContainText('replaces everything the app keeps in this browser');
   await Promise.all([page.waitForEvent('load'), page.getByTestId('backup-restore').click()]);
   await expect(page.getByTestId('settings')).toBeHidden();
@@ -144,10 +166,11 @@ test('a backup holds everything the app keeps, and brings it back (UI-06)', asyn
   await expect(preset).toHaveValue('Mine');
   await page.getByText('Background', { exact: true }).click();
   await expect(page.getByTitle('sky.png')).toBeVisible();
-  // The queue stayed; its file comes back with the cue.
+  // The queue stayed; its file comes back with the cue and the cover.
   await page.getByRole('tab', { name: 'Queue' }).click();
   await page.getByTestId('file-input').setInputFiles(file);
   await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
   await expect(page.getByTestId('cue-marker')).toHaveCount(1);
+  await expect(cover).toBeVisible();
   expect(errors).toEqual([]);
 });

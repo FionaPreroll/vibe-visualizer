@@ -9,7 +9,7 @@
     pickFolder,
   } from '../core/library/folder-reader';
   import { sameGrid } from '../core/library/analysis-cache';
-  import { shownArtist, shownTitle, type Track } from '../core/state/app-state';
+  import { shownArtist, shownCover, shownTitle, type Track } from '../core/state/app-state';
   import { errorMessage, formatDuration } from '../core/util/format';
   import { DragScroll } from './drag-scroll';
   import Icon from './Icon.svelte';
@@ -276,8 +276,8 @@
               : (track.reason ?? track.fileName)}
         >
           <span class="grip" aria-hidden="true"><Icon name="grip" size={16} /></span>
-          {#if track.coverUrl}
-            <img src={track.coverUrl} alt="" />
+          {#if shownCover(track)}
+            <img src={shownCover(track)} alt="" data-testid="queue-cover" />
           {:else}
             <span class="cover-placeholder"><Icon name="music" size={16} /></span>
           {/if}
@@ -310,8 +310,8 @@
           <button
             class="rename ghost"
             onclick={() => (naming = track)}
-            aria-label="Title and artist of {shownTitle(track)}"
-            title="Title and artist (F2)"
+            aria-label="Title, artist and cover of {shownTitle(track)}"
+            title="Title, artist and cover (F2)"
             data-testid="queue-rename"
           >
             <Icon name="pencil" size={15} />

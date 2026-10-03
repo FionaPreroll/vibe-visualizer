@@ -25,6 +25,7 @@ It works best in Chrome or Edge on a computer with a good graphics card, above a
 - **After a reload** the queue and the current track are still there. In Chrome and Edge the files come back too (after a browser restart, click **Allow** once in the queue); other browsers keep the entries, and adding the files or their folder again brings them back, with their cues.
 - **Undo:** removing a track, clearing the queue, deleting a cue or clearing markers shows an *Undo* button for a few seconds (or press **Ctrl+Z**, **Cmd+Z** on a Mac).
 - **Title and artist:** they come from the file's tags, or else from its name. To name a track yourself, click ✎ next to it (or select it and press **F2**). The queue, the transport, the track overlay and exports (the file name too) then show your names. They are kept for the file; *Use the file's* goes back to its tags.
+- **Cover:** in the same dialog, **Choose an image…** gives the track a cover of your own (PNG, JPEG, WebP or SVG), for a file without cover art or instead of the one it has. It shows in the queue, in the transport, as the logo (with *Show the cover art of the track playing*) and in exports, and is kept for the file. *Use the file's cover* (or *Remove*, if the file has none) takes it away again; **Save** keeps what you chose.
 
 ## Waveforms, cues and markers
 
@@ -123,7 +124,7 @@ If a control does not do what it should, open **MIDI monitor** in the dialog, co
 
 ## Backup
 
-In **Settings** (the gear in the top bar), **Save a backup** puts everything the app keeps in this browser into one file, to move it to another browser or computer, or to keep it safe: the settings, your presets, the cues, markers, tempos and names of your tracks, and the background and logo images. **With the track analysis** adds the waveforms and beat grids found, so no track needs to be analysed again; the file gets larger (about 0.3 MB for five minutes of music). The music files and the queue are not in it: add the files again where you restore it, and their cues and markers come back with them.
+In **Settings** (the gear in the top bar), **Save a backup** puts everything the app keeps in this browser into one file, to move it to another browser or computer, or to keep it safe: the settings, your presets, the cues, markers, tempos, names and covers of your tracks, and the background and logo images. **With the track analysis** adds the waveforms and beat grids found, so no track needs to be analysed again; the file gets larger (about 0.3 MB for five minutes of music). The music files and the queue are not in it: add the files again where you restore it, and their cues and markers come back with them.
 
 **Restore a backup** replaces everything the app keeps in this browser with what is in the file; it says what that is first. Then the app reloads. The queue stays as it is, and so does the analysis of the tracks if the backup has none.
 

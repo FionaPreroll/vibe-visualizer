@@ -40,7 +40,13 @@
   import { BUILT_IN_KALEIDO_PRESETS } from '../core/render/kaleido-settings';
   import { switchingPool, type AutoPresets } from '../core/render/preset-director';
   import { BUILT_IN_PRESETS } from '../core/render/visual-settings';
-  import { shownArtist, shownTitle, trackRange, type Track } from '../core/state/app-state';
+  import {
+    shownArtist,
+    shownCover,
+    shownTitle,
+    trackRange,
+    type Track,
+  } from '../core/state/app-state';
   import { loadExportOptions, saveExportOptions } from '../core/state/persistence';
   import { errorMessage, formatBytes, formatDuration } from '../core/util/format';
   import { useExporter } from './exporter-context';
@@ -232,13 +238,14 @@
     }
     // The cover art as the logo (LS-15); read after the save dialog, which needs the click.
     const covers = await Promise.all(
-      tracks.map((entry) =>
-        covered && entry.coverUrl
-          ? fetch(entry.coverUrl)
+      tracks.map((entry) => {
+        const cover = covered ? shownCover(entry) : null;
+        return cover
+          ? fetch(cover)
               .then((response) => response.blob())
               .catch(() => null)
-          : null,
-      ),
+          : null;
+      }),
     );
     const requested: RequestPart[] = tracks.map((entry, index) => ({
       part: { ...planned[index]!, loudness: player.analysisOf(entry)?.loudness ?? null },
@@ -855,7 +862,7 @@
                 >({chosen.length > 1 ? 'with the titles' : "with the track's title"})</span
               >
             {/if}
-            {#if mode === 'logoSpectrum' && $app.settings.coverLogo && chosen.some((entry) => entry.coverUrl)}
+            {#if mode === 'logoSpectrum' && $app.settings.coverLogo && chosen.some(shownCover)}
               <span data-testid="export-cover"
                 >({chosen.length > 1
                   ? 'the cover art as the logo'

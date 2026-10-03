@@ -53,7 +53,10 @@ export interface Track {
   sampleRate: number | null;
   codec: string | null;
   format: string | null;
+  /** The cover art in the file (LS-15), as an object URL. */
   coverUrl: string | null;
+  /** The cover the user gave the file (LS-21), as an object URL; it shows instead of the file's. */
+  ownCoverUrl: string | null;
   /** Recognises the file (its cues, its analysis); null until probed. */
   fingerprint: string | null;
   /** In/out markers in seconds (TR-09): the export range, e.g. a 30-second clip. */
@@ -90,6 +93,11 @@ export function shownTitle(track: Track): string {
 /** The artist shown for `track`: the user's (none if they removed it), or that of the file. */
 export function shownArtist(track: Track): string | null {
   return track.edit ? track.edit.artist : track.artist;
+}
+
+/** The cover shown for `track` (an object URL): the user's (LS-21), or the file's, or none. */
+export function shownCover(track: Track): string | null {
+  return track.ownCoverUrl ?? track.coverUrl;
 }
 
 /**
@@ -293,6 +301,8 @@ export type AppAction =
   | { type: 'tracks/cue'; id: string; index: number; seconds: number | null }
   /** The tempo of a file's beat grid (TMP-06), for every entry of that file; null: automatic. */
   | { type: 'tracks/tempo'; fingerprint: string; tempo: number | null }
+  /** The cover the user gave a file (LS-21; null: none), for every entry of that file. */
+  | { type: 'tracks/cover'; fingerprint: string; url: string | null }
   /** One tempo throughout for a file (TR-12), for every entry of that file. */
   | { type: 'tracks/fixed'; fingerprint: string; fixed: boolean }
   /** The correction of a file's beat grid (TR-11), for every entry of that file. */
@@ -399,6 +409,7 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
     codec: null,
     format: null,
     coverUrl: null,
+    ownCoverUrl: null,
     fingerprint: null,
     marks: { in: null, out: null },
     cues: NO_CUES,
@@ -513,7 +524,16 @@ export function reducer(state: AppState, action: AppAction): AppState {
           const { stored, ...info } = action.info;
           // A name given while the file was probed stays, unless the file had one stored.
           const edit = stored?.edit ?? track.edit;
-          return { ...track, ...info, title: info.title ?? track.title, ...stored, edit };
+          // Another file now (changed since the last visit): the user's cover was for the old one.
+          const ownCoverUrl = info.fingerprint === track.fingerprint ? track.ownCoverUrl : null;
+          return {
+            ...track,
+            ...info,
+            title: info.title ?? track.title,
+            ...stored,
+            edit,
+            ownCoverUrl,
+          };
         }),
       };
     case 'tracks/removed':
@@ -563,6 +583,13 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         tracks: state.tracks.map((track) =>
           track.fingerprint === action.fingerprint ? { ...track, tempo: action.tempo } : track,
+        ),
+      };
+    case 'tracks/cover':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.fingerprint === action.fingerprint ? { ...track, ownCoverUrl: action.url } : track,
         ),
       };
     case 'tracks/fixed':

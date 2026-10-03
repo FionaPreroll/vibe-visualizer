@@ -199,6 +199,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | LS-15* | S | Use the track's cover art as the logo (switches automatically per track) |
 | LS-16* | C | Logo rotation: constant, beat-synced, or "vinyl" (coupled to playback speed) |
 | LS-20* | L | Free-form logo: any PNG with transparency, without the circular crop (Q12) |
+| LS-21* | S | A cover of your own per file (PNG/JPEG/WebP/SVG), instead of the file's cover art or where it has none: in the queue, the transport, as the logo and in exports; kept for the file and in backups |
 
 **Particles & overlays**
 
