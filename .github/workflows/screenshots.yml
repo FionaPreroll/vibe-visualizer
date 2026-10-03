@@ -2,7 +2,8 @@ name: Screenshots
 
 # Takes the README screenshots again (docs/screenshots, from tests/screenshots) and commits them
 # to the branch it runs on. Run it by hand after changes worth showing: Actions → Screenshots →
-# Run workflow, and pick the branch.
+# Run workflow, and pick the branch: dev, since main is protected and refuses the push. CI does
+# not run by itself on the commit it makes (GitHub waits for an approval): the next push runs it.
 on:
   workflow_dispatch:
 

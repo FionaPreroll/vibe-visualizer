@@ -2,15 +2,15 @@
 
 [![Coverage](https://codecov.io/gh/FionaPreroll/vibe-visualizer/graph/badge.svg)](https://codecov.io/gh/FionaPreroll/vibe-visualizer)
 
-The app calls itself **FibeStation**; double-click the name in the top bar to give it another one.
+The app calls itself **FibeStation**; give it another name in **Settings** (the gear in the top bar), or double-click the name there.
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
 **Try it:** [fibestation.fipreroll.workers.dev](https://fibestation.fipreroll.workers.dev), best in Chrome or Edge.
 
-![FibeStation playing a track: the Logo Spectrum, the queue with the tempo, the detail waveform with the beat grid, and the hot cues](docs/screenshots/logo-spectrum.jpg)
+![FibeStation playing a track: the Logo Spectrum in its default look, Blue-Pink Vortex, the queue with the tempo, the detail waveform with the beat grid, and the hot cues](docs/screenshots/logo-spectrum.jpg)
 
-> **Status:** P1 to P5 are done: audio engine, queue and transport, analysis with drum detection and beat tracking, the Logo Spectrum and Kaleidoscope modes, the video export (whole tracks or clips, in segments that survive a crash), live input from audio devices and other apps, tempo (vinyl and key lock) and effects (DJ filter, delay, reverb, one-click "Slowed + Reverb", "Sped up" and "Nightcore"), waveforms and hot cues, a beat grid for files, gapless playback with shuffle and repeat, folders, a queue that survives reloads, A/V sync calibration and a shortcut overview, and a usability pass (play ranges, snapping to the beat, undo, bars and tempo correction in the beat grid, two waveform styles, one tempo and a straight grid per track, tempo ranges, grid correction by hand, the tempo of live input, a welcome and in-app help), DJ controllers (the DDJ-FLX2's deck 1), and P4's visual depth and video polish (ring styles, camera shake, drift and tint, presets that switch by themselves, the Neon Ribbons scene, the Kaleidoscope behind the Logo Spectrum, reduce flashing and auto-quality, the track's title, progress and cover art on screen, the playlist as one video with chapters and fades, a video of each track, and thumbnails), and a polish after feedback (a logo that spins like a record, the Kaleidoscope behind with a look of its own and presets for it, bar switching through breaks, and a backup of all settings). What comes next is open: see the roadmap in [FEATURES.md](docs/FEATURES.md#5-roadmap-proposal).
+> **Status:** version 0.9, on the way to 1.0. The planned phases are done (P1 to P5: the player, the analysis, both looks, the video export, live input, tempo and effects), and so are the usability passes and DJ controllers. Now the app is being stabilized for its release: it recovers from errors by itself, its main paths are tested in Chrome and Firefox, and it has a version, a changelog, the licences of the parts of others and a privacy policy. Next come the first testers, then 1.0. What changed is in [CHANGELOG.md](CHANGELOG.md), what is planned in the roadmap of [FEATURES.md](docs/FEATURES.md#5-roadmap-proposal).
 > Plans: [feature list](docs/FEATURES.md) · [tech stack](docs/TECH-STACK.md) · [audio analysis](docs/ANALYSIS.md) · [DJ controllers](docs/CONTROLLERS.md)
 
 ## What it does
@@ -34,7 +34,7 @@ Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and 
 | ![The tempo menu of a track](docs/screenshots/tempo-menu.jpg) *Tempo:* double, halve, hold, type or tap it | ![The export dialog](docs/screenshots/export.jpg) *Export:* YouTube, 4K or TikTok, a track or a clip |
 | ![The welcome at the first start](docs/screenshots/welcome.jpg) *The welcome* at the first start | |
 
-The screenshots are taken in the app with a synthetic track (`pnpm screenshots`). On GitHub, the *Screenshots* workflow (Actions → Screenshots → Run workflow) takes them again and commits them to the branch it runs on.
+The screenshots are taken in the app with a synthetic track (`pnpm screenshots`). On GitHub, the *Screenshots* workflow (Actions → Screenshots → Run workflow) takes them again and commits them to the branch it runs on: run it on `dev`, since `main` takes changes only through pull requests.
 
 ## Run it locally
 
