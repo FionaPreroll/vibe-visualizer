@@ -532,6 +532,35 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('an export goes on by itself after the graphics card was reset (NF-09)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await addTrack(page, 8);
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await page.getByTestId('export-start').click();
+
+  // Once the first of the three segments is finished, the graphics context is lost.
+  const button = page.getByTestId('export-button');
+  await expect
+    .poll(async () => Number(/(\d+) %/.exec((await button.textContent()) ?? '')?.[1] ?? 0), {
+      timeout: 120_000,
+    })
+    .toBeGreaterThan(45);
+  const worker = page.workers().find((entry) => entry.url().includes('export.worker'));
+  await worker!.evaluate(() => {
+    const call = { id: -1, method: 'loseContext', args: null };
+    self.dispatchEvent(new MessageEvent('message', { data: call }));
+  });
+
+  // The video pass starts again from that segment, in a new context: the video is whole.
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 180_000 });
+  const video = await inspect((await download(page)).data);
+  expect(video).toMatchObject({ width: 720, height: 720, frames: 192 });
+  expect(video.duration).toBeCloseTo(8, 1);
+  expect(errors).toEqual([]);
+});
+
 test('an export can be paused, continued and cancelled', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/');
