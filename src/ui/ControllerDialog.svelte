@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { MonitorEntry } from '../core/control/controller-service';
+  import { backdropClose } from './backdrop';
   import { useControllers } from './controller-context';
   import Icon from './Icon.svelte';
 
@@ -15,6 +16,7 @@
 
   const controllers = useControllers();
   let dialog: HTMLDialogElement | undefined = $state();
+  const backdrop = backdropClose(() => onclose());
   let copied = $state(false);
 
   $effect(() => {
@@ -71,7 +73,7 @@
   bind:this={dialog}
   aria-labelledby="controller-title"
   {onclose}
-  onclick={(event) => event.target === dialog && onclose()}
+  {...backdrop}
   data-testid="controller-dialog"
 >
   <header>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { shownArtist, shownTitle, TRACK_TEXT_LENGTH, type Track } from '../core/state/app-state';
+  import { backdropClose } from './backdrop';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
 
@@ -17,6 +18,7 @@
   const player = usePlayer();
   const heading = `track-name-${Math.random().toString(36).slice(2)}`;
   let dialog: HTMLDialogElement | undefined = $state();
+  const backdrop = backdropClose(() => onclose());
   let title = $state('');
   let artist = $state('');
 
@@ -47,7 +49,7 @@
   bind:this={dialog}
   aria-labelledby={heading}
   {onclose}
-  onclick={(event) => event.target === dialog && onclose()}
+  {...backdrop}
   data-testid="track-name-dialog"
 >
   <form onsubmit={save}>
