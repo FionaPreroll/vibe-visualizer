@@ -3,7 +3,9 @@ import { BUILT_IN_KALEIDO_PRESETS, sanitizeKaleido } from './kaleido-settings';
 import { mixColor, morphKaleido, morphLogoSpectrum, SettingsMorph } from './settings-morph';
 import { BUILT_IN_PRESETS, layerColors, sanitizeSettings } from './visual-settings';
 
-const [classic, neon] = BUILT_IN_PRESETS.map((preset) => preset.settings);
+const [classic, neon] = ['Classic Rainbow', 'Neon Night'].map(
+  (name) => BUILT_IN_PRESETS.find((preset) => preset.name === name)!.settings,
+);
 const bars = BUILT_IN_PRESETS.find((preset) => preset.name === 'Neon Bars')!.settings;
 
 describe('morphing looks (PR-02)', () => {

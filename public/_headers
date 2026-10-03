@@ -1,8 +1,16 @@
-# Cloudflare (static assets of Workers, or Pages): cross-origin isolation, required for
-# SharedArrayBuffer.
+# Cloudflare (static assets of Workers, or Pages). The preview server sends the headers of `/*`
+# as well, so the e2e tests run with them (vite-plugins/production-headers.ts).
+#
+# Cross-origin isolation, required for SharedArrayBuffer. The content security policy keeps all
+# that loads to the app itself: its scripts, workers and WebAssembly, its fonts and pictures;
+# blob: and data: are the user's files and images, and the downloads. The AAC encoder for
+# browsers without one (Firefox, Chromium on Linux) runs in a worker it makes from a blob:.
 /*
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob: data:; font-src 'self' data:; connect-src 'self' blob: data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
 
 # Vite names these files by their content, so a new build never changes one of them.
 /assets/*

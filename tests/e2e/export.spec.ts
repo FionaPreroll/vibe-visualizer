@@ -1,11 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 import { ALL_FORMATS, BufferSource, EncodedPacketSink, Input } from 'mediabunny';
 import { readFile } from 'node:fs/promises';
+import { startWithClassicLook } from './looks';
 import { COVER, logoQuarters, measure, showsCover, videoFrame } from './pixels';
 import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
+  await startWithClassicLook(page);
   await page.addInitScript(() => {
     localStorage.setItem('vibe-visualizer:welcome:v1', '1');
     // Headless browsers cannot show the save dialogs: the videos are downloaded instead.
@@ -471,13 +473,11 @@ test('an interrupted export resumes after a reload', async ({ page }) => {
     buffer: createTaggedWav(8, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
   });
   await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
-  // The Logo Spectrum with the Kaleidoscope behind it (VE-08): both scenes carry over.
+  // The Logo Spectrum with the Kaleidoscope behind it (VE-08), so both scenes carry over: Bloom
+  // Halo. Its logo stands still, as does that of the preset after it, Ribbon Lines, so that the
+  // cover can be found at the end.
   await page.getByRole('tab', { name: 'Visuals' }).click();
-  await page.getByText('Background', { exact: true }).click();
-  await page
-    .getByRole('radiogroup', { name: 'Background shows' })
-    .getByRole('radio', { name: 'Kaleidoscope' })
-    .click();
+  await page.getByTestId('preset-select').selectOption('Bloom Halo');
   // The presets switch every 5 s (PR-02): the resumed part goes on switching where it was.
   await page.getByText('Preset switching', { exact: true }).click();
   await page.getByTestId('auto-presets').check();

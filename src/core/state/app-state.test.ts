@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NO_GRID_EDIT } from '../analysis/grid-edit';
 import { sceneDefaults } from '../render/kaleido-settings';
-import { DEFAULT_LOGO_SPECTRUM, RANGES } from '../render/visual-settings';
+import { BUILT_IN_PRESETS, DEFAULT_LOGO_SPECTRUM, RANGES } from '../render/visual-settings';
 import {
   CUE_COUNT,
   initialState,
@@ -273,7 +273,12 @@ describe('app state', () => {
   });
 
   it('gives the Logo Spectrum a Kaleidoscope of its own behind it (VE-08)', () => {
-    const crystal = reducer(initialState(), { type: 'kaleido/scene', scene: 'crystal' });
+    // A look with an image behind (the default has a Kaleidoscope of its own).
+    const classic = reducer(initialState(), {
+      type: 'visuals/replaced',
+      visuals: BUILT_IN_PRESETS.find((preset) => preset.name === 'Classic Rainbow')!.settings,
+    });
+    const crystal = reducer(classic, { type: 'kaleido/scene', scene: 'crystal' });
     // Switched to the Kaleidoscope behind, it starts as the Kaleidoscope is set up.
     const layered = reducer(crystal, {
       type: 'visuals/changed',

@@ -1,5 +1,6 @@
 import {
   BUILT_IN_KALEIDO_PRESETS,
+  kaleidoLook,
   sanitizeKaleido,
   type KaleidoSettings,
 } from './kaleido-settings';
@@ -233,16 +234,40 @@ function preset(name: string, changes: Partial<LogoSpectrumSettings>): VisualPre
   return { name, settings: { ...CLASSIC, ...changes }, builtIn: true };
 }
 
-/** A built-in Kaleidoscope look, to show behind the ring (VE-08). */
-function behind(name: string): Partial<LogoSpectrumSettings> {
-  const look = BUILT_IN_KALEIDO_PRESETS.find((entry) => entry.name === name);
-  if (!look) throw new Error(`There is no Kaleidoscope preset "${name}".`);
+/** A Kaleidoscope look to show behind the ring (VE-08): a built-in one by its name, or its own. */
+function behind(look: string | KaleidoSettings): Partial<LogoSpectrumSettings> {
+  const layerLook = typeof look === 'string' ? builtInKaleido(look) : look;
   // The Kaleidoscope moves by itself: few stars and no drift in front of it.
-  return { backgroundSource: 'kaleidoscope', layerLook: look.settings, particles: 90, drift: 0 };
+  return { backgroundSource: 'kaleidoscope', layerLook, particles: 90, drift: 0 };
 }
 
+function builtInKaleido(name: string): KaleidoSettings {
+  const look = BUILT_IN_KALEIDO_PRESETS.find((entry) => entry.name === name);
+  if (!look) throw new Error(`There is no Kaleidoscope preset "${name}".`);
+  return look.settings;
+}
+
+/** The default until v1.0: what a look stored by an older version lacks comes from it. */
+const CLASSIC_RAINBOW = preset('Classic Rainbow', { ...RESPONSIVENESS.twitchy });
+
 export const BUILT_IN_PRESETS: readonly VisualPreset[] = [
-  preset('Classic Rainbow', { ...RESPONSIVENESS.twitchy }),
+  // The default: neon lines around a turning record, before a vortex in neon colours.
+  preset('Blue-Pink Vortex', {
+    palette: 'neon',
+    customColors: [...PALETTES.ice],
+    ringStyle: 'lines',
+    ringRadius: 0.1472,
+    amplitude: 0.4575,
+    layers: 8,
+    layerDelay: 0.16,
+    layerSpread: 0.04,
+    glow: 0.6,
+    logoSpin: 100 / 3,
+    backgroundDim: 0.3,
+    ...RESPONSIVENESS.punchy,
+    ...behind(kaleidoLook('vortex', { palette: 'neon' }, { swirl: 0.7, coreColor: '#b388ff' })),
+  }),
+  CLASSIC_RAINBOW,
   preset('Neon Night', {
     palette: 'neon',
     layers: 5,
@@ -409,7 +434,7 @@ export const BUILT_IN_PRESETS: readonly VisualPreset[] = [
   }),
 ];
 
-/** The look of a first visit and of "Reset to defaults": the preset "Classic Rainbow". */
+/** The look of a first visit and of "Reset to defaults": the preset "Blue-Pink Vortex". */
 export const DEFAULT_LOGO_SPECTRUM: LogoSpectrumSettings = BUILT_IN_PRESETS[0]!.settings;
 
 type NumericKey = {
@@ -467,20 +492,20 @@ const COLOR = /^#[0-9a-f]{6}$/i;
 /**
  * Takes whatever is stored (possibly from an older version) and returns valid settings:
  * unknown keys dropped, wrong types replaced by defaults, numbers clamped to their ranges.
+ * Nothing stored gives the default look. What a look from an older version lacks comes from
+ * Classic Rainbow, the default then, so that it stays as it was (no Kaleidoscope behind, a
+ * logo that does not turn).
  */
 export function sanitizeSettings(value: unknown): LogoSpectrumSettings {
-  const input = (typeof value === 'object' && value !== null ? value : {}) as Record<
-    string,
-    unknown
-  >;
-  const result = {
-    ...DEFAULT_LOGO_SPECTRUM,
-    customColors: [...DEFAULT_LOGO_SPECTRUM.customColors],
-  };
+  const input = (typeof value === 'object' && value !== null
+    ? value
+    : DEFAULT_LOGO_SPECTRUM) as unknown as Record<string, unknown>;
+  const base = CLASSIC_RAINBOW.settings;
+  const result = { ...base, customColors: [...base.customColors] };
   const target = result as unknown as Record<string, unknown>;
-  for (const key of Object.keys(DEFAULT_LOGO_SPECTRUM) as (keyof LogoSpectrumSettings)[]) {
+  for (const key of Object.keys(base) as (keyof LogoSpectrumSettings)[]) {
     const stored = input[key];
-    const fallback = DEFAULT_LOGO_SPECTRUM[key];
+    const fallback = base[key];
     if (typeof fallback === 'number') {
       if (typeof stored !== 'number' || !Number.isFinite(stored)) continue;
       const [min, max] = RANGES[key as NumericKey];

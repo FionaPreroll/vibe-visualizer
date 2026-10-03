@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createWav } from './wav';
+import { COVER } from './pixels';
+import { createTaggedWav, createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('vibe-visualizer:welcome:v1', '1'));
@@ -250,5 +251,81 @@ test('a tab from before a deploy learns of the new version (NF-09)', async ({ pa
   await notice.getByRole('button', { name: 'Reload' }).click();
   await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
   await expect(notice).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('the help has a system check of this browser, to copy for a bug report (NF-10)', async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await page.getByTestId('shortcuts-button').click();
+  await page.getByTestId('help-nav-when-something-goes-wrong').click();
+  const check = page.getByTestId('system-check');
+  await expect(check).toContainText('WebGL 2 on');
+  await expect(check).toContainText(
+    'SharedArrayBuffer: yes, AudioWorklet: yes, OffscreenCanvas: yes',
+  );
+  await expect(check).toContainText('H.264 1080p60 (YouTube)');
+  await page.getByTestId('system-check-copy').click();
+  await expect(page.getByTestId('system-check-copy')).toHaveText('Copied');
+  const report = await page.evaluate(() => navigator.clipboard.readText());
+  expect(report).toMatch(/^FibeStation: system check, \d{4}-/);
+  expect(report).toContain('\n- Graphics: WebGL 2 on ');
+});
+
+test('the content security policy lets the app do all it does (NF-01)', async ({ page }) => {
+  const errors = collectErrors(page);
+  // What the policy blocks in the page: none of it may come from the app.
+  await page.addInitScript(() => {
+    const blocked: string[] = [];
+    Object.assign(window, { blocked });
+    document.addEventListener('securitypolicyviolation', (event) =>
+      blocked.push(`${event.effectiveDirective}: ${event.blockedURI}`),
+    );
+  });
+  const response = await page.goto('/');
+  expect(response!.headers()['content-security-policy']).toContain("default-src 'self'");
+  await expect(page.getByTestId('visual-stage')).toHaveAttribute('data-status', 'running', {
+    timeout: 15_000,
+  });
+  // A track with its cover art (blob: images), the overlay's fonts, the logo turning.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(20, { title: 'Sunrise', artist: 'The Testers', cover: COVER }),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByText('Logo', { exact: true }).click();
+  await page.getByTestId('cover-logo').check();
+  await page.getByText('Track info', { exact: true }).click();
+  await page.getByTestId('overlay-on').check();
+  await page.getByTestId('play-button').click();
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await page.waitForTimeout(3000);
+  // The help, with the system check.
+  await page.getByTestId('shortcuts-button').click();
+  await page.getByTestId('help-nav-when-something-goes-wrong').click();
+  await expect(page.getByTestId('system-check')).toContainText('WebGL 2 on');
+  // The AAC encoder of browsers without one (Firefox, Chromium on Linux) runs WebAssembly in a
+  // worker it makes from a blob:. Not every export here needs it, so it is tried on its own.
+  const started = await page.evaluate(
+    () =>
+      new Promise<string>((resolve) => {
+        const script = `WebAssembly.instantiate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]))
+          .then(() => postMessage('running'), (error) => postMessage(String(error)));`;
+        const worker = new Worker(
+          URL.createObjectURL(new Blob([script], { type: 'text/javascript' })),
+        );
+        worker.onmessage = (event) => resolve(String(event.data));
+        worker.onerror = () => resolve('failed to load');
+      }),
+  );
+  expect(started).toBe('running');
+  expect(await page.evaluate(() => (window as unknown as { blocked: string[] }).blocked)).toEqual(
+    [],
+  );
   expect(errors).toEqual([]);
 });
