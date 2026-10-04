@@ -30,8 +30,12 @@ Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and 
 
 | | |
 |---|---|
-| ![The Kaleidoscope's Vortex scene](docs/screenshots/kaleidoscope.jpg) *Kaleidoscope:* the Vortex scene | ![A 9:16 frame with its safe areas, and the Visuals tab](docs/screenshots/tiktok.jpg) *9:16 for TikTok,* with the safe areas and the Visuals tab |
-| ![The tempo menu of a track](docs/screenshots/tempo-menu.jpg) *Tempo:* double, halve, hold, type or tap it | ![The export dialog](docs/screenshots/export.jpg) *Export:* YouTube, 4K or TikTok, a track or a clip |
+| ![The Kaleidoscope's Vortex scene](docs/screenshots/kaleidoscope.jpg) *Kaleidoscope:* the Vortex scene | ![The Kaleidoscope's Neon Ribbons scene, with its controls](docs/screenshots/neon-ribbons.jpg) *Neon Ribbons:* tubes of light, rings and soft lights |
+| ![The Logo Spectrum in the preset Night Rain](docs/screenshots/night-rain.jpg) *Rain* instead of stars, in a wind | ![A 9:16 frame with its safe areas, and the Visuals tab](docs/screenshots/tiktok.jpg) *9:16 for TikTok,* with the safe areas and the Visuals tab |
+| ![The tempo menu of a track](docs/screenshots/tempo-menu.jpg) *Tempo:* double, halve, hold, type or tap it | ![The analysis view](docs/screenshots/analysis.jpg) *Analysis:* what the visuals react to |
+| ![The Sound tab](docs/screenshots/sound.jpg) *Sound:* tempo, filter, delay, reverb, Slowed + Reverb | ![The Live tab](docs/screenshots/live.jpg) *Live:* a mixer, an interface or a browser tab |
+| ![The dialog of a track with its colours](docs/screenshots/track-colours.jpg) *A track's own* title, cover and colours | ![The DJ controller dialog](docs/screenshots/controller.jpg) *DJ controller:* a DDJ-FLX2, connected |
+| ![The export dialog](docs/screenshots/export.jpg) *Export:* YouTube, 4K or TikTok, a track or a clip | ![The export of the queue as one video](docs/screenshots/export-tracks.jpg) *The queue as one video,* with chapters |
 | ![The welcome at the first start](docs/screenshots/welcome.jpg) *The welcome* at the first start | |
 
 The screenshots are taken in the app with a synthetic track (`pnpm screenshots`). On GitHub, the *Screenshots* workflow (Actions → Screenshots → Run workflow) takes them again and commits them to the branch it runs on: run it on `dev`, since `main` takes changes only through pull requests.

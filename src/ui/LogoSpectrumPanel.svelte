@@ -7,6 +7,7 @@
     MAX_LAYERS,
     PALETTE_NAMES,
     PALETTES,
+    PARTICLE_STYLES,
     RANGES,
     RECORD_SPEEDS,
     RESPONSIVENESS,
@@ -14,6 +15,7 @@
     RING_STYLES,
     type LogoSpectrumSettings,
     type PaletteName,
+    type ParticleStyle,
     type ResponsivenessName,
     type RingDirection,
     type RingStyle,
@@ -111,6 +113,7 @@
     inward: 'Inward',
     both: 'Both',
   };
+  const PARTICLE_STYLE_NAMES: Record<ParticleStyle, string> = { stars: 'Stars', rain: 'Rain' };
   /** The record speed shown: the one nearest to the setting (LS-16). */
   const recordSpeed = $derived(
     RECORD_SPEEDS.reduce((best, speed) =>
@@ -394,6 +397,21 @@
   </Section>
 
   <Section title="Particles">
+    <div class="choice">
+      <span class="label">Style</span>
+      <div class="quick" role="radiogroup" aria-label="Particle style">
+        {#each PARTICLE_STYLES as style (style)}
+          <button
+            role="radio"
+            aria-checked={v.particleStyle === style}
+            class:on={v.particleStyle === style}
+            onclick={() => set({ particleStyle: style })}
+          >
+            {PARTICLE_STYLE_NAMES[style]}
+          </button>
+        {/each}
+      </div>
+    </div>
     <Slider {...slider('particles', 'Count')} />
     <Slider {...slider('particleSize', 'Size', (x) => `${x.toFixed(1)}×`)} />
     <Slider {...slider('particleSpeed', 'Speed', (x) => `${x.toFixed(1)}×`)} />

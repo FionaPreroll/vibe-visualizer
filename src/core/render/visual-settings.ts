@@ -31,6 +31,10 @@ export const MAX_LAYERS = 8;
 /** How the spectrum is drawn around the ring (LS-11). */
 export type RingStyle = 'blob' | 'bars' | 'lines' | 'dots';
 export const RING_STYLES: readonly RingStyle[] = ['blob', 'bars', 'lines', 'dots'];
+
+/** Stars drifting out of the middle, or rain falling in streaks (LS-17). */
+export type ParticleStyle = 'stars' | 'rain';
+export const PARTICLE_STYLES: readonly ParticleStyle[] = ['stars', 'rain'];
 /** Which way the spectrum grows from the ring. */
 export type RingDirection = 'outward' | 'inward' | 'both';
 export const RING_DIRECTIONS: readonly RingDirection[] = ['outward', 'inward', 'both'];
@@ -152,6 +156,8 @@ export interface LogoSpectrumSettings {
   logoSpin: number;
 
   // Particles (LS-17)
+  /** Stars that drift out of the middle, or rain that falls in a wind. */
+  particleStyle: ParticleStyle;
   /** Number of particles (0 = off). */
   particles: number;
   particleSize: number;
@@ -215,6 +221,7 @@ const CLASSIC: LogoSpectrumSettings = {
   logoShadow: 0.5,
   bassPulse: 0.5,
   logoSpin: 0,
+  particleStyle: 'stars',
   particles: 220,
   particleSize: 1,
   particleSpeed: 1,
@@ -366,6 +373,21 @@ export const BUILT_IN_PRESETS: readonly VisualPreset[] = [
     drift: 0.5,
     backgroundTint: '#ff5ca8',
     backgroundTintAmount: 0.35,
+    ...RESPONSIVENESS.smooth,
+  }),
+  preset('Night Rain', {
+    palette: 'ice',
+    ringStyle: 'lines',
+    layers: 5,
+    layerDelay: 0.12,
+    glow: 0.6,
+    bloom: 0.35,
+    topColor: '#e8f4ff',
+    backgroundDim: 0.55,
+    backgroundTint: '#2a4a8f',
+    backgroundTintAmount: 0.35,
+    particleStyle: 'rain',
+    particles: 320,
     ...RESPONSIVENESS.smooth,
   }),
   // With the Kaleidoscope behind the ring (VE-08), so that the switching mixes both modes.
@@ -528,6 +550,7 @@ export function sanitizeSettings(value: unknown): LogoSpectrumSettings {
       }
       if (key === 'ringStyle' && !(RING_STYLES as string[]).includes(stored)) continue;
       if (key === 'ringDirection' && !(RING_DIRECTIONS as string[]).includes(stored)) continue;
+      if (key === 'particleStyle' && !(PARTICLE_STYLES as string[]).includes(stored)) continue;
       if (
         (key === 'topColor' || key === 'rimColor' || key === 'backgroundTint') &&
         !COLOR.test(stored)

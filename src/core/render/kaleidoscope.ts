@@ -282,6 +282,9 @@ uniform float p_thickness;
 uniform float p_depth;
 uniform float p_blossoms;
 uniform float p_flowers;
+uniform float p_halo;
+uniform float p_bokeh;
+uniform float p_sheen;
 
 const float TAU = 6.28318530718;
 const int MAX_RIBBONS = 4;
@@ -342,20 +345,74 @@ void main() {
   float glow = (0.9 + 0.2 * energy + 0.15 * kick) * p_intensity;
   float pixel = 2.0 * extent.y / resolution.y;
 
-  // Blossoms in the lobes, and a larger one in the centre: small fractals, glowing orange on
-  // the snare. Light behind the tubes.
+  // The middle of the lobe at this angle, and the size of what lights it and the centre.
   float slot = floor((a - turn) / lobeAngle + 0.5);
   float centreAngle = turn + slot * lobeAngle;
   vec2 centre = vec2(cos(centreAngle), sin(centreAngle)) * (radius + swing * 0.5);
   float pulse = 1.0 + 0.3 * snare;
   float size = (0.06 + 0.3 * swing) * pulse;
   float inner = (radius - swing) * 0.55 * pulse;
-  float blossom = max(
-    blossomAt(rotation(time * 0.25 - centreAngle) * (p - centre) / size),
-    blossomAt(rotation(-time * 0.15) * p / inner) * 0.8
-  ) * p_blossoms;
-  float blossomLight = (0.55 + 0.3 * energy + 0.6 * snare) * p_intensity;
-  state = mix(state, vec4(blossomLight, blossomLight * bright(0.4), 0.1 * snare, 0.0), blossom);
+
+  // Blossoms in the lobes, and a larger one in the centre: small fractals, glowing orange on
+  // the snare. Light behind the tubes.
+  if (p_blossoms > 0.0) {
+    float blossom = max(
+      blossomAt(rotation(time * 0.25 - centreAngle) * (p - centre) / size),
+      blossomAt(rotation(-time * 0.15) * p / inner) * 0.8
+    ) * p_blossoms;
+    float blossomLight = (0.55 + 0.3 * energy + 0.6 * snare) * p_intensity;
+    state = mix(state, vec4(blossomLight, blossomLight * bright(0.4), 0.1 * snare, 0.0), blossom);
+  }
+
+  // Halo: fine rings of light in the lobes and around the centre, pulsing with the snare, and
+  // a breath of light inside them (the feedback adds up a small share step by step, about six
+  // times over). Light behind the tubes, as from a lens rather than a drawing.
+  if (p_halo > 0.0) {
+    float lobeR = length(p - centre) / size;
+    float coreR = r / inner;
+    float ringWidth = 0.025 + 0.03 * snare;
+    float lobeRing = (lobeR - 1.0) / ringWidth;
+    float coreRing = (coreR - 0.8) / (ringWidth * 0.5);
+    float lobeHalo = exp(-lobeR * lobeR * 0.8) * 0.015 + exp(-lobeRing * lobeRing) * 0.5;
+    float coreHalo = exp(-coreR * coreR * 0.7) * 0.01 + exp(-coreRing * coreRing) * 0.35;
+    float halo = clamp(max(lobeHalo, coreHalo), 0.0, 1.0) * p_halo;
+    float haloLight = (0.5 + 0.35 * energy + 0.8 * snare) * p_intensity;
+    state = mix(state, vec4(haloLight, haloLight * bright(0.5), 0.12 * snare, 0.0), halo);
+  }
+
+  // Bokeh: soft round lights drift outward, as if out of focus: the nearer, the larger, softer
+  // and fainter. They brighten on the hi-hats. Each owns a sector and may reach into the next
+  // ones, so a pixel looks at three.
+  if (p_bokeh > 0.0) {
+    const float LIGHTS = 18.0;
+    float lightAngle = TAU / LIGHTS;
+    float own = floor(a / lightAngle);
+    for (int k = -1; k <= 1; k++) {
+      float sectorK = own + float(k);
+      float seedK = mod(sectorK, LIGHTS) * 3.71 + 100.0;
+      float lifeK = 5.0 + 4.0 * hash(vec2(seedK, 1.0));
+      float cycleK = time / lifeK + hash(vec2(seedK, 2.0));
+      float ageK = fract(cycleK);
+      float bornK = floor(cycleK);
+      if (hash(vec2(seedK, bornK + 7.0)) >= p_bokeh) continue;
+      float nearK = hash(vec2(seedK, bornK + 3.0));
+      float angleK = (sectorK + 0.2 + 0.6 * hash(vec2(seedK, bornK))) * lightAngle;
+      float start = radius + swing * (hash(vec2(seedK, bornK + 9.0)) * 2.0 - 1.0) + 0.1;
+      vec2 at = vec2(cos(angleK), sin(angleK)) * (start + ageK * (0.25 + 0.35 * nearK));
+      float sizeK = mix(0.02, 0.11, nearK * nearK) * (1.0 + 0.15 * hat);
+      float dist = length(p - at) / sizeK;
+      if (dist > 1.2) continue;
+      float soft = mix(0.25, 0.75, nearK);
+      float disc = 1.0 - smoothstep(1.0 - soft, 1.0, dist);
+      float rimDistance = (dist - 0.9) / 0.08;
+      float rim = exp(-rimDistance * rimDistance) * (1.0 - nearK) * 0.5;
+      float fade = smoothstep(0.0, 0.25, ageK) * (1.0 - smoothstep(0.55, 1.0, ageK));
+      float amount = clamp(disc * 0.6 + rim, 0.0, 1.0) * fade * mix(0.85, 0.45, nearK);
+      float bokehLight = (0.6 + 0.8 * hat) * p_intensity;
+      float bokehIndex = bright(0.25 + 0.75 * hash(vec2(seedK, bornK + 5.0)));
+      state = mix(state, vec4(bokehLight, bokehLight * bokehIndex, 0.2 * bokehLight, 0.0), amount);
+    }
+  }
 
   // Flowers: small five-petal flowers float outward from the ribbons, each for a few seconds,
   // turning slowly; they light up on the hi-hats. Each owns a sector of the circle and stays
@@ -368,7 +425,7 @@ void main() {
   float age = fract(cycle);
   float born = floor(cycle);
   // The flower count: some sectors stay empty.
-  if (hash(vec2(seed, born + 7.0)) < p_flowers) {
+  if (p_flowers > 0.0 && hash(vec2(seed, born + 7.0)) < p_flowers) {
     float angle = (sector + 0.25 + 0.5 * hash(vec2(seed, born))) * sectorAngle;
     vec2 at = vec2(cos(angle), sin(angle)) * (radius + swing + age * 0.8);
     float flowerSize = 0.028 * (0.7 + 0.6 * hash(vec2(seed, born + 3.0))) * (1.0 + 0.4 * hat);
@@ -414,8 +471,11 @@ void main() {
     float dim = mix(1.0, 0.35 + 0.65 * near, p_depth);
     float shade = (0.22 + 0.78 * facing) * dim * glow;
     float highlight = exp(-pow((s + 0.4) / 0.22, 2.0)) * dim * 0.9 * glow;
-    // Spread over the bright part: pink, yellow, green and cyan for four; pink and cyan for two.
+    // Spread over the bright part (in the Ribbons palette: pink, yellow, green and cyan for four;
+    // pink and cyan for two).
     float index = bright(0.25 + 0.75 * float(i) / max(1.0, count - 1.0));
+    // Sheen: the colour drifts along each tube, rather than one flat colour.
+    index = clamp(index + p_sheen * 0.16 * sin((a - turn) * 2.0 + time * 0.5 + float(i) * 1.9), 0.25, 1.0);
     tube[i] = vec4(shade, shade * index, highlight, 0.0);
     depths[i] = z;
   }
@@ -475,6 +535,7 @@ uniform float p_mirror;
 uniform float p_zoom;
 uniform float p_centerX;
 uniform float p_centerY;
+uniform float p_haze;
 
 const float TAU = 6.28318530718;
 
@@ -507,6 +568,10 @@ void main() {
   index = mix(index, 1.0, smoothstep(2.0, 6.0, state.r));
   vec3 tint = max(hueRotate(texture(palette, vec2(index, 0.5)).rgb, hue), 0.0);
   vec3 c = tint * intensity + vec3(1.0 - exp(-state.b));
+  // Haze: a faint light in the dark, in the palette's darkest colours, brighter towards the
+  // centre: the picture does not sit on black.
+  vec3 hazeColor = max(hueRotate(texture(palette, vec2(0.12, 0.5)).rgb, hue), 0.0);
+  c += hazeColor * p_haze * 0.45 * (0.3 + 0.7 * exp(-dot(p, p) * 0.4));
   // The core glow is drawn on top, not fed back.
   float d = length(p);
   c += coreColor * coreGlow * (exp(-d * d / 0.0012) * 1.5 + exp(-d * d / 0.02) * 0.35);

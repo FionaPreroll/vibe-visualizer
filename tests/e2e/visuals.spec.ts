@@ -284,6 +284,41 @@ test('the ring can be bars, lines or dots, with motion and a tint (LS-11, LS-03,
   expect(errors).toEqual([]);
 });
 
+test('the particles can fall as rain, in a wind (LS-17)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'Clicks.wav',
+    mimeType: 'audio/wav',
+    buffer: createWav(8, 44100),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('play-button').click();
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const stored = () =>
+    page.evaluate(() => JSON.parse(localStorage.getItem('vibe-visualizer:visuals:v1') ?? '{}'));
+
+  await page.getByText('Particles', { exact: true }).click();
+  const style = page.getByRole('radiogroup', { name: 'Particle style' });
+  await expect(style.getByRole('radio', { name: 'Stars' })).toHaveAttribute('aria-checked', 'true');
+  await style.getByRole('radio', { name: 'Rain' }).click();
+  await expect.poll(async () => (await stored()).particleStyle).toBe('rain');
+  await expectMotion(stage);
+
+  // A preset with rain, kept over a reload.
+  await page.getByTestId('preset-select').selectOption('Night Rain');
+  await expect.poll(async () => (await stored()).backgroundSource).toBe('image');
+  await page.reload();
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  expect((await stored()).particleStyle).toBe('rain');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await expect(page.getByTestId('preset-select')).toHaveValue('Night Rain');
+  expect(errors).toEqual([]);
+});
+
 test('favourite presets, a random pick, and your presets in a file (PR-03, PR-04)', async ({
   page,
 }) => {
