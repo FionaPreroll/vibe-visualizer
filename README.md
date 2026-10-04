@@ -37,7 +37,12 @@ Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and 
 | ![The Sound tab](docs/screenshots/sound.jpg) *Sound:* tempo, filter, delay, reverb, Slowed + Reverb | ![The Live tab](docs/screenshots/live.jpg) *Live:* a mixer, an interface or a browser tab |
 | ![The dialog of a track with its colours](docs/screenshots/track-colours.jpg) *A track's own* title, cover and colours | ![The DJ controller dialog](docs/screenshots/controller.jpg) *DJ controller:* a DDJ-FLX2, connected |
 | ![The export dialog](docs/screenshots/export.jpg) *Export:* YouTube, 4K or TikTok, a track or a clip | ![The export of the queue as one video](docs/screenshots/export-tracks.jpg) *The queue as one video,* with chapters |
+| ![The mini player: the visuals in a small window of their own, with its controls](docs/screenshots/mini-player.jpg) *Mini player:* on top of other tabs and apps | ![The ⋯ menu of the top bar, open](docs/screenshots/menu.jpg) *⋯ in the top bar:* the mini player, safe areas, only the music, a PNG, the DJ controller |
 | ![The welcome at the first start](docs/screenshots/welcome.jpg) *The welcome* at the first start | |
+
+**The top bar** fits narrower windows: below 1360 pixels the aspect ratio leaves out its platforms and a running export shows only its progress, below 1120 the modes show only their icons, and below 820 the logo shows without the app's name.
+
+![The top bar at 1440, 1280, 1100 and 800 pixels wide, and the same while an export runs](docs/screenshots/top-bar.png)
 
 The screenshots are taken in the app with a synthetic track (`pnpm screenshots`). On GitHub, the *Screenshots* workflow (Actions → Screenshots → Run workflow) takes them again and commits them to the branch it runs on: run it on `dev`, since `main` takes changes only through pull requests.
 

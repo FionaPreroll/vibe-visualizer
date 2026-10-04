@@ -269,6 +269,12 @@ test('screenshots of the top bar and its ⋯ menu', async ({ page, context }) =>
     clip: { x: 800, y: 0, width: 640, height: 400 },
   });
   await page.keyboard.press('Escape');
+  // No focus ring on the button the keys left the focus on, and no button under the mouse.
+  const blur = async () => {
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.mouse.move(8, 400);
+  };
+  await blur();
 
   // The bar at four widths, then while an export runs; one picture of them all.
   const widths = [
@@ -293,6 +299,7 @@ test('screenshots of the top bar and its ⋯ menu', async ({ page, context }) =>
     timeout: 120_000,
   });
   await page.keyboard.press('Escape');
+  await blur();
   await takeBars(', an export running');
   const sheet = await context.newPage();
   const rows = bars
