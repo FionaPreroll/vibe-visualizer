@@ -29,10 +29,10 @@ import {
 } from './visual-settings';
 
 /**
- * Mode B, "Logo Spectrum" (LS-*): background image, star particles, a mirrored spectrum ring
- * of colour layers with a glow, and a round logo that pulses with the bass. Rendered in WebGL2
- * into a half-float buffer, then bloom and dithering (VE-02). Everything moves in real time
- * (dt), so it looks the same at any frame rate and in the export (VE-03).
+ * Mode B, "Logo Spectrum" (LS-*): background image, particles (stars or rain), a mirrored
+ * spectrum ring of colour layers with a glow, and a round logo that pulses with the bass.
+ * Rendered in WebGL2 into a half-float buffer, then bloom and dithering (VE-02). Everything moves
+ * in real time (dt), so it looks the same at any frame rate and in the export (VE-03).
  */
 
 export type ImageKind = 'background' | 'logo';
@@ -117,13 +117,17 @@ void main() {
 const PARTICLE_VERTEX = `#version 300 es
 layout(location = 1) in vec4 particle;
 uniform vec2 resolution;
+/** The way the particles move (a unit vector), and how much longer than wide they are. */
+uniform vec2 along;
+uniform float stretch;
 out vec2 local;
 out float alpha;
 void main() {
   vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1)) * 2.0 - 1.0;
   local = corner;
   alpha = particle.w;
-  vec2 position = particle.xy + corner * particle.z;
+  vec2 across = vec2(along.y, -along.x);
+  vec2 position = particle.xy + (across * corner.x + along * corner.y * stretch) * particle.z;
   gl_Position = vec4(position / (resolution * 0.5), 0.0, 1.0);
 }`;
 
@@ -133,9 +137,18 @@ in vec2 local;
 in float alpha;
 out vec4 color;
 uniform vec3 tint;
+/** 0 stars, 1 rain. */
+uniform int style;
 void main() {
-  float r2 = dot(local, local);
-  float light = exp(-r2 * 5.0) * 0.5 + exp(-r2 * 40.0);
+  float light;
+  if (style == 1) {
+    // A streak of rain: thin, brightest at its head (ahead, local.y near 1), its tail fading.
+    float head = smoothstep(-1.0, 0.8, local.y) * (1.0 - smoothstep(0.8, 1.0, local.y));
+    light = exp(-local.x * local.x * 9.0) * head * head;
+  } else {
+    float r2 = dot(local, local);
+    light = exp(-r2 * 5.0) * 0.5 + exp(-r2 * 40.0);
+  }
   color = vec4(tint * light * alpha, 0.0);
 }`;
 
@@ -396,6 +409,9 @@ export class LogoSpectrumScene implements Scene {
   private readonly particleState = new Float32Array(MAX_PARTICLES * 6);
   private readonly random = new Prng(1234);
   private particleCount = 0;
+  /** Rain (LS-17): the wind's slant (sideways per downwards) and the time it sways by. */
+  private wind = 0;
+  private windTime = 0;
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -460,6 +476,8 @@ export class LogoSpectrumScene implements Scene {
 
   setSettings(settings: LogoSpectrumSettings): void {
     const blurChanged = settings.backgroundBlur !== this.settings.backgroundBlur;
+    // Stars and raindrops move differently: the other kind starts afresh, all over the picture.
+    if (settings.particleStyle !== this.settings.particleStyle) this.particleCount = 0;
     this.settings = settings;
     if (blurChanged) this.blurredFor = -1;
   }
@@ -582,16 +600,24 @@ export class LogoSpectrumScene implements Scene {
     // Particles (additive).
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE);
-    const count = this.updateParticles(dt, energy, features);
+    const rain = s.particleStyle === 'rain';
+    const count = rain
+      ? this.updateRain(dt, energy, bass, features)
+      : this.updateParticles(dt, energy, features);
     if (count > 0) {
       gl.bindVertexArray(this.particleArray);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.particleBuffer);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.particleData, 0, count * 4);
       const [tr, tg, tb] = parseColor(s.topColor);
+      // The streaks fall along the wind, longer the faster they fall.
+      const slant = Math.hypot(this.wind, 1);
       this.programs.particles
         .use()
         .vec2('resolution', this.width, this.height)
-        .vec3('tint', 0.6 + 0.4 * tr, 0.6 + 0.4 * tg, 0.6 + 0.4 * tb);
+        .vec3('tint', 0.6 + 0.4 * tr, 0.6 + 0.4 * tg, 0.6 + 0.4 * tb)
+        .int('style', rain ? 1 : 0)
+        .vec2('along', rain ? this.wind / slant : 0, rain ? -1 / slant : 1)
+        .float('stretch', rain ? Math.min(30, 8 + 12 * this.rainFall(energy, features)) : 1);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
       gl.bindVertexArray(this.triangle);
     }
@@ -681,6 +707,8 @@ export class LogoSpectrumScene implements Scene {
         bass: this.bass.value,
         energy: this.energy.value,
         particleCount: this.particleCount,
+        wind: this.wind,
+        windTime: this.windTime,
         random: this.random.state,
         logoTurns: this.logoTurns,
         calm: calm !== null,
@@ -712,6 +740,9 @@ export class LogoSpectrumScene implements Scene {
     this.bass.value = Number(values['bass']);
     this.energy.value = Number(values['energy']);
     this.particleCount = Number(values['particleCount']);
+    // Snapshots of before the rain have no wind.
+    this.wind = Number(values['wind'] ?? 0);
+    this.windTime = Number(values['windTime'] ?? 0);
     this.random.state = Number(values['random']);
     // Snapshots of before the logo turned have none.
     this.logoTurns = Number(values['logoTurns'] ?? 0);
@@ -816,6 +847,70 @@ export class LogoSpectrumScene implements Scene {
       data[i * 4 + 3] = fade * twinkle * sparkle * (0.35 + 0.65 * depth);
     }
     return wanted;
+  }
+
+  /** How fast the rain falls now: its speed, more with the music (louder, on the kicks). */
+  private rainFall(energy: number, features: Float32Array): number {
+    return this.settings.particleSpeed * (0.7 + 0.8 * energy + 0.6 * features[F.kick]!);
+  }
+
+  /**
+   * Rain (LS-17, Kanban 21): streaks fall from above the picture, nearer ones faster, longer and
+   * brighter; faster with the music. A wind slants them: it sways slowly, and the bass blows it
+   * further. State per drop as for the stars: x, y, (unused) x, y, depth, phase.
+   */
+  private updateRain(dt: number, energy: number, bass: number, features: Float32Array): number {
+    const s = this.settings;
+    const wanted = Math.min(MAX_PARTICLES, s.particles);
+    const state = this.particleState;
+    while (this.particleCount < wanted) this.spawnDrop(this.particleCount++, true);
+    this.particleCount = wanted;
+    this.windTime += dt;
+    const sway = 0.18 * Math.sin(this.windTime * 0.11) + 0.08 * Math.sin(this.windTime * 0.37 + 1);
+    const target = sway + 0.3 * bass * Math.sign(sway || 1);
+    this.wind += (target - this.wind) * (1 - Math.exp(-dt / 0.8));
+    const short = Math.min(this.width, this.height);
+    const halfWidth = this.width / short / 2;
+    const halfHeight = this.height / short / 2;
+    const fall = this.rainFall(energy, features);
+    const sparkle = 0.75 + 0.25 * features[F.hat]!;
+    const data = this.particleData;
+    for (let i = 0; i < wanted; i++) {
+      const o = i * 6;
+      const depth = state[o + 4]!;
+      const speed = (1.1 + 1.9 * depth) * fall;
+      state[o]! += this.wind * speed * dt;
+      state[o + 1]! -= speed * dt;
+      const x = state[o]!;
+      const y = state[o + 1]!;
+      if (y < -halfHeight - 0.15 || Math.abs(x) > halfWidth + 0.4) {
+        this.spawnDrop(i, false);
+        continue;
+      }
+      data[i * 4] = x * short;
+      data[i * 4 + 1] = y * short;
+      data[i * 4 + 2] = s.particleSize * short * (0.0008 + 0.0016 * depth);
+      data[i * 4 + 3] = sparkle * (0.2 + 0.8 * depth);
+    }
+    return wanted;
+  }
+
+  /** A raindrop above the picture, or anywhere on it (when the rain starts). */
+  private spawnDrop(index: number, anywhere: boolean): void {
+    const random = () => this.random.next();
+    const o = index * 6;
+    const short = Math.min(this.width, this.height);
+    const halfWidth = this.width / short / 2;
+    const halfHeight = this.height / short / 2;
+    const state = this.particleState;
+    // Upwind of the picture too, so the slanted rain also fills its far side.
+    state[o] = (random() * 2 - 1) * (halfWidth + 0.3);
+    state[o + 1] = anywhere ? (random() * 2 - 1) * halfHeight : halfHeight + 0.1 + random() * 0.3;
+    state[o + 2] = 0;
+    state[o + 3] = 0;
+    state[o + 4] = random() ** 1.5;
+    state[o + 5] = random() * 10;
+    this.particleData[index * 4 + 3] = 0;
   }
 
   private spawnParticle(index: number, anywhere: boolean): void {

@@ -120,12 +120,14 @@ const CLASSIC_RAINBOW = BUILT_IN_PRESETS.find(
 describe('visual settings', () => {
   it('starts with Blue-Pink Vortex, as it was exported from the app', () => {
     expect(BUILT_IN_PRESETS[0]!.name).toBe('Blue-Pink Vortex');
-    // Settings added since then have their defaults: no image under the Kaleidoscope, no haze,
-    // and the Neon Ribbons of today (the look shows the Vortex, its Ribbons were never seen).
+    // Settings added since then have their defaults: no image under the Kaleidoscope, stars,
+    // no haze, and the Neon Ribbons of today (the look shows the Vortex, its Ribbons were never
+    // seen).
     const look = BLUE_PINK_EXPORT.layerLook;
     expect(DEFAULT_LOGO_SPECTRUM).toEqual({
       ...BLUE_PINK_EXPORT,
       layerImage: 0,
+      particleStyle: 'stars',
       layerLook: {
         ...look,
         common: { ...look.common, haze: 0 },
@@ -202,6 +204,15 @@ describe('visual settings', () => {
       ringDirection: CLASSIC_RAINBOW.ringDirection,
       backgroundTint: CLASSIC_RAINBOW.backgroundTint,
     });
+  });
+
+  it('keeps rain or stars as the particles, and stars for anything else (LS-17)', () => {
+    expect(sanitizeSettings({ particleStyle: 'rain' }).particleStyle).toBe('rain');
+    expect(sanitizeSettings({ particleStyle: 'snow' }).particleStyle).toBe('stars');
+    // Looks from before the rain keep their stars.
+    expect(sanitizeSettings({ particles: 50 }).particleStyle).toBe('stars');
+    const rain = BUILT_IN_PRESETS.find((preset) => preset.name === 'Night Rain')!;
+    expect(rain.settings).toMatchObject({ particleStyle: 'rain', backgroundSource: 'image' });
   });
 
   it('has valid built-in presets and palettes', () => {

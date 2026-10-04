@@ -207,7 +207,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 
 | ID | Prio | Feature |
 |---|---|---|
-| LS-17 | S | Particles like the stars in the references: count, size, speed, direction (drift/outward), glow; speed and brightness react to the music |
+| LS-17 | S | Particles like the stars in the references: count, size, speed, direction (drift/outward), glow; speed and brightness react to the music. Since Kanban 21 also as rain: streaks falling in a wind that sways and that the bass blows, faster with the music |
 | LS-18* | S | Text overlay: title/artist (from metadata, editable), font, position, fade-in at track start |
 | LS-19* | C | Progress bar / time overlay |
 
