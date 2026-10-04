@@ -24,6 +24,7 @@ describe('track analysis cache', () => {
       },
       tempo: null,
       range: 'auto',
+      fixed: false,
       loudness: { spectrum: -14.625, energy: -0.875, bands: [-4.875, -1.375, -32, -30, -27, -18] },
     };
     const read = decodeAnalysis(encodeAnalysis(result), 'f00d');
@@ -36,14 +37,29 @@ describe('track analysis cache', () => {
     expect(decodeAnalysis(encodeAnalysis(corrected), 'f00d')?.tempo).toBe(174);
     const fast = { ...result, range: 'fast' as const };
     expect(decodeAnalysis(encodeAnalysis(fast), 'f00d')?.range).toBe('fast');
+    // With one tempo throughout (TR-12), with and without the loudness.
+    const fixed = { ...result, fixed: true };
+    expect(decodeAnalysis(encodeAnalysis(fixed), 'f00d')).toEqual(fixed);
+    expect(decodeAnalysis(encodeAnalysis({ ...fixed, loudness: null }), 'f00d')).toMatchObject({
+      fixed: true,
+      loudness: null,
+    });
   });
 
   it('knows which requests give the same grid', () => {
-    expect(sameGrid({ tempo: null, range: 'auto' }, { tempo: null, range: 'auto' })).toBe(true);
-    expect(sameGrid({ tempo: null, range: 'auto' }, { tempo: null, range: 'fast' })).toBe(false);
+    const request = (tempo: number | null, range: 'auto' | 'fast', fixed = false) => ({
+      tempo,
+      range,
+      fixed,
+    });
+    expect(sameGrid(request(null, 'auto'), request(null, 'auto'))).toBe(true);
+    expect(sameGrid(request(null, 'auto'), request(null, 'fast'))).toBe(false);
     // A tempo from the user decides; the range does not matter then.
-    expect(sameGrid({ tempo: 174, range: 'auto' }, { tempo: 174.004, range: 'fast' })).toBe(true);
-    expect(sameGrid({ tempo: 174, range: 'fast' }, { tempo: null, range: 'fast' })).toBe(false);
+    expect(sameGrid(request(174, 'auto'), request(174.004, 'fast'))).toBe(true);
+    expect(sameGrid(request(174, 'fast'), request(null, 'fast'))).toBe(false);
+    // One tempo throughout (TR-12) is another grid.
+    expect(sameGrid(request(null, 'auto', true), request(null, 'auto'))).toBe(false);
+    expect(sameGrid(request(174, 'auto', true), request(174, 'fast', true))).toBe(true);
   });
 
   it('ignores anything that is not a current analysis', () => {

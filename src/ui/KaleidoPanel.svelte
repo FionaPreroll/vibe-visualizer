@@ -15,6 +15,7 @@
     sanitizeKaleido,
   } from '../core/render/kaleido-settings';
   import AutoPresetsSection from './AutoPresetsSection.svelte';
+  import CoverColorsOption from './CoverColorsOption.svelte';
   import ParamControl from './controls/ParamControl.svelte';
   import PresetBar from './controls/PresetBar.svelte';
   import Section from './controls/Section.svelte';
@@ -129,6 +130,10 @@
             </button>
           {/each}
         </div>
+        <!-- Behind the Logo Spectrum, its own colour settings hold the switch. -->
+        {#if !behind}
+          <CoverColorsOption />
+        {/if}
       {/if}
       {#each COMMON_PARAMS.filter((spec) => spec.group === group && spec.key !== 'palette') as spec (spec.key)}
         {#if visible(spec, k.common)}

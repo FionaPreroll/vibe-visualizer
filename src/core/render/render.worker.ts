@@ -4,6 +4,16 @@ import {
   type HeardPosition,
 } from '../analysis/feature-timeline';
 import { F } from '../analysis/features';
+import {
+  COVER_BLEND_SECONDS,
+  coverTonesOf,
+  sameTrackColors,
+  trackPalette,
+  type CoverColors,
+  type CoverPalette,
+  type Tone,
+  type TrackColors,
+} from './cover-palette';
 import { DEFAULT_KALEIDO } from './kaleido-settings';
 import { KaleidoscopeScene } from './kaleidoscope';
 import { LogoSpectrumScene } from './logo-spectrum';
@@ -61,6 +71,8 @@ const features = new Float32Array(F.size);
 const heard: HeardPosition = { seconds: 0, token: 0 };
 let overlay: TrackOverlay | null = null;
 let overlaySettings: OverlaySettings = DEFAULT_OVERLAY;
+/** Whether the overlay's settings came yet: the first ones are no change. */
+let overlayKnown = false;
 /** Until then (performance.now()), the overlay shows in full: its settings just changed. */
 let overlayPreview = 0;
 const overlayTracks = new Map<number, OverlayTrack>();
@@ -75,6 +87,16 @@ let overlayRate = 1;
 const covers = new Map<number, ImageBitmap>();
 let coverToken = -1;
 let coverLogo = false;
+/**
+ * The colours of the tracks (VE-12) by token: the tones of each cover, the colours the user gave
+ * each track, and the palettes they make; and whether the visuals take them.
+ */
+const coverTones = new Map<number, Tone[] | null>();
+const trackColors = new Map<number, TrackColors | null>();
+const palettes = new Map<number, CoverPalette | null>();
+let coverColorsOn = false;
+/** The cover colours shown: blending from the last file's to the one heard (null: the look's). */
+const shownColors: CoverColors = { from: null, to: null, blend: 1 };
 /** Pictures asked for (EX-10): taken from the next frame drawn. */
 const captures: { id: number; width: number; height: number }[] = [];
 /** The file and position heard at the last frame, and how long it has stood still (s). */
@@ -153,6 +175,9 @@ function frame(now: number): void {
   motion = calm ? 0 : motion + (1 - motion) * (1 - Math.exp(-dt / MOTION_SECONDS));
   try {
     const input = { time: (now - startTime) / 1000, dt, features, played, motion };
+    const colors = coverColors(dt, token);
+    logoSpectrum?.setCoverColors(colors);
+    kaleidoscope?.setCoverColors(colors);
     if (active === 'logoSpectrum') {
       showCover(token);
       drawLayer(input);
@@ -210,6 +235,27 @@ function drawLayer(input: SceneInput): void {
     layerLook = look;
   }
   logoSpectrum.setBackgroundLayer(kaleidoscope.renderLayer(input));
+}
+
+/**
+ * The colours of the cover of the file heard (VE-12), blended in over a moment when another
+ * file is heard or the setting changes; null once they are the look's own.
+ */
+function coverColors(dt: number, token: number): CoverColors | null {
+  const target = coverColorsOn ? (palettes.get(token) ?? null) : null;
+  if (target !== shownColors.to) {
+    // A blend under way goes on from the nearer of its ends.
+    shownColors.from = shownColors.blend < 0.5 ? shownColors.from : shownColors.to;
+    shownColors.to = target;
+    shownColors.blend = 0;
+  }
+  shownColors.blend = Math.min(1, shownColors.blend + dt / COVER_BLEND_SECONDS);
+  return shownColors.blend >= 1 && !shownColors.to ? null : shownColors;
+}
+
+/** The palette of the file with `token`, made anew when its cover or its colours changed. */
+function updatePalette(token: number): void {
+  palettes.set(token, trackPalette(trackColors.get(token) ?? null, coverTones.get(token) ?? null));
 }
 
 /** The cover art of the file heard, for the Logo Spectrum's logo (LS-15). */
@@ -352,8 +398,11 @@ scope.addEventListener('message', (event) => {
         message.image?.close();
         break;
       case 'overlay': {
-        const changed = JSON.stringify(message.settings) !== JSON.stringify(overlaySettings);
-        // The first settings are no change; a change shows the overlay for a moment.
+        // The first settings are no change, though they differ from the defaults (they come
+        // after the start); a change shows the overlay for a moment.
+        const changed =
+          overlayKnown && JSON.stringify(message.settings) !== JSON.stringify(overlaySettings);
+        overlayKnown = true;
         if (changed && overlay && message.settings.on) {
           overlayPreview = performance.now() + OVERLAY_PREVIEW_MS;
         }
@@ -364,16 +413,28 @@ scope.addEventListener('message', (event) => {
       case 'tracks': {
         overlayTracks.clear();
         calmTokens.clear();
-        for (const { token, track, calm } of message.tracks) {
+        for (const { token, track, calm, colors } of message.tracks) {
           if (track) overlayTracks.set(token, track);
           if (calm) calmTokens.add(token);
+          // A palette made anew only when the colours changed: it blends in as a new one.
+          if (!trackColors.has(token) || !sameTrackColors(trackColors.get(token)!, colors)) {
+            trackColors.set(token, colors);
+            updatePalette(token);
+          }
         }
         overlayRate = message.rate;
-        // The covers of files that left the stream go.
+        // The covers and colours of files that left the stream go.
+        const inStream = (token: number) => message.tracks.some((entry) => entry.token === token);
         for (const [token, image] of covers) {
-          if (message.tracks.some((entry) => entry.token === token)) continue;
+          if (inStream(token)) continue;
           image.close();
           covers.delete(token);
+        }
+        for (const token of [...palettes.keys()]) {
+          if (inStream(token)) continue;
+          coverTones.delete(token);
+          trackColors.delete(token);
+          palettes.delete(token);
         }
         break;
       }
@@ -381,6 +442,8 @@ scope.addEventListener('message', (event) => {
         covers.get(message.token)?.close();
         if (message.image) covers.set(message.token, message.image);
         else covers.delete(message.token);
+        coverTones.set(message.token, message.image ? coverTonesOf(message.image) : null);
+        updatePalette(message.token);
         // The file heard got its cover: it shows at once.
         if (message.token === coverToken) {
           coverToken = -1;
@@ -390,6 +453,9 @@ scope.addEventListener('message', (event) => {
       case 'coverLogo':
         coverLogo = message.on;
         logoSpectrum?.setCoverLogo(message.on);
+        break;
+      case 'coverColors':
+        coverColorsOn = message.on;
         break;
       case 'clock':
         clock = {
@@ -416,6 +482,9 @@ scope.addEventListener('message', (event) => {
         overlay?.dispose();
         for (const image of covers.values()) image.close();
         covers.clear();
+        coverTones.clear();
+        trackColors.clear();
+        palettes.clear();
         logoSpectrum = null;
         kaleidoscope = null;
         scene = null;

@@ -9,8 +9,9 @@
     pickFolder,
   } from '../core/library/folder-reader';
   import { sameGrid } from '../core/library/analysis-cache';
-  import { shownArtist, shownTitle, type Track } from '../core/state/app-state';
+  import { shownArtist, shownCover, shownTitle, type Track } from '../core/state/app-state';
   import { errorMessage, formatDuration } from '../core/util/format';
+  import { DragScroll } from './drag-scroll';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
   import TrackNameDialog from './TrackNameDialog.svelte';
@@ -35,7 +36,7 @@
    */
   function regridding(track: Track): boolean {
     const state = track.fingerprint ? $analyses.get(track.fingerprint) : undefined;
-    const wanted = { tempo: track.tempo, range: $app.settings.bpmRange };
+    const wanted = { tempo: track.tempo, range: $app.settings.bpmRange, fixed: track.fixedTempo };
     return state !== undefined && !sameGrid(state, wanted);
   }
 
@@ -43,6 +44,9 @@
   let folderInput: HTMLInputElement;
   let dragIndex = $state<number | null>(null);
   let dropIndex = $state<number | null>(null);
+  let list: HTMLOListElement | undefined = $state();
+  /** Scrolls the list while a track is dragged near its top or bottom. */
+  let dragScroll: DragScroll | null = null;
   /** The track being named (LS-18). */
   let naming = $state<Track | null>(null);
 
@@ -95,22 +99,38 @@
     dragIndex = index;
     event.dataTransfer?.setData('application/x-vibe-track', String(index));
     if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    dragScroll = list ? new DragScroll(list) : null;
+  }
+
+  function endDrag() {
+    dragScroll?.stop();
+    dragScroll = null;
+    dragIndex = null;
+    dropIndex = null;
+  }
+
+  /** Where a track dragged over the entry at `index` goes: before it, or after it. */
+  function placeAt(event: DragEvent, index: number): number {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    return event.clientY < rect.top + rect.height / 2 ? index : index + 1;
   }
 
   function onDragOver(event: DragEvent, index: number) {
     if (dragIndex === null) return;
     event.preventDefault();
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    dropIndex = event.clientY < rect.top + rect.height / 2 ? index : index + 1;
+    dropIndex = placeAt(event, index);
   }
 
-  function onDrop(event: DragEvent) {
-    if (dragIndex === null || dropIndex === null) return;
+  /**
+   * The dragged track goes to `place`, which the drop itself says: the list may have scrolled
+   * under the resting pointer since the last `dragover`.
+   */
+  function onDrop(event: DragEvent, place: number) {
+    if (dragIndex === null) return;
     event.preventDefault();
-    const to = dropIndex > dragIndex ? dropIndex - 1 : dropIndex;
-    player.move(dragIndex, to);
-    dragIndex = null;
-    dropIndex = null;
+    event.stopPropagation();
+    player.move(dragIndex, place > dragIndex ? place - 1 : place);
+    endDrag();
   }
 
   function onKey(event: KeyboardEvent, index: number, track: Track) {
@@ -128,7 +148,13 @@
   }
 </script>
 
-<section class="queue" aria-label="Queue">
+<section
+  class="queue"
+  aria-label="Queue"
+  ondragover={(event) => {
+    if (dragIndex !== null) dragScroll?.over(event.clientY);
+  }}
+>
   <header>
     <div>
       <h2>Queue</h2>
@@ -206,7 +232,24 @@
   {#if $app.tracks.length === 0}
     <p class="empty">Drop audio files anywhere, or click “Add files”.</p>
   {:else}
-    <ol role="listbox" aria-label="Queue tracks" ondragleave={() => (dropIndex = null)}>
+    <ol
+      bind:this={list}
+      role="listbox"
+      aria-label="Queue tracks"
+      ondragleave={(event) => {
+        // Only when the drag leaves the list, not when it goes from one track to the next.
+        if (!list?.contains(event.relatedTarget as Node | null)) dropIndex = null;
+      }}
+      ondragover={(event) => {
+        // Below the last track, where the list ends: the end of the queue.
+        if (dragIndex === null || event.target !== event.currentTarget) return;
+        event.preventDefault();
+        const last = list?.lastElementChild?.getBoundingClientRect();
+        if (last && event.clientY > last.bottom) dropIndex = $app.tracks.length;
+      }}
+      ondrop={(event) => onDrop(event, dropIndex ?? $app.tracks.length)}
+      data-testid="queue-list"
+    >
       {#each $app.tracks as track, index (track.id)}
         <li
           class:current={track.id === $app.currentId}
@@ -217,11 +260,8 @@
           draggable="true"
           ondragstart={(event) => onDragStart(event, index)}
           ondragover={(event) => onDragOver(event, index)}
-          ondrop={onDrop}
-          ondragend={() => {
-            dragIndex = null;
-            dropIndex = null;
-          }}
+          ondrop={(event) => onDrop(event, placeAt(event, index))}
+          ondragend={endDrag}
           ondblclick={() => play(track)}
           onkeydown={(event) => onKey(event, index, track)}
           tabindex="0"
@@ -236,8 +276,8 @@
               : (track.reason ?? track.fileName)}
         >
           <span class="grip" aria-hidden="true"><Icon name="grip" size={16} /></span>
-          {#if track.coverUrl}
-            <img src={track.coverUrl} alt="" />
+          {#if shownCover(track)}
+            <img src={shownCover(track)} alt="" data-testid="queue-cover" />
           {:else}
             <span class="cover-placeholder"><Icon name="music" size={16} /></span>
           {/if}
@@ -270,8 +310,8 @@
           <button
             class="rename ghost"
             onclick={() => (naming = track)}
-            aria-label="Title and artist of {shownTitle(track)}"
-            title="Title and artist (F2)"
+            aria-label="Title, artist, cover and colours of {shownTitle(track)}"
+            title="Title, artist, cover and colours (F2)"
             data-testid="queue-rename"
           >
             <Icon name="pencil" size={15} />

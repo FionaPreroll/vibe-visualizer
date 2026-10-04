@@ -11,8 +11,8 @@
   /**
    * A tempo badge with a menu to correct the tempo (TMP-06): double, half, 3/2 or 2/3 of it for
    * music read at a related tempo; hold one of `tempos`; a tempo typed or tapped; or back to the
-   * tempo found. At the bottom, the tempo range the analysis looks in (AN-12). For a queue entry
-   * (TrackTempo) and for the live input (LiveTempo).
+   * tempo found; for a track, one tempo throughout (TR-12). At the bottom, the tempo range the
+   * analysis looks in (AN-12). For a queue entry (TrackTempo) and for the live input (LiveTempo).
    */
   let {
     tempo,
@@ -26,6 +26,8 @@
     holdTitle,
     testid,
     onchoose,
+    fixed = false,
+    onfixed,
   }: {
     /** The tempo found (0 while unknown). */
     tempo: number;
@@ -45,6 +47,9 @@
     holdTitle: string;
     testid: string;
     onchoose: (bpm: number | null) => void;
+    /** One tempo throughout (TR-12); a switch for it shows where `onfixed` is given. */
+    fixed?: boolean;
+    onfixed?: (fixed: boolean) => void;
   } = $props();
 
   const player = usePlayer();
@@ -270,6 +275,24 @@
         <span>Automatic</span>
         <span class="value">as found</span>
       </button>
+      {#if onfixed}
+        <button
+          role="menuitemcheckbox"
+          aria-checked={fixed}
+          class:on={fixed}
+          title="One tempo for the whole track: the beat grid stays straight from the start to the end, and the bars keep their place"
+          onclick={(event) => {
+            event.stopPropagation();
+            onfixed(!fixed);
+            close();
+            if (event.detail === 0) button.focus();
+          }}
+          data-testid="tempo-fixed"
+        >
+          <span>Fixed tempo</span>
+          <span class="value">{fixed ? 'on' : 'off'}</span>
+        </button>
+      {/if}
       <div class="separator" role="separator"></div>
       <div
         class="ranges"
@@ -361,6 +384,9 @@
     font-family: var(--mono);
     font-size: 12px;
     color: var(--muted);
+  }
+  .menu button.on .value {
+    color: var(--accent-2);
   }
   .separator {
     height: 1px;

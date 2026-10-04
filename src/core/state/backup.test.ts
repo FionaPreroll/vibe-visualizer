@@ -40,6 +40,7 @@ const BACKUP: Backup = {
     'vibe-visualizer:track:v1:def': '{"tempo":128}',
   },
   images: { logo: 'iVBORw0KGgo=' },
+  covers: { abc: 'UklGRg==' },
   analysis: { 'abc.bin': 'VlZHQQ==' },
 };
 
@@ -71,12 +72,18 @@ describe('backups (UI-06)', () => {
         ...BACKUP,
         storage: { ...BACKUP.storage, 'another-app': 'x', 'vibe-visualizer:visuals:v1': 3 },
         images: { logo: 'iVBORw0KGgo=', cover: 'AAAA' },
+        covers: { abc: 'UklGRg==', '../escape': 'AAAA', 'def.webp': 'AAAA', ghi: 7 },
         analysis: { 'abc.bin': 'VlZHQQ==', '../escape.bin': 'AAAA' },
       }),
     );
     expect(odd.storage).toEqual(BACKUP.storage);
     expect(odd.images).toEqual(BACKUP.images);
+    expect(odd.covers).toEqual(BACKUP.covers);
     expect(odd.analysis).toEqual(BACKUP.analysis);
+    // A backup from before covers could be given (LS-21): it has none, so none stay.
+    const older: Partial<Backup> = { ...BACKUP };
+    delete older.covers;
+    expect(parseBackup(JSON.stringify(older)).covers).toEqual({});
     // Without the analysis, there is none in it (rather than none to keep).
     const lean: Partial<Backup> = { ...BACKUP };
     delete lean.analysis;
@@ -91,6 +98,9 @@ describe('backups (UI-06)', () => {
     expect(() =>
       parseBackup(JSON.stringify({ ...BACKUP, images: { logo: 'no base64!' } })),
     ).toThrow('damaged');
+    expect(() => parseBackup(JSON.stringify({ ...BACKUP, covers: { abc: 'no base64!' } }))).toThrow(
+      'damaged',
+    );
   });
 
   it('sums up what is in it', () => {
@@ -100,14 +110,21 @@ describe('backups (UI-06)', () => {
       presets: 3,
       tracks: 2,
       images: 1,
+      covers: 1,
       analysis: 1,
     });
     expect(describeBackup(summary)).toBe(
-      'the settings, 3 presets, the cues, markers, tempos and names of 2 tracks, 1 image and ' +
-        'the analysis of 1 track',
+      'the settings, 3 presets, the cues, markers, tempos and names of 2 tracks, 1 image, ' +
+        '1 cover and the analysis of 1 track',
     );
-    const bare = summarizeBackup({ ...BACKUP, created: 'yesterday', storage: {}, images: {} });
-    expect(bare).toMatchObject({ created: null, presets: 0, tracks: 0, images: 0 });
+    const bare = summarizeBackup({
+      ...BACKUP,
+      created: 'yesterday',
+      storage: {},
+      images: {},
+      covers: {},
+    });
+    expect(bare).toMatchObject({ created: null, presets: 0, tracks: 0, images: 0, covers: 0 });
     expect(describeBackup({ ...bare, analysis: null })).toBe('the settings');
   });
 

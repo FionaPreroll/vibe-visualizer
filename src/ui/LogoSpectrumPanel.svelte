@@ -21,6 +21,7 @@
   } from '../core/render/visual-settings';
   import AutoPresetsSection from './AutoPresetsSection.svelte';
   import { errorMessage } from '../core/util/format';
+  import CoverColorsOption from './CoverColorsOption.svelte';
   import { degrees, hertz, percent, perMinute, seconds } from './controls/format';
   import ImagePicker from './controls/ImagePicker.svelte';
   import PresetBar from './controls/PresetBar.svelte';
@@ -80,6 +81,14 @@
       await assets.set(kind, file);
     } catch (error) {
       imageError = errorMessage(error);
+    }
+  }
+
+  /** The background image; with the Kaleidoscope behind, one picked shows under it at once. */
+  async function pickImageUnder(file: File | null) {
+    await pickImage('background', file);
+    if (file && v.backgroundSource === 'kaleidoscope' && v.layerImage === 0) {
+      set({ layerImage: 0.5 });
     }
   }
 
@@ -181,6 +190,7 @@
         </button>
       {/each}
     </div>
+    <CoverColorsOption />
     {#if v.palette === 'custom'}
       <div class="colors">
         {#each v.customColors as color, index (index)}
@@ -327,20 +337,24 @@
       <p class="hint" data-testid="background-layer-hint">
         The Kaleidoscope, live behind the ring, with a look of its own that belongs to this one:
         presets and the preset switching carry it. Darken and tint apply to it; it costs about as
-        much as the Kaleidoscope itself.
+        much as the Kaleidoscope itself. An image can show under it.
       </p>
       {#if oneditbehind}
         <button class="edit-behind" onclick={oneditbehind} data-testid="background-layer-edit">
           Set up the Kaleidoscope behind…
         </button>
       {/if}
-    {:else}
-      <ImagePicker
-        label="Background image"
-        image={$assets.background}
-        testid="background"
-        onpick={(file) => pickImage('background', file)}
-      />
+    {/if}
+    <ImagePicker
+      label={v.backgroundSource === 'kaleidoscope' ? 'Image under it' : 'Background image'}
+      image={$assets.background}
+      testid="background"
+      onpick={(file) => pickImageUnder(file)}
+    />
+    {#if v.backgroundSource === 'kaleidoscope'}
+      <Slider {...slider('layerImage', 'Image under it', percent)} />
+    {/if}
+    {#if v.backgroundSource === 'image' || v.layerImage > 0}
       <div class="color-row">
         <span class="label">Fit</span>
         <div class="quick" role="radiogroup" aria-label="Background fit">

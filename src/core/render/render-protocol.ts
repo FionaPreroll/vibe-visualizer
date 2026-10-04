@@ -1,3 +1,4 @@
+import type { TrackColors } from './cover-palette';
 import type { KaleidoSettings } from './kaleido-settings';
 import type { ImageKind } from './logo-spectrum';
 import type { OverlaySettings, OverlayTrack } from './overlay-settings';
@@ -7,7 +8,10 @@ import type { LogoSpectrumSettings } from './visual-settings';
 /** The scenes the render worker can show. */
 export type SceneKind = 'logoSpectrum' | 'kaleidoscope';
 
-/** A file of the engine's stream, by its token: its track for the overlay, and how it moves. */
+/**
+ * A file of the engine's stream, by its token: its track for the overlay, how it moves, and its
+ * colours.
+ */
 export interface StreamTrack {
   token: number;
   track: OverlayTrack | null;
@@ -17,6 +21,8 @@ export interface StreamTrack {
    * start of it does not swing too far.
    */
   calm: boolean;
+  /** The colours the user gave the track for the visuals (VE-12); null: its cover's, as found. */
+  colors: TrackColors | null;
 }
 
 /** Messages from the main thread to the render worker. */
@@ -48,6 +54,8 @@ export type RenderRequest =
   | { type: 'cover'; token: number; image: ImageBitmap | null }
   /** The Logo Spectrum shows the cover art of the track heard as its logo (LS-15). */
   | { type: 'coverLogo'; on: boolean }
+  /** The visuals take the colours of the cover art of the track heard (VE-12). */
+  | { type: 'coverColors'; on: boolean }
   /**
    * The audio clock: `contextTime` is heard at `performanceTime` (epoch milliseconds). With
    * `live` input the newest analysis frame is shown instead.

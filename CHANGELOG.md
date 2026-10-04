@@ -4,6 +4,13 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 ## 3 October 2026
 
+- **The colours of the track:** a switch under the palettes lets the visuals take the colours of the track playing, in both modes, live and in videos: those of its cover art, small bright details too, or colours you set for the track with ✎ (your own, or the look's), more or less colourful.
+- **Covers of your own:** in the dialog for the title and artist (✎ or **F2**), a track gets a cover of its own, kept for the file: in the queue, as the logo and in exports, also where the file has none.
+- **An image under the Kaleidoscope:** with the Kaleidoscope behind the Logo Spectrum, the background image can show under it.
+- **Fixed tempo:** in the tempo menu of a track, one straight beat grid from start to end, so the bars no longer drift after a correction or through a break.
+- **Fixes:** the Kaleidoscope no longer shows a turning rectangle when it spins: it fills the picture in every turn. The track's title no longer shows in full for a moment and then fades in again, when a track starts soon after the app opened or the visuals restarted.
+- **Only the music:** the crossed-out eye in the top bar (or **B**) lets the visuals rest while the music plays on.
+- **The queue scrolls** while you drag a track to its top or bottom, so a track can go far in one go.
 - **A new default look:** *Blue-Pink Vortex*, neon lines around a logo that turns like a record, in front of a Vortex of its own. *Classic Rainbow*, the look before, stays a preset, and looks you saved keep theirs.
 - **Versions:** each build has a version. **About** shows it, and the note of a new version says from which version to which.
 - **Licences:** **Help → Licences** lists the parts of others in the app, with their licences.

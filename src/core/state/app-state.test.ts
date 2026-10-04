@@ -10,6 +10,7 @@ import {
   reducer,
   restoredTrack,
   shownArtist,
+  shownCover,
   shownTitle,
   trackEdit,
   trackRange,
@@ -71,8 +72,10 @@ describe('app state', () => {
           cues,
           marks: { in: 10, out: 40 },
           tempo: 174,
+          fixedTempo: true,
           gridEdit: { shift: 0.02, downbeat: 1.5 },
           edit: { title: 'Better title', artist: null },
+          colors: { source: 'own', own: ['#ff2fd6'], vivid: 1.4 },
         },
       },
     });
@@ -80,8 +83,10 @@ describe('app state', () => {
       cues,
       marks: { in: 10, out: 40 },
       tempo: 174,
+      fixedTempo: true,
       gridEdit: { shift: 0.02, downbeat: 1.5 },
       edit: { title: 'Better title', artist: null },
+      colors: { source: 'own', own: ['#ff2fd6'], vivid: 1.4 },
     });
     state = reducer(state, { type: 'tracks/cue', id: 't0', index: 1, seconds: 500 });
     expect(state.tracks[0]!.cues[1]).toBe(180);
@@ -141,7 +146,7 @@ describe('app state', () => {
     expect(state.tracks.map(shownTitle)).toEqual(['a', 'b', 'c']);
   });
 
-  it('sets the tempo and the grid correction of every entry of a file', () => {
+  it('sets the tempo, fixed or not, the grid correction and the colours of every entry of a file', () => {
     let state = withTracks('a', 'b', 'c');
     state = {
       ...state,
@@ -150,8 +155,51 @@ describe('app state', () => {
     state = reducer(state, { type: 'tracks/tempo', fingerprint: 'same', tempo: 174 });
     const edit = { shift: -0.01, downbeat: 2.5 };
     state = reducer(state, { type: 'tracks/grid', fingerprint: 'same', edit });
+    state = reducer(state, { type: 'tracks/fixed', fingerprint: 'same', fixed: true });
+    const colors = { source: 'look' as const, own: [], vivid: 1 };
+    state = reducer(state, { type: 'tracks/colors', fingerprint: 'same', colors });
     expect(state.tracks.map((track) => track.tempo)).toEqual([174, 174, null]);
+    expect(state.tracks.map((track) => track.fixedTempo)).toEqual([true, true, false]);
     expect(state.tracks.map((track) => track.gridEdit)).toEqual([edit, edit, NO_GRID_EDIT]);
+    expect(state.tracks.map((track) => track.colors)).toEqual([colors, colors, null]);
+  });
+
+  it("shows the cover the user gave a file, on every entry of it, instead of the file's (LS-21)", () => {
+    let state = withTracks('a', 'b', 'c');
+    state = {
+      ...state,
+      tracks: state.tracks.map((track, i) => ({
+        ...track,
+        fingerprint: i < 2 ? 'same' : 'other',
+        coverUrl: i === 0 ? 'blob:file' : null,
+      })),
+    };
+    expect(state.tracks.map(shownCover)).toEqual(['blob:file', null, null]);
+    state = reducer(state, { type: 'tracks/cover', fingerprint: 'same', url: 'blob:mine' });
+    expect(state.tracks.map(shownCover)).toEqual(['blob:mine', 'blob:mine', null]);
+    // Probed again as the same file, it keeps it; as another file (changed since), it does not.
+    const probed = (id: string, fingerprint: string) =>
+      reducer(state, {
+        type: 'tracks/probed',
+        id,
+        info: {
+          status: 'ready',
+          reason: null,
+          title: null,
+          artist: null,
+          album: null,
+          duration: 60,
+          sampleRate: 44100,
+          codec: 'mp3',
+          format: 'MP3',
+          coverUrl: null,
+          fingerprint,
+        },
+      });
+    expect(shownCover(probed('t1', 'same').tracks[1]!)).toBe('blob:mine');
+    expect(shownCover(probed('t1', 'changed').tracks[1]!)).toBeNull();
+    state = reducer(state, { type: 'tracks/cover', fingerprint: 'same', url: null });
+    expect(state.tracks.map(shownCover)).toEqual(['blob:file', null, null]);
   });
 
   it('moves tracks', () => {
@@ -180,8 +228,10 @@ describe('app state', () => {
           cues,
           marks: { in: null, out: 20 },
           tempo: null,
+          fixedTempo: false,
           gridEdit: NO_GRID_EDIT,
           edit: null,
+          colors: null,
         }),
         restoredTrack('r1', { ...info, fileName: 'Gone.mp3' }, 'missing'),
       ],

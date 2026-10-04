@@ -1,5 +1,6 @@
 import { F } from '../analysis/features';
 import { Prng } from '../util/prng';
+import { coverBlend, type CoverColors } from './cover-palette';
 import {
   bindTarget,
   createFullscreenTriangle,
@@ -42,6 +43,9 @@ uniform int hasImage;
 /** The Kaleidoscope behind (VE-08): the picture's size, rows bottom first. */
 uniform sampler2D layer;
 uniform int hasLayer;
+/** How much of the image shows under the layer (0: none), and the scale that fits it. */
+uniform float imageUnder;
+uniform vec2 imageScale;
 uniform vec2 scale;
 uniform vec2 pan;
 uniform float dim;
@@ -55,6 +59,14 @@ void main() {
   if (hasLayer == 1) {
     vec2 c = (uv - 0.5) * scale + 0.5 + pan * 0.5 * max(1.0 - scale, 0.0);
     col = texture(layer, c).rgb;
+    if (hasImage == 1 && imageUnder > 0.0) {
+      // The image under the Kaleidoscope, screened: its light adds where the layer is dark.
+      vec2 ci = (uv - 0.5) * imageScale + 0.5 + pan * 0.5 * max(1.0 - imageScale, 0.0);
+      bool outside = any(lessThan(ci, vec2(0.0))) || any(greaterThan(ci, vec2(1.0)));
+      vec4 t = texture(image, vec2(ci.x, 1.0 - ci.y));
+      vec3 under = outside ? vec3(0.0) : t.rgb * t.a * imageUnder;
+      col = 1.0 - (1.0 - col) * (1.0 - under);
+    }
   } else if (hasImage == 1) {
     // pan moves the visible window within the part of the image that is cropped away.
     vec2 c = (uv - 0.5) * scale + 0.5 + pan * 0.5 * max(1.0 - scale, 0.0);
@@ -372,6 +384,8 @@ export class LogoSpectrumScene implements Scene {
   /** The cover art of the track playing, and whether it takes the logo's place (LS-15). */
   private cover: { texture: WebGLTexture; width: number; height: number } | null = null;
   private coverLogo = false;
+  /** The colours of the covers heard (VE-12) for the colour layers; null: the look's own. */
+  private coverColors: CoverColors | null = null;
   /** How far the logo has turned with the music (LS-16), in turns (0…1). */
   private logoTurns = 0;
 
@@ -483,6 +497,11 @@ export class LogoSpectrumScene implements Scene {
     this.coverLogo = on;
   }
 
+  /** The colour layers take the colours of the covers heard (VE-12); null: the look's own. */
+  setCoverColors(colors: CoverColors | null): void {
+    this.coverColors = colors;
+  }
+
   resize(width: number, height: number): void {
     if (width === this.width && height === this.height && this.scene) return;
     this.width = Math.max(1, Math.round(width));
@@ -534,8 +553,10 @@ export class LogoSpectrumScene implements Scene {
     const drift = backgroundDrift(s.drift, input.time);
     const zoom = (1 + 0.05 * s.backgroundPulse * bass * motion) * drift.zoom;
     const layered = this.wantsLayer && this.layer !== null;
-    // The layer has the picture's size: it fills it as it is.
-    const [sx, sy] = layered ? [1, 1] : this.backgroundScale();
+    // The layer has the picture's size: it fills it as it is; an image under it fits as it does
+    // alone.
+    const [bx, by] = this.backgroundScale();
+    const [sx, sy] = layered ? [1, 1] : [bx, by];
     const [tintR, tintG, tintB] = parseColor(s.backgroundTint);
     this.programs.background
       .use()
@@ -543,6 +564,8 @@ export class LogoSpectrumScene implements Scene {
       .texture('layer', layered ? this.layer : null, 1)
       .int('hasImage', this.background ? 1 : 0)
       .int('hasLayer', layered ? 1 : 0)
+      .float('imageUnder', layered ? s.layerImage : 0)
+      .vec2('imageScale', bx / zoom, by / zoom)
       .vec2('scale', sx / zoom, sy / zoom)
       .vec2(
         'pan',
@@ -587,7 +610,7 @@ export class LogoSpectrumScene implements Scene {
       gl.FLOAT,
       this.shaper.curves,
     );
-    const palette = layerColors(s);
+    const palette = coverBlend(this.coverColors, layerColors(s), (cover) => cover.layers);
     for (let i = 0; i < MAX_LAYERS; i++) {
       const [r, g, b] = parseColor(palette[i % palette.length]!);
       this.colors[i * 3] = r;

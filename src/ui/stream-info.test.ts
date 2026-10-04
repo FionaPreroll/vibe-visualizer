@@ -13,6 +13,7 @@ function analysis(changes: Partial<TrackAnalysisState>): TrackAnalyses {
     grid: null,
     tempo: null,
     range: 'auto',
+    fixed: false,
     loudness: null,
     ...changes,
   };

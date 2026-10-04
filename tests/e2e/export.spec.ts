@@ -73,6 +73,9 @@ async function inspect(data: Buffer) {
 }
 
 test('exports the range between the markers as a video file @firefox', async ({ page }) => {
+  // The Kaleidoscope draws in software in CI: its feedback runs on a square around the picture
+  // (no turning rectangle), about twice the pixels of the picture.
+  test.setTimeout(240_000);
   const errors = collectErrors(page);
   await page.goto('/');
   await addTrack(page, 10);
@@ -107,7 +110,7 @@ test('exports the range between the markers as a video file @firefox', async ({ 
   await expect(page.getByTestId('export-progress')).toBeVisible();
   // The live visuals pause while exporting; the top bar shows the progress.
   await expect(page.getByTestId('export-button')).toContainText('%');
-  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 100_000 });
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });
 
   const file = await download(page);
   expect(file.name).toMatch(/^Clicks \(0m05s-0m09s\)\.(mp4|webm)$/);
@@ -286,6 +289,65 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
     expect(levels[1]).toBeGreaterThan(0.15);
     expect(levels[2]).toBeLessThan(0.02);
   }
+  expect(errors).toEqual([]);
+});
+
+test('a video of tracks takes the colours of each: its cover art, or its own (VE-12)', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const errors = collectErrors(page);
+  await page.addInitScript(() => {
+    const settings = { coverColors: true, visualMode: 'kaleidoscope' };
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
+  });
+  await page.goto('/');
+  const tagged = (title: string, cover?: Buffer) => ({
+    name: `${title}.wav`,
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(3, { title, artist: 'The Testers', cover }),
+  });
+  await page.getByTestId('file-input').setInputFiles([
+    tagged(
+      'Blue',
+      createPng(32, 32, () => [30, 70, 235]),
+    ),
+    tagged('Orange'),
+  ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items).toHaveCount(2);
+  for (const item of await items.all()) await expect(item).toHaveAttribute('data-status', 'ready');
+  // The second track has no cover art: it gets a colour of its own, orange.
+  await items.nth(1).hover();
+  await items.nth(1).getByTestId('queue-rename').click();
+  await page.getByTestId('track-colors-own').click();
+  await page.getByTestId('track-colors-pick').first().fill('#fa7814');
+  await page.getByRole('button', { name: 'Remove the last colour' }).click();
+  await expect(page.getByTestId('track-colors-pick')).toHaveCount(1);
+  await page.getByTestId('track-name-save').click();
+
+  await page.getByTestId('export-button').click();
+  await chooseSmallFormat(page);
+  await page.getByTestId('export-range-tracks').check();
+  await expect(page.getByTestId('export-cover-colors')).toHaveText(
+    '(in the colours of the tracks)',
+  );
+  await page.getByTestId('export-start').click();
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });
+  const file = await download(page);
+
+  // Blue in the first track; orange in the second, once it has blended in.
+  const whole = { x: 0, y: 0, width: 1, height: 1 };
+  const colour = async (seconds: number) => {
+    const frame = await videoFrame(page, file.data, seconds);
+    test.skip(!frame, 'This browser cannot play the video it made.');
+    const [region] = await measure(page, frame!, [whole]);
+    return region!.mean;
+  };
+  const [r1, g1, b1] = await colour(2);
+  expect(b1).toBeGreaterThan(Math.max(r1, g1) + 5);
+  const [r2, g2, b2] = await colour(5.5);
+  expect(r2).toBeGreaterThan(Math.max(g2, b2) + 5);
   expect(errors).toEqual([]);
 });
 
@@ -570,7 +632,7 @@ test('an export can be paused, continued and cancelled', async ({ page }) => {
   await page.getByTestId('export-start').click();
   const progress = page.getByTestId('export-progress');
   await expect(progress).toHaveAttribute('data-phase', 'video', { timeout: 30_000 });
-  await page.getByRole('button', { name: 'Pause' }).click();
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect(page.getByTestId('export-button')).toContainText('Paused');
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByTestId('export-button')).toContainText('Exporting');

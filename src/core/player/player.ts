@@ -37,6 +37,8 @@ import {
   type StoredQueue,
 } from '../library/queue-store';
 import { TrackAnalyzer, type TrackAnalysisState } from '../library/track-analyzer';
+import { readCover, writeCover } from '../library/track-covers';
+import { sameTrackColors, sanitizeTrackColors, type TrackColors } from '../render/cover-palette';
 import { nextTrack, previousTrack, type PlayOrder } from './play-order';
 import {
   CUE_COUNT,
@@ -55,6 +57,7 @@ import {
 } from '../state/app-state';
 import type { KaleidoSceneId, KaleidoSettings, ParamValue } from '../render/kaleido-settings';
 import type { LogoSpectrumSettings } from '../render/visual-settings';
+import { keepStorage } from '../state/keep-storage';
 import {
   loadKaleido,
   loadSettings,
@@ -115,6 +118,8 @@ export class Player {
   private readonly handles = new Map<string, FileSystemFileHandle>();
   private readonly probeClient = new WorkerClient(new ProbeWorker());
   private probing: Promise<void> = Promise.resolve();
+  /** The covers the user gave files (LS-21), by fingerprint: object URLs, null for none. */
+  private readonly ownCovers = new Map<string, Promise<string | null>>();
   /** Resolves once the queue of the last visit is back (it is saved only after that). */
   private readonly restored: Promise<void>;
   private saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -587,9 +592,47 @@ export class Player {
         ...(stored ? { stored } : {}),
       },
     });
+    this.loadOwnCover(result.fingerprint);
     // Waveform and beat grid in the background; the track that plays first.
     this.requestAnalysis(result.fingerprint, file, id === this.state.currentId);
     return result;
+  }
+
+  /**
+   * Shows the cover the user gave the file of `fingerprint` (LS-21), if there is one: read once,
+   * one object URL for every entry of the file.
+   */
+  private loadOwnCover(fingerprint: string): void {
+    let cover = this.ownCovers.get(fingerprint);
+    if (!cover) {
+      cover = readCover(fingerprint).then(
+        (blob) => (blob ? URL.createObjectURL(blob) : null),
+        () => null,
+      );
+      this.ownCovers.set(fingerprint, cover);
+    }
+    void cover.then((url) => {
+      if (url && this.ownCovers.get(fingerprint) === cover) {
+        this.dispatch({ type: 'tracks/cover', fingerprint, url });
+      }
+    });
+  }
+
+  /**
+   * Gives the file of track `id` a cover of the user's (LS-21), made by `prepareCover`, for
+   * every entry of that file; it shows instead of the file's, in the queue, on the logo and in
+   * exports, and is kept for the file. Null takes it away.
+   */
+  async setOwnCover(id: string, cover: Blob | null): Promise<void> {
+    const fingerprint = this.state.tracks.find((track) => track.id === id)?.fingerprint;
+    if (!fingerprint) return;
+    const url = cover ? URL.createObjectURL(cover) : null;
+    const previous = this.ownCovers.get(fingerprint);
+    this.ownCovers.set(fingerprint, Promise.resolve(url));
+    this.dispatch({ type: 'tracks/cover', fingerprint, url });
+    void previous?.then((old) => old && URL.revokeObjectURL(old));
+    if (cover) void keepStorage();
+    await writeCover(fingerprint, cover);
   }
 
   /** Brings back the queue of the last visit (SRC-05), with the files the browser still gives. */
@@ -610,6 +653,8 @@ export class Player {
       tracks.push(restoredTrack(id, info, status, data));
     }
     this.dispatch({ type: 'tracks/restored', tracks, currentId: stored.currentId });
+    // The user's covers show at once, also for files that need permission first.
+    for (const track of tracks) if (track.fingerprint) this.loadOwnCover(track.fingerprint);
     for (const track of tracks) if (track.status === 'probing') void this.queueProbe(track.id);
   }
 
@@ -697,7 +742,36 @@ export class Player {
     this.analysis.request(fingerprint, file, first, {
       tempo: track?.tempo ?? null,
       range: this.state.settings.bpmRange,
+      fixed: track?.fixedTempo ?? false,
     });
+  }
+
+  /**
+   * One tempo throughout for track `id` and every other entry of its file (TR-12), or not: its
+   * beat grid is computed anew, straight from the start to the end, with bars that keep their
+   * place.
+   */
+  setFixedTempo(id: string, fixed: boolean): void {
+    const track = this.state.tracks.find((entry) => entry.id === id);
+    const fingerprint = track?.fingerprint;
+    if (!fingerprint || track.fixedTempo === fixed) return;
+    this.dispatch({ type: 'tracks/fixed', fingerprint, fixed });
+    const entry = this.state.tracks.find(
+      (other) => other.fingerprint === fingerprint && this.files.has(other.id),
+    );
+    const file = entry ? this.files.get(entry.id) : undefined;
+    if (file) this.requestAnalysis(fingerprint, file, id === this.state.currentId);
+  }
+
+  /**
+   * Gives the file of track `id` colours for the visuals (VE-12), for every entry of that file:
+   * its cover's, colours of the user's own, or the look's; null: its cover's, as found.
+   */
+  setTrackColors(id: string, colors: TrackColors | null): void {
+    const track = this.state.tracks.find((entry) => entry.id === id);
+    const fingerprint = track?.fingerprint;
+    if (!fingerprint || sameTrackColors(track.colors, colors)) return;
+    this.dispatch({ type: 'tracks/colors', fingerprint, colors: sanitizeTrackColors(colors) });
   }
 
   /** New grids in the new tempo range (AN-12) for the files without a tempo given. */
@@ -1161,13 +1235,19 @@ export class Player {
     for (const track of tracks) if (track.status === 'probing') void this.queueProbe(track.id);
   }
 
-  /** Removed tracks are gone for good: their covers, and analyses no entry needs any more. */
+  /**
+   * Removed tracks are gone for good: their covers, and the analyses and own covers (shown, not
+   * stored) that no entry needs any more.
+   */
   private forgetTracks(tracks: readonly Track[]): void {
     for (const track of tracks) {
       if (track.coverUrl) URL.revokeObjectURL(track.coverUrl);
       const fingerprint = track.fingerprint;
       if (fingerprint && !this.state.tracks.some((entry) => entry.fingerprint === fingerprint)) {
         this.analysis.forget(fingerprint);
+        const cover = this.ownCovers.get(fingerprint);
+        this.ownCovers.delete(fingerprint);
+        void cover?.then((url) => url && URL.revokeObjectURL(url));
       }
     }
   }
@@ -1360,8 +1440,8 @@ export class Player {
   }
 
   /**
-   * Keeps the cues, markers, tempo, grid correction and names of each file (TR-05), so they come
-   * back with it.
+   * Keeps the cues, markers, tempo, grid correction, names and colours of each file (TR-05), so
+   * they come back with it.
    */
   private storeTrackData(previous: readonly Track[], next: readonly Track[]): void {
     const before = new Map(previous.map((track) => [track.id, track]));
@@ -1373,11 +1453,21 @@ export class Player {
         old.cues === track.cues &&
         old.marks === track.marks &&
         old.tempo === track.tempo &&
+        old.fixedTempo === track.fixedTempo &&
         old.gridEdit === track.gridEdit &&
-        old.edit === track.edit;
+        old.edit === track.edit &&
+        old.colors === track.colors;
       if (!unchanged) {
-        const { cues, marks, tempo, gridEdit, edit } = track;
-        saveTrackData(track.fingerprint, { cues, marks, tempo, gridEdit, edit });
+        const { cues, marks, tempo, fixedTempo, gridEdit, edit, colors } = track;
+        saveTrackData(track.fingerprint, {
+          cues,
+          marks,
+          tempo,
+          fixedTempo,
+          gridEdit,
+          edit,
+          colors,
+        });
       }
     }
   }

@@ -31,10 +31,12 @@
     mode: SceneKind;
     aspect: AspectRatio;
     safeAreas: boolean;
-    /** Stops drawing (while an export needs the graphics card). */
+    /** Stops drawing (while an export needs the graphics card, or the visuals rest). */
     paused: boolean;
+    /** The visuals rest at the user's wish (DS-05): the stage says so. */
+    resting: boolean;
   }
-  let { mode, aspect, safeAreas, paused }: Props = $props();
+  let { mode, aspect, safeAreas, paused, resting }: Props = $props();
 
   const player = usePlayer();
   const assets = useAssets();
@@ -88,8 +90,9 @@
     renderer?.setReduceFlashing(reduceFlashing);
   });
 
-  // The track overlay (LS-18, LS-19) and the cover art as the logo (LS-15): the worker learns
-  // the tracks of the files in the stream, and shows the one the music heard comes from.
+  // The track overlay (LS-18, LS-19), the cover art as the logo (LS-15) and its colours
+  // (VE-12): the worker learns the tracks of the files in the stream, and shows the one the
+  // music heard comes from.
   const overlay = $derived($app.settings.overlay);
   $effect(() => {
     renderer?.setOverlay(overlay);
@@ -98,11 +101,15 @@
   $effect(() => {
     renderer?.setCoverLogo(coverLogo);
   });
+  const coverColors = $derived($app.settings.coverColors);
+  $effect(() => {
+    renderer?.setCoverColors(coverColors);
+  });
   const stream = player.stream;
   const analyses = player.analysis;
   const streamInfo = $derived(renderer ? new StreamInfo(renderer) : null);
   $effect(() => {
-    streamInfo?.update($stream, $app.tracks, $app.sound.rate, coverLogo, $analyses);
+    streamInfo?.update($stream, $app.tracks, $app.sound.rate, coverLogo || coverColors, $analyses);
   });
 
   // Automatic preset switching: its settings and the presets of each mode that take part.
@@ -293,11 +300,21 @@
         data-scale={scale.toFixed(3)}
         data-scene={mode}
         data-generation={generation}
+        data-paused={paused}
+        class:resting
         aria-label={mode === 'kaleidoscope' ? 'Kaleidoscope visuals' : 'Logo Spectrum visuals'}
       ></canvas>
     {/key}
     {#if safeAreas}
       <SafeAreas {aspect} />
+    {/if}
+    {#if resting}
+      <div class="rest" data-testid="visuals-paused">
+        <p>The visuals rest; the music plays on.</p>
+        <button onclick={() => player.updateSettings({ visualsPaused: false })}
+          >Show the visuals (B)</button
+        >
+      </div>
     {/if}
   </div>
 </div>
@@ -330,6 +347,25 @@
     height: 100%;
     display: block;
     background: #07070c;
+  }
+  /* The last picture stays, dimmed, under a note. */
+  canvas.resting {
+    opacity: 0.25;
+  }
+  .rest {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .rest p {
+    margin: 0;
+    color: var(--text);
+    font-size: 15px;
   }
   .failed {
     position: absolute;

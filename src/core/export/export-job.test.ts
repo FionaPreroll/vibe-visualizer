@@ -238,12 +238,14 @@ describe('videos of several tracks (EX-05, EX-14, EX-16)', () => {
     const sound = { ...DEFAULT_SOUND, rate: 1.25 };
     const parts = [part('A', 20, 30), part('B', 5, 15)];
     const manifest = { parts, timing: planParts(parts, 25, 512, sound), sound };
-    expect(partAt(manifest, 25, 0)).toEqual({ index: 0, seconds: 20 });
+    expect(partAt(manifest, 25, 0)).toMatchObject({ index: 0, seconds: 20 });
     // At 1.25 ×, the first part's ten seconds take eight.
-    expect(partAt(manifest, 25, 4 * 25)).toEqual({ index: 0, seconds: 25 });
+    expect(partAt(manifest, 25, 4 * 25)).toMatchObject({ index: 0, seconds: 25 });
     const b = partAt(manifest, 25, 9 * 25);
     expect(b.index).toBe(1);
     expect(b.seconds).toBeCloseTo(5 + 1.25, 6);
+    // B began a second of the video before (its 1.25 s at 1.25 ×).
+    expect(b.since).toBeCloseTo(1, 6);
     // The pre-roll comes from before the first range.
     expect(partAt(manifest, 25, -25).seconds).toBeCloseTo(18.75, 6);
   });

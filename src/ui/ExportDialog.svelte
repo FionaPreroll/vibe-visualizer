@@ -40,7 +40,13 @@
   import { BUILT_IN_KALEIDO_PRESETS } from '../core/render/kaleido-settings';
   import { switchingPool, type AutoPresets } from '../core/render/preset-director';
   import { BUILT_IN_PRESETS } from '../core/render/visual-settings';
-  import { shownArtist, shownTitle, trackRange, type Track } from '../core/state/app-state';
+  import {
+    shownArtist,
+    shownCover,
+    shownTitle,
+    trackRange,
+    type Track,
+  } from '../core/state/app-state';
   import { loadExportOptions, saveExportOptions } from '../core/state/persistence';
   import { errorMessage, formatBytes, formatDuration } from '../core/util/format';
   import { useExporter } from './exporter-context';
@@ -193,6 +199,7 @@
       },
       range,
       cut: range.end < duration,
+      colors: entry.colors,
     };
   }
 
@@ -209,11 +216,16 @@
     }
     // The track overlay names each track over the part the video plays (LS-18, LS-19).
     const overlay = $app.settings.overlay;
+    // The cover art as the logo (LS-15), and its colours (VE-12).
+    const coverLogo = mode === 'logoSpectrum' && $app.settings.coverLogo;
+    const coverColors = $app.settings.coverColors;
     const visuals: ExportVisuals = {
       ...visualsOf(mode),
       overlay: overlay.on ? overlay : undefined,
+      coverLogo,
+      coverColors,
     };
-    const covered = mode === 'logoSpectrum' && $app.settings.coverLogo;
+    const covered = coverLogo || coverColors;
     const container = codecs.container;
     const each = perTrack;
     const fileName = videoFileName(planned, container, sound);
@@ -230,15 +242,16 @@
       }
       return;
     }
-    // The cover art as the logo (LS-15); read after the save dialog, which needs the click.
+    // The covers, read after the save dialog, which needs the click.
     const covers = await Promise.all(
-      tracks.map((entry) =>
-        covered && entry.coverUrl
-          ? fetch(entry.coverUrl)
+      tracks.map((entry) => {
+        const cover = covered ? shownCover(entry) : null;
+        return cover
+          ? fetch(cover)
               .then((response) => response.blob())
               .catch(() => null)
-          : null,
-      ),
+          : null;
+      }),
     );
     const requested: RequestPart[] = tracks.map((entry, index) => ({
       part: { ...planned[index]!, loudness: player.analysisOf(entry)?.loudness ?? null },
@@ -271,6 +284,12 @@
   function namesOf(names: readonly string[]): string {
     if (names.length < 2) return names[0] ?? '';
     return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  }
+
+  /** Whether `entry` has colours of its own for the visuals (VE-12): its cover's or as set. */
+  function hasColors(entry: Track): boolean {
+    const source = entry.colors?.source ?? 'cover';
+    return source === 'own' || (source === 'cover' && shownCover(entry) !== null);
   }
 
   /** The visuals of the video: the current settings, and the preset switching if it is on. */
@@ -855,11 +874,18 @@
                 >({chosen.length > 1 ? 'with the titles' : "with the track's title"})</span
               >
             {/if}
-            {#if mode === 'logoSpectrum' && $app.settings.coverLogo && chosen.some((entry) => entry.coverUrl)}
+            {#if mode === 'logoSpectrum' && $app.settings.coverLogo && chosen.some(shownCover)}
               <span data-testid="export-cover"
                 >({chosen.length > 1
                   ? 'the cover art as the logo'
                   : 'its cover art as the logo'})</span
+              >
+            {/if}
+            {#if $app.settings.coverColors && chosen.some(hasColors)}
+              <span data-testid="export-cover-colors"
+                >({chosen.length > 1
+                  ? 'in the colours of the tracks'
+                  : "in the track's colours"})</span
               >
             {/if}
             {#if fitted.fade > 0}

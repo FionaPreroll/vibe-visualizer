@@ -2,7 +2,13 @@
   import { onMount } from 'svelte';
   import { beatBefore } from '../core/analysis/beat-grid';
   import { tempoSections } from '../core/analysis/tempo-sections';
-  import { REPEAT_MODES, shownArtist, shownTitle, type RepeatMode } from '../core/state/app-state';
+  import {
+    REPEAT_MODES,
+    shownArtist,
+    shownCover,
+    shownTitle,
+    type RepeatMode,
+  } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
   import LiveTempo from './LiveTempo.svelte';
@@ -177,8 +183,8 @@
         <span class="artist">{$app.live.label}</span>
       </div>
     {:else}
-      {#if current?.coverUrl}
-        <img src={current.coverUrl} alt="" />
+      {#if current && shownCover(current)}
+        <img src={shownCover(current)} alt="" data-testid="now-cover" />
       {:else}
         <div class="cover-placeholder"><Icon name="music" /></div>
       {/if}

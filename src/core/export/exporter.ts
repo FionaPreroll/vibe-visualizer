@@ -48,7 +48,7 @@ export interface RequestPart {
   file: File;
   /** The file's beat grid, if it has been analysed (AN-07). */
   grid: BeatGrid | null;
-  /** The cover art, to show as the logo (LS-15); null: the logo image. */
+  /** The cover art, to show as the logo (LS-15) or for its colours (VE-12); null: none. */
   cover: Blob | null;
 }
 
@@ -310,9 +310,10 @@ export class Exporter {
         const blob = request.images[kind]?.blob;
         if (blob) images[kind] = await decode(blob);
       }
-      for (const [index, { cover }] of request.parts.entries()) {
-        if (cover) covers[index] = await decode(cover).catch(() => null);
-      }
+    }
+    // The covers come only when they show, as the logo or by their colours, in either mode.
+    for (const [index, { cover }] of request.parts.entries()) {
+      if (cover) covers[index] = await decode(cover).catch(() => null);
     }
     const parts = request.parts.map((entry) => entry.part);
     const args: StartArgs = {

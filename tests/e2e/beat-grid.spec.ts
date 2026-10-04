@@ -217,6 +217,51 @@ test('the beat grid can be corrected in the detail waveform, and is kept (TR-11)
   expect(errors).toEqual([]);
 });
 
+test('a fixed tempo keeps one straight grid throughout, kept for the file (TR-12)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  // 20 s at 120 BPM, then 30 s at 150: the grid follows both.
+  const file = {
+    name: 'Change.wav',
+    mimeType: 'audio/wav',
+    buffer: createBeatWav(
+      [
+        { seconds: 20, bpm: 120 },
+        { seconds: 30, bpm: 150 },
+      ],
+      22050,
+    ),
+  };
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles(file);
+  const badge = page.getByTestId('queue-bpm');
+  await expect(badge).toHaveText('150 · 120', { timeout: 20_000 });
+
+  // Fixed: one tempo, one straight grid, no change of tempo on the timeline.
+  await badge.click();
+  const fixed = page.getByTestId('tempo-fixed');
+  await expect(fixed).toHaveAttribute('aria-checked', 'false');
+  await fixed.click();
+  await expect(page.getByTestId('tempo-menu')).toHaveCount(0);
+  await expect(badge).toHaveText(/^\d+ BPM$/, { timeout: 20_000 });
+  await expect(badge).toHaveAttribute('title', /fixed/);
+  await page.getByTestId('play-button').click();
+  await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
+  await expect(page.getByTestId('tempo-change')).toHaveCount(0);
+
+  // It comes back with the file, and can be switched off again.
+  await page.reload();
+  await page.getByTestId('file-input').setInputFiles(file);
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await expect(badge).toHaveText(/^\d+ BPM$/, { timeout: 20_000 });
+  await badge.click();
+  await expect(fixed).toHaveAttribute('aria-checked', 'true');
+  await fixed.click();
+  await expect(badge).toHaveText('150 · 120', { timeout: 20_000 });
+  expect(errors).toEqual([]);
+});
+
 test('tempo changes show in the badge and on the timeline (Korrektur 5)', async ({ page }) => {
   const errors = collectErrors(page);
   // 20 s at 120 BPM, then 30 s at 150: two tempos, the longer one first.

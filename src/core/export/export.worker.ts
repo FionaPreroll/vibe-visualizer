@@ -26,6 +26,7 @@ import { openInput } from '../audio/decode-stream';
 import { DspCore } from '../audio/dsp/dsp-core';
 import type { SoundSettings } from '../audio/dsp/sound-settings';
 import { SignalsmithStretch } from '../audio/stretch/signalsmith-stretch';
+import { coverTonesOf, partColors, trackPalette, type CoverColors } from '../render/cover-palette';
 import { PictureFade } from '../render/fade';
 import { sanitizeKaleido, type KaleidoSettings } from '../render/kaleido-settings';
 import { KaleidoscopeScene } from '../render/kaleidoscope';
@@ -106,7 +107,10 @@ export interface StartArgs {
   grids: (BeatGrid | null)[];
   /** The Logo Spectrum's images. */
   images: Record<JobImage, ImageInput | null>;
-  /** Each part's cover art, shown as the logo (LS-15); null: the logo image. */
+  /**
+   * Each part's cover art, shown as the logo (LS-15) or giving the colours (VE-12), as the
+   * visuals ask; null: none.
+   */
   covers: (ImageInput | null)[];
   /** The file to write; null writes into browser storage for a download. */
   destination: FileSystemFileHandle | null;
@@ -299,7 +303,7 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
       images: {
         background: args.images.background?.blob.type ?? null,
         logo: args.images.logo?.blob.type ?? null,
-        covers: args.parts.map((_, i) => (logoSpectrum ? args.covers[i]?.blob.type : null) ?? null),
+        covers: args.parts.map((_, i) => args.covers[i]?.blob.type ?? null),
       },
       timing: planParts(args.parts, args.format.fps, analyzer.hop, args.sound, args.segmentSeconds),
       destination: args.destination || args.folder ? 'file' : 'download',
@@ -313,9 +317,9 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
         const image = args.images[kind];
         if (image) await store.writeFile(`image-${kind}`, image.blob);
       }
-      for (const [index, cover] of args.covers.entries()) {
-        if (cover) await store.writeFile(coverFile(index), cover.blob);
-      }
+    }
+    for (const [index, cover] of args.covers.entries()) {
+      if (cover) await store.writeFile(coverFile(index), cover.blob);
     }
     // Kept for a resume during the audio pass.
     for (const [index, grid] of args.grids.entries()) {
@@ -327,7 +331,7 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
         background: args.images.background?.bitmap ?? null,
         logo: args.images.logo?.bitmap ?? null,
       },
-      covers: args.parts.map((_, i) => (logoSpectrum ? args.covers[i]?.bitmap : null) ?? null),
+      covers: args.parts.map((_, i) => args.covers[i]?.bitmap ?? null),
     };
     const target = { file: args.destination, folder: args.folder ?? null };
     return await run(store, manifest, args.files, pictures, target, progress, analyzer);
@@ -659,6 +663,11 @@ class LayeredScene implements Scene {
     this.front.setReduceFlashing(on);
   }
 
+  setCoverColors(colors: CoverColors | null): void {
+    this.front.setCoverColors(colors);
+    this.layer.setCoverColors(colors);
+  }
+
   render(input: SceneInput): void {
     // The look behind is the one of the settings shown now, through the switching's morph.
     const look = this.front.layerLook ?? this.fallback;
@@ -759,9 +768,18 @@ async function videoPass(
   });
   if (!gl) throw new Error('WebGL2 is not available.');
   const { scene, switching, logo } = createScene(gl, manifest.visuals, pictures.images);
-  // Each part's cover art as the logo (LS-15); it goes with the job only when it is shown so.
+  // Each part's cover art as the logo (LS-15), and the colours of its track (VE-12): its own, or
+  // its cover's. The covers go with the job only when they show (a job of before the colours
+  // has them only for the logo).
   const covers = pictures.covers;
-  logo?.setCoverLogo(covers.some((cover) => cover !== null));
+  const visuals = manifest.visuals;
+  logo?.setCoverLogo(visuals.coverLogo ?? covers.some((cover) => cover !== null));
+  const palettes = visuals.coverColors
+    ? manifest.parts.map((part, index) => {
+        const cover = covers[index];
+        return trackPalette(part.colors ?? null, cover ? coverTonesOf(cover) : null);
+      })
+    : null;
   let shownPart = -1;
   // The track overlay (LS-18, LS-19), over the picture: it has no state of its own, its text
   // follows from the frame's place in its part.
@@ -820,6 +838,7 @@ async function videoPass(
         shownPart = heard.index;
         logo?.setCover(covers[heard.index] ?? null);
       }
+      if (palettes) scene.setCoverColors(partColors(palettes, heard.index, heard.since));
       // The music plays on in a video: what turns with it turns at the tempo (LS-16).
       const played = manifest.sound.rate / fps;
       scene.render({ time: (frame + timing.preRollFrames) / fps, dt: 1 / fps, features, played });

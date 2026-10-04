@@ -1,4 +1,5 @@
 import { ANALYSIS_DIRECTORY } from '../library/analysis-cache';
+import { COVER_DIRECTORY, COVER_FILE } from '../library/track-covers';
 import type { ImageKind } from '../render/logo-spectrum';
 import { ASSET_DIRECTORY } from '../render/visual-assets';
 import { decodeBase64, encodeBase64 } from '../util/base64';
@@ -13,8 +14,8 @@ import {
 /**
  * A backup of everything the app keeps in this browser (UI-06), as one file: the settings,
  * presets, the cues, markers, tempos and names of the tracks (localStorage), the background and
- * logo images, and the track analysis if asked for (waveforms and beat grids: without it, each
- * track is analysed anew). Not in it: the music files and the queue (the browser cannot hand
+ * logo images, the covers the user gave tracks, and the track analysis if asked for (waveforms
+ * and beat grids: without it, each track is analysed anew). Not in it: the music files and the queue (the browser cannot hand
  * those on), and videos. Restoring replaces all of it; the app reloads then.
  */
 
@@ -36,6 +37,8 @@ export interface Backup {
   storage: Record<string, string>;
   /** The user's images, base64. */
   images: Partial<Record<ImageKind, string>>;
+  /** The covers the user gave tracks (LS-21) by fingerprint, base64; none in older backups. */
+  covers: Record<string, string>;
   /** The track analysis by file name, base64; absent: not in this backup. */
   analysis?: Record<string, string>;
 }
@@ -47,6 +50,8 @@ export interface BackupSummary {
   /** Tracks with cues, markers, a tempo or names. */
   tracks: number;
   images: number;
+  /** Tracks with a cover of the user's. */
+  covers: number;
   /** Tracks with their analysis; null: the analysis is not in the backup. */
   analysis: number | null;
 }
@@ -110,11 +115,16 @@ export function parseBackup(text: string): Backup {
     throw new Error('This backup comes from a newer version of the app: reload the app first.');
   }
   const images = strings(input['images'], (key) => (IMAGE_KINDS as string[]).includes(key));
+  const covers = strings(input['covers'], (key) => COVER_FILE.test(key));
   const analysis =
     input['analysis'] === undefined
       ? undefined
       : strings(input['analysis'], (key) => ANALYSIS_FILE.test(key));
-  const binary = [...Object.values(images), ...Object.values(analysis ?? {})];
+  const binary = [
+    ...Object.values(images),
+    ...Object.values(covers),
+    ...Object.values(analysis ?? {}),
+  ];
   if (!binary.every((data) => BASE64.test(data))) throw new Error('This backup is damaged.');
   return {
     app: APP,
@@ -123,6 +133,7 @@ export function parseBackup(text: string): Backup {
     created: typeof input['created'] === 'string' ? input['created'] : '',
     storage: strings(input['storage'], (key) => key.startsWith(STORAGE_PREFIX)),
     images,
+    covers,
     ...(analysis ? { analysis } : {}),
   };
 }
@@ -143,6 +154,7 @@ export function summarizeBackup(backup: Backup): BackupSummary {
     presets: count(PRESETS_KEY) + count(KALEIDO_PRESETS_KEY),
     tracks: Object.keys(backup.storage).filter((key) => key.startsWith(TRACK_PREFIX)).length,
     images: Object.keys(backup.images).length,
+    covers: Object.keys(backup.covers).length,
     analysis: backup.analysis ? Object.keys(backup.analysis).length : null,
   };
 }
@@ -156,6 +168,7 @@ export function describeBackup(summary: BackupSummary): string {
     parts.push(`the cues, markers, tempos and names of ${count(summary.tracks, 'track')}`);
   }
   if (summary.images > 0) parts.push(count(summary.images, 'image'));
+  if (summary.covers > 0) parts.push(count(summary.covers, 'cover'));
   if (summary.analysis) parts.push(`the analysis of ${count(summary.analysis, 'track')}`);
   const last = parts.pop()!;
   return parts.length > 0 ? `${parts.join(', ')} and ${last}` : last;
@@ -179,6 +192,14 @@ async function directory(name: string): Promise<FileSystemDirectoryHandle | null
   } catch {
     return null; // no Origin Private File System (e.g. a private window)
   }
+}
+
+async function fileNames(dir: FileSystemDirectoryHandle): Promise<string[]> {
+  const names: string[] = [];
+  for await (const [name, handle] of dir as unknown as AsyncIterable<[string, FileSystemHandle]>) {
+    if (handle.kind === 'file') names.push(name);
+  }
+  return names;
 }
 
 async function readFiles(
@@ -214,6 +235,8 @@ export async function createBackup(
   const images = assets
     ? await readFiles(assets, (name) => (IMAGE_KINDS as string[]).includes(name))
     : {};
+  const coverFiles = await directory(COVER_DIRECTORY);
+  const covers = coverFiles ? await readFiles(coverFiles, (name) => COVER_FILE.test(name)) : {};
   const cache = options.analysis ? await directory(ANALYSIS_DIRECTORY) : null;
   const analysis = cache ? await readFiles(cache, (name) => ANALYSIS_FILE.test(name)) : null;
   return {
@@ -223,6 +246,7 @@ export async function createBackup(
     created: now.toISOString(),
     storage: readEntries(localStorage),
     images,
+    covers,
     ...(options.analysis ? { analysis: analysis ?? {} } : {}),
   };
 }
@@ -238,6 +262,10 @@ export async function restoreBackup(backup: Backup): Promise<void> {
     const data = backup.images[kind];
     return { kind, bytes: data === undefined ? null : decodeBase64(data) };
   });
+  const covers = Object.entries(backup.covers).map(([name, data]) => ({
+    name,
+    bytes: decodeBase64(data),
+  }));
   const analysis = Object.entries(backup.analysis ?? {}).map(([name, data]) => ({
     name,
     bytes: decodeBase64(data),
@@ -248,6 +276,13 @@ export async function restoreBackup(backup: Backup): Promise<void> {
       if (bytes) await writeFile(assets, kind, bytes);
       else await assets.removeEntry(kind).catch(() => undefined);
     }
+  }
+  const coverFiles = await directory(COVER_DIRECTORY);
+  if (coverFiles) {
+    for (const name of await fileNames(coverFiles)) {
+      if (!(name in backup.covers)) await coverFiles.removeEntry(name).catch(() => undefined);
+    }
+    for (const { name, bytes } of covers) await writeFile(coverFiles, name, bytes);
   }
   const cache = analysis.length > 0 ? await directory(ANALYSIS_DIRECTORY) : null;
   if (cache) for (const { name, bytes } of analysis) await writeFile(cache, name, bytes);

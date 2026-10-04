@@ -8,6 +8,7 @@ import {
 } from '../audio/dsp/sound-settings';
 import type { LiveSourceKind } from '../audio/live-input';
 import type { AspectRatio } from '../export/video-format';
+import type { TrackColors } from '../render/cover-palette';
 import { DEFAULT_OVERLAY, type OverlaySettings } from '../render/overlay-settings';
 import { DEFAULT_AUTO_PRESETS, type AutoPresets } from '../render/preset-director';
 import {
@@ -53,7 +54,10 @@ export interface Track {
   sampleRate: number | null;
   codec: string | null;
   format: string | null;
+  /** The cover art in the file (LS-15), as an object URL. */
   coverUrl: string | null;
+  /** The cover the user gave the file (LS-21), as an object URL; it shows instead of the file's. */
+  ownCoverUrl: string | null;
   /** Recognises the file (its cues, its analysis); null until probed. */
   fingerprint: string | null;
   /** In/out markers in seconds (TR-09): the export range, e.g. a 30-second clip. */
@@ -62,10 +66,17 @@ export interface Track {
   cues: Cues;
   /** The tempo (BPM) the user gave for the beat grid (TMP-06); null: the grid finds it. */
   tempo: number | null;
+  /**
+   * One tempo throughout, as the user asked (TR-12): the beat grid is straight from the start to
+   * the end, and its bars keep their place.
+   */
+  fixedTempo: boolean;
   /** The user's correction of the beat grid's phase and bars (TR-11). */
   gridEdit: GridEdit;
   /** The title and artist the user gave the file (LS-18); null: those of the file. */
   edit: TrackEdit | null;
+  /** The colours the user gave the file for the visuals (VE-12); null: its cover's, as found. */
+  colors: TrackColors | null;
 }
 
 /** A title and artist the user gives a file, for the overlay and wherever the track is named. */
@@ -87,6 +98,11 @@ export function shownArtist(track: Track): string | null {
   return track.edit ? track.edit.artist : track.artist;
 }
 
+/** The cover shown for `track` (an object URL): the user's (LS-21), or the file's, or none. */
+export function shownCover(track: Track): string | null {
+  return track.ownCoverUrl ?? track.coverUrl;
+}
+
 /**
  * The title and artist to keep for `track` from what the user typed: trimmed, and null when it
  * is just what the file has.
@@ -98,13 +114,18 @@ export function trackEdit(track: Track, title: string, artist: string): TrackEdi
   return { title: cleanTitle, artist: cleanArtist };
 }
 
-/** What is kept per file (TR-05): cues, markers, a corrected tempo and beat grid, the names. */
+/**
+ * What is kept per file (TR-05): cues, markers, a corrected tempo and beat grid, the names, the
+ * colours.
+ */
 export interface TrackData {
   cues: Cues;
   marks: Marks;
   tempo: number | null;
+  fixedTempo: boolean;
   gridEdit: GridEdit;
   edit: TrackEdit | null;
+  colors: TrackColors | null;
 }
 
 export interface Marks {
@@ -175,6 +196,10 @@ export interface Settings {
   overlay: OverlaySettings;
   /** The Logo Spectrum shows the cover art of the track playing as its logo (LS-15). */
   coverLogo: boolean;
+  /** The visuals take the colours of the cover art of the track playing (VE-12). */
+  coverColors: boolean;
+  /** The visuals rest, to listen to the music only (DS-05): the stage draws nothing. */
+  visualsPaused: boolean;
   /** Automatic preset switching (PR-02), for the visual mode shown. */
   autoPresets: AutoPresets;
   /** Favourite presets by name, per visual mode (PR-03). */
@@ -285,6 +310,12 @@ export type AppAction =
   | { type: 'tracks/cue'; id: string; index: number; seconds: number | null }
   /** The tempo of a file's beat grid (TMP-06), for every entry of that file; null: automatic. */
   | { type: 'tracks/tempo'; fingerprint: string; tempo: number | null }
+  /** The cover the user gave a file (LS-21; null: none), for every entry of that file. */
+  | { type: 'tracks/cover'; fingerprint: string; url: string | null }
+  /** One tempo throughout for a file (TR-12), for every entry of that file. */
+  | { type: 'tracks/fixed'; fingerprint: string; fixed: boolean }
+  /** The colours the user gave a file (VE-12; null: its cover's), for every entry of it. */
+  | { type: 'tracks/colors'; fingerprint: string; colors: TrackColors | null }
   /** The correction of a file's beat grid (TR-11), for every entry of that file. */
   | { type: 'tracks/grid'; fingerprint: string; edit: GridEdit }
   /**
@@ -348,6 +379,8 @@ export const DEFAULT_SETTINGS: Settings = {
   reduceFlashing: false,
   overlay: DEFAULT_OVERLAY,
   coverLogo: false,
+  coverColors: false,
+  visualsPaused: false,
   autoPresets: DEFAULT_AUTO_PRESETS,
   favourites: { logoSpectrum: [], kaleidoscope: [] },
 };
@@ -388,12 +421,15 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
     codec: null,
     format: null,
     coverUrl: null,
+    ownCoverUrl: null,
     fingerprint: null,
     marks: { in: null, out: null },
     cues: NO_CUES,
     tempo: null,
+    fixedTempo: false,
     gridEdit: NO_GRID_EDIT,
     edit: null,
+    colors: null,
   };
 }
 
@@ -501,7 +537,16 @@ export function reducer(state: AppState, action: AppAction): AppState {
           const { stored, ...info } = action.info;
           // A name given while the file was probed stays, unless the file had one stored.
           const edit = stored?.edit ?? track.edit;
-          return { ...track, ...info, title: info.title ?? track.title, ...stored, edit };
+          // Another file now (changed since the last visit): the user's cover was for the old one.
+          const ownCoverUrl = info.fingerprint === track.fingerprint ? track.ownCoverUrl : null;
+          return {
+            ...track,
+            ...info,
+            title: info.title ?? track.title,
+            ...stored,
+            edit,
+            ownCoverUrl,
+          };
         }),
       };
     case 'tracks/removed':
@@ -551,6 +596,27 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         tracks: state.tracks.map((track) =>
           track.fingerprint === action.fingerprint ? { ...track, tempo: action.tempo } : track,
+        ),
+      };
+    case 'tracks/cover':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.fingerprint === action.fingerprint ? { ...track, ownCoverUrl: action.url } : track,
+        ),
+      };
+    case 'tracks/fixed':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.fingerprint === action.fingerprint ? { ...track, fixedTempo: action.fixed } : track,
+        ),
+      };
+    case 'tracks/colors':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.fingerprint === action.fingerprint ? { ...track, colors: action.colors } : track,
         ),
       };
     case 'tracks/grid':

@@ -3,7 +3,7 @@ import type { StreamFile } from '../core/player/player';
 import type { OverlayTrack } from '../core/render/overlay-settings';
 import type { Renderer } from '../core/render/renderer';
 import { decodeImage } from '../core/render/visual-assets';
-import { shownArtist, shownTitle, type Track } from '../core/state/app-state';
+import { shownArtist, shownCover, shownTitle, type Track } from '../core/state/app-state';
 
 /** The overlay's view of `track` (LS-18): its names and the part that plays; null until known. */
 export function overlayTrack(track: Track): OverlayTrack | null {
@@ -30,7 +30,7 @@ export function stillCalm(track: Track, analyses: TrackAnalyses): boolean {
 /**
  * Keeps the render worker told about the files of the engine's stream (the one heard and the
  * one that follows): their tracks for the overlay, whether the picture stays calm for them, and
- * their cover art for the logo (LS-15), each cover decoded once.
+ * their cover art for the logo (LS-15) and the colours (VE-12), each cover decoded once.
  */
 export class StreamInfo {
   private sent = '';
@@ -53,6 +53,7 @@ export class StreamInfo {
       token,
       track: track ? overlayTrack(track) : null,
       calm: track ? stillCalm(track, analyses) : false,
+      colors: track?.colors ?? null,
     }));
     const key = JSON.stringify([overlay, rate]);
     if (key !== this.sent) {
@@ -64,7 +65,7 @@ export class StreamInfo {
     }
     if (!covers) return;
     for (const { token, track } of entries) {
-      const url = track?.coverUrl ?? null;
+      const url = track ? shownCover(track) : null;
       if (this.covers.has(token) && this.covers.get(token) === url) continue;
       this.covers.set(token, url);
       if (!url) {
@@ -79,7 +80,9 @@ export class StreamInfo {
             if (this.covers.get(token) === url) this.renderer.setCover(token, bitmap);
             else bitmap.close();
           },
-          () => this.renderer.setCover(token, null),
+          () => {
+            if (this.covers.get(token) === url) this.renderer.setCover(token, null);
+          },
         );
     }
   }

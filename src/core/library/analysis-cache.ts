@@ -19,14 +19,20 @@ export interface TrackAnalysisResult {
   tempo: number | null;
   /** The tempo range the grid was found in (AN-12). */
   range: TempoRangeId;
+  /** One tempo throughout, as the user asked (TR-12): the grid is straight. */
+  fixed: boolean;
   /** How loud the track gets, for the auto-gain of the visuals; null: too little sound. */
   loudness: TrackLoudness | null;
 }
 
-/** What a beat grid is computed with: a tempo from the user (TMP-06), or else the range. */
+/**
+ * What a beat grid is computed with: a tempo from the user (TMP-06), or else the range; and
+ * whether the tempo is fixed (TR-12).
+ */
 export interface GridRequest {
   tempo: number | null;
   range: TempoRangeId;
+  fixed: boolean;
 }
 
 /**
@@ -37,9 +43,14 @@ export function sameTempo(a: number | null, b: number | null): boolean {
   return a === null || b === null ? a === b : Math.abs(a - b) < 0.01;
 }
 
-/** Requests that give the same grid: the same tempo, and without one the same range. */
+/**
+ * Requests that give the same grid: the same tempo, and without one the same range; fixed or
+ * not alike.
+ */
 export function sameGrid(a: GridRequest, b: GridRequest): boolean {
-  return sameTempo(a.tempo, b.tempo) && (a.tempo !== null || a.range === b.range);
+  return (
+    a.fixed === b.fixed && sameTempo(a.tempo, b.tempo) && (a.tempo !== null || a.range === b.range)
+  );
 }
 
 /** The directory of the cache in the Origin Private File System: `<fingerprint>.bin` files. */
@@ -52,6 +63,9 @@ const MAX_ENTRIES = 60;
 const LOUDNESS_OFFSET = 40;
 const LOUDNESS_VALUES = 2 + BAND_NAMES.length;
 const HEADER_BYTES = LOUDNESS_OFFSET + LOUDNESS_VALUES * 4;
+/** Flags in the header: the loudness is there; the tempo is fixed (TR-12). */
+const HAS_LOUDNESS = 1;
+const FIXED_TEMPO = 2;
 
 /**
  * Serialises a result: a header (with the loudness), the waveform, then the beats, their
@@ -74,7 +88,7 @@ export function encodeAnalysis(result: TrackAnalysisResult): ArrayBuffer {
   view.setFloat64(24, result.duration, true);
   view.setUint32(32, TEMPO_RANGE_IDS.indexOf(result.range), true);
   const loudness = result.loudness;
-  view.setUint32(36, loudness ? 1 : 0, true);
+  view.setUint32(36, (loudness ? HAS_LOUDNESS : 0) | (result.fixed ? FIXED_TEMPO : 0), true);
   if (loudness) {
     for (const [i, db] of [loudness.spectrum, loudness.energy, ...loudness.bands].entries()) {
       view.setFloat32(LOUDNESS_OFFSET + 4 * i, db, true);
@@ -110,8 +124,9 @@ export function decodeAnalysis(
   const range = TEMPO_RANGE_IDS[view.getUint32(32, true)];
   if (!range) return null;
   const db = (i: number) => view.getFloat32(LOUDNESS_OFFSET + 4 * i, true);
+  const flags = view.getUint32(36, true);
   const loudness =
-    view.getUint32(36, true) === 1
+    (flags & HAS_LOUDNESS) !== 0
       ? sanitizeLoudness({
           spectrum: db(0),
           energy: db(1),
@@ -138,6 +153,7 @@ export function decodeAnalysis(
     },
     tempo: tempo > 0 ? tempo : null,
     range,
+    fixed: (flags & FIXED_TEMPO) !== 0,
     loudness,
   };
 }

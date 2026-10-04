@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startWithClassicLook } from './looks';
-import { COVER, logoQuarters, measure, showsCover, type Region } from './pixels';
+import { COVER, expectMotion, logoQuarters, measure, showsCover, type Region } from './pixels';
 import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';
 
@@ -63,10 +63,54 @@ test('Logo Spectrum renders in a worker and moves with the music @firefox', asyn
     .toBeGreaterThan(0);
 
   // Consecutive pictures differ: the ring, the particles and the pulse move.
+  await expectMotion(stage);
+  expect(errors).toEqual([]);
+});
+
+test('the visuals can rest while the music plays on (DS-05)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'Clicks.wav',
+    mimeType: 'audio/wav',
+    buffer: createWav(12, 44100),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('play-button').click();
+  await expect
+    .poll(async () => Number(await stage.getAttribute('data-fps')), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  const elapsed = async () =>
+    Number(await page.getByTestId('elapsed').getAttribute('data-seconds'));
+
+  // Paused with the button: the stage keeps its last picture, dimmed, and says so.
+  await page.getByTestId('visuals-pause').click();
+  await expect(page.getByTestId('visuals-pause')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('visuals-paused')).toBeVisible();
+  await expect(stage).toHaveAttribute('data-paused', 'true');
+  await expect(page.getByTestId('picture-button')).toBeDisabled();
+  await page.waitForTimeout(300);
   const first = await stage.screenshot();
+  const before = await elapsed();
   await page.waitForTimeout(700);
-  const second = await stage.screenshot();
-  expect(first.equals(second)).toBe(false);
+  expect((await stage.screenshot()).equals(first)).toBe(true);
+  // The music plays on.
+  expect(await elapsed()).toBeGreaterThan(before);
+  const stored = () =>
+    page.evaluate(
+      () => JSON.parse(localStorage.getItem('vibe-visualizer:settings:v1') ?? '{}').visualsPaused,
+    );
+  await expect.poll(stored).toBe(true);
+
+  // B shows them again, and they move.
+  await page.keyboard.press('b');
+  await expect(page.getByTestId('visuals-paused')).toBeHidden();
+  await expect(stage).toHaveAttribute('data-paused', 'false');
+  await expectMotion(stage);
+  await expect.poll(stored).toBe(false);
   expect(errors).toEqual([]);
 });
 
@@ -102,9 +146,7 @@ test('the visuals come back after the graphics card was reset (NF-09)', async ({
   await expect
     .poll(async () => Number(await stage.getAttribute('data-fps')), { timeout: 15_000 })
     .toBeGreaterThan(0);
-  const first = await stage.screenshot();
-  await page.waitForTimeout(700);
-  expect(first.equals(await stage.screenshot())).toBe(false);
+  await expectMotion(stage);
 
   // Three times a minute at most; then the visuals wait for a click.
   for (const generation of ['2', '3']) {
@@ -381,17 +423,27 @@ test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page 
     .getByRole('radio', { name: 'Kaleidoscope' })
     .click();
   await expect.poll(async () => (await stored()).backgroundSource).toBe('kaleidoscope');
-  // No image to pick for it; a word on what it shows.
+  // A word on what it shows; an image can go under it.
   await expect(page.getByTestId('background-layer-hint')).toBeVisible();
-  await expect(page.getByTestId('background-input')).toHaveCount(0);
+  await expect(page.getByText('Image under it').first()).toBeVisible();
 
   await page.getByTestId('play-button').click();
   await expect
     .poll(async () => Number(await stage.getAttribute('data-fps')), { timeout: 15_000 })
     .toBeGreaterThan(0);
-  const first = await stage.screenshot();
-  await page.waitForTimeout(700);
-  expect(first.equals(await stage.screenshot())).toBe(false);
+  await expectMotion(stage);
+
+  // A green image picked there shows under the Kaleidoscope at once, half of it (Kanban #20).
+  const corner: Region[] = [{ x: 0.01, y: 0.02, width: 0.1, height: 0.12 }];
+  const green = async () => (await measure(page, await stage.screenshot(), corner))[0]!.mean[1];
+  const without = await green();
+  await page.getByTestId('background-input').setInputFiles({
+    name: 'green.png',
+    mimeType: 'image/png',
+    buffer: createPng(64, 64, () => [0, 220, 0]),
+  });
+  await expect.poll(async () => (await stored()).layerImage).toBe(0.5);
+  await expect.poll(green, { timeout: 10_000 }).toBeGreaterThan(without + 20);
 
   // To the Kaleidoscope and back: the layer goes on.
   await page.getByRole('button', { name: 'Kaleidoscope', exact: true }).click();
@@ -399,9 +451,7 @@ test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page 
   await page.getByRole('button', { name: 'Logo Spectrum' }).click();
   await expect(stage).toHaveAttribute('data-scene', 'logoSpectrum');
   await expect(stage).toHaveAttribute('data-status', 'running');
-  const back = await stage.screenshot();
-  await page.waitForTimeout(700);
-  expect(back.equals(await stage.screenshot())).toBe(false);
+  await expectMotion(stage);
   expect(errors).toEqual([]);
 });
 
@@ -489,6 +539,48 @@ test('the display settings: resolution, auto-quality and reduce flashing (VE-06,
 
 /** Where the track overlay sits by default: at the bottom left. */
 const OVERLAY_TEXT: Region = { x: 0.04, y: 0.78, width: 0.4, height: 0.18 };
+
+test('the title fades in once, also right after the start (LS-18)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'vibe-visualizer:settings:v1',
+      JSON.stringify({ overlay: { on: true, fade: 1.5 } }),
+    ),
+  );
+  await startWithClassicLook(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  const title = async () => (await measure(page, await stage.screenshot(), [OVERLAY_TEXT]))[0]!;
+
+  // The settings kept from before are no change: no sample title shows after the start.
+  for (let k = 0; k < 4; k++) {
+    expect((await title()).bright).toBeLessThan(0.005);
+    await page.waitForTimeout(200);
+  }
+
+  // A track played right away: its title comes up from nothing, and only once.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'tagged.wav',
+    mimeType: 'audio/wav',
+    buffer: createTaggedWav(30, { title: 'Sunrise', artist: 'The Testers' }),
+  });
+  const item = page.getByTestId('queue-item');
+  await expect(item).toHaveAttribute('data-status', 'ready');
+  await item.dblclick();
+  const seen: number[] = [];
+  for (let k = 0; k < 14; k++) {
+    seen.push((await title()).bright);
+    await page.waitForTimeout(150);
+  }
+  expect(seen[0], seen.join(' ')).toBeLessThan(0.005);
+  const shown = seen.findIndex((bright) => bright > 0.01);
+  expect(shown, seen.join(' ')).toBeGreaterThan(0);
+  expect(Math.min(...seen.slice(shown)), seen.join(' ')).toBeGreaterThan(0.005);
+  expect(errors).toEqual([]);
+});
 
 test('a track can be named, and the visuals show its title and cover art (LS-15, LS-18)', async ({
   page,
@@ -600,5 +692,76 @@ test('the cover art turns like a record while the music plays (LS-16)', async ({
   const b = await look();
   await page.waitForTimeout(500);
   expect(moved(b, await look())).toBeLessThan(20);
+  expect(errors).toEqual([]);
+});
+
+test('a track can be given a cover of your own, kept for the file (LS-21)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await startWithClassicLook(page);
+  await page.addInitScript(() =>
+    localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify({ coverLogo: true })),
+  );
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  const file = { name: 'Plain.wav', mimeType: 'audio/wav', buffer: createWav(30) };
+  await page.getByTestId('file-input').setInputFiles(file);
+  const item = page.getByTestId('queue-item');
+  await expect(item).toHaveAttribute('data-status', 'ready');
+  await expect(page.getByTestId('queue-cover')).toHaveCount(0);
+  await page.getByTestId('play-button').click();
+  const quarters = logoQuarters((await stage.boundingBox())!);
+  expect(showsCover(await measure(page, await stage.screenshot(), quarters))).toBe(false);
+
+  // A file that is no image is refused; an image shows at once in the dialog, and once saved, in
+  // the queue, the transport and as the logo.
+  await item.hover();
+  await page.getByTestId('queue-rename').click();
+  const dialog = page.getByTestId('track-name-dialog');
+  await expect(dialog).toContainText('Title, artist, cover and colours');
+  await expect(page.getByTestId('track-cover-remove')).toBeDisabled();
+  const input = page.getByTestId('track-cover-input');
+  await input.setInputFiles({
+    name: 'notes.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  });
+  await expect(page.getByTestId('track-cover-problem')).toContainText(
+    'please use a PNG, JPEG, WebP or SVG image',
+  );
+  await input.setInputFiles({ name: 'cover.png', mimeType: 'image/png', buffer: COVER });
+  await expect(page.getByTestId('track-cover-preview')).toBeVisible();
+  await expect(page.getByTestId('track-cover-problem')).toHaveCount(0);
+  await expect(page.getByTestId('queue-cover')).toHaveCount(0);
+  await page.getByTestId('track-name-save').click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId('queue-cover')).toBeVisible();
+  await expect(page.getByTestId('now-cover')).toBeVisible();
+  await expect
+    .poll(async () => showsCover(await measure(page, await stage.screenshot(), quarters)), {
+      timeout: 10_000,
+    })
+    .toBe(true);
+
+  // Kept for the file: it is back with it after a reload.
+  await page.reload();
+  await page.getByRole('tab', { name: 'Queue' }).click();
+  await page.getByTestId('file-input').setInputFiles(file);
+  await expect(item).toHaveAttribute('data-status', 'ready');
+  await expect(page.getByTestId('queue-cover')).toBeVisible();
+
+  // Taken away again: the file has none, so none shows.
+  await item.hover();
+  await page.getByTestId('queue-rename').click();
+  await page.getByTestId('track-cover-remove').click();
+  await expect(page.getByTestId('track-cover-preview')).toHaveCount(0);
+  await page.getByTestId('track-name-save').click();
+  await expect(page.getByTestId('queue-cover')).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('tab', { name: 'Queue' }).click();
+  await page.getByTestId('file-input').setInputFiles(file);
+  await expect(item).toHaveAttribute('data-status', 'ready');
+  await expect(page.getByTestId('queue-cover')).toHaveCount(0);
   expect(errors).toEqual([]);
 });

@@ -1,3 +1,5 @@
+import type { CoverColors } from './cover-palette';
+
 /** What the render worker needs from a scene (Logo Spectrum, Kaleidoscope, …). */
 
 export interface SceneInput {
@@ -27,6 +29,8 @@ export interface Scene {
   resize(width: number, height: number): void;
   /** Reduce flashing (VE-06): sudden jumps in brightness are damped. */
   setReduceFlashing(on: boolean): void;
+  /** The colours of the covers heard instead of the look's palette (VE-12); null: the look's. */
+  setCoverColors(colors: CoverColors | null): void;
   render(input: SceneInput): void;
   /** Everything that carries over from one frame to the next (settings and images excluded). */
   saveState(): SceneSnapshot;
