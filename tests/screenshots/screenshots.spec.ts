@@ -40,14 +40,19 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `${OUT}/${name}.jpg`, type: 'jpeg', quality: 85 });
 }
 
-/** Jumps to `fraction` of the track (`duration` seconds long) by a click on the timeline. */
+/**
+ * Jumps to `fraction` of the track (`duration` seconds long) by a click on the timeline, and
+ * clicks again when a click did not take (on a slow runner, the first can come too early).
+ */
 async function seek(page: Page, fraction: number, duration: number): Promise<void> {
-  const box = (await page.getByTestId('timeline').boundingBox())!;
-  await page.mouse.click(box.x + box.width * fraction, box.y + box.height / 2);
-  // Until the playhead is there (within a second, as the music plays on).
   const offset = async () =>
     Number(await page.getByTestId('elapsed').getAttribute('data-seconds')) - fraction * duration;
-  await expect.poll(async () => Math.abs(await offset()), { timeout: 10_000 }).toBeLessThan(1);
+  await expect(async () => {
+    const box = (await page.getByTestId('timeline').boundingBox())!;
+    await page.mouse.click(box.x + box.width * fraction, box.y + box.height / 2);
+    // Until the playhead is there (within a second, as the music plays on).
+    await expect.poll(async () => Math.abs(await offset()), { timeout: 3_000 }).toBeLessThan(1);
+  }).toPass({ timeout: 30_000 });
 }
 
 /**
