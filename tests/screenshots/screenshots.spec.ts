@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { createDrumMix } from '../../src/core/analysis/eval/drum-mix';
+import { measure } from '../e2e/pixels';
 import { moreAction } from '../e2e/topbar';
 
 /**
@@ -150,11 +151,22 @@ test('screenshots for the README', async ({ page, context }) => {
   await page.waitForTimeout(4000);
   await shot(page, 'kaleidoscope');
 
-  // Neon Ribbons, with its controls.
+  // Neon Ribbons, with its controls. On the runner, drawing in software, its first picture can
+  // come many seconds late: the shot waits for its cool light (the Vortex before it has no blue
+  // to speak of).
   await page.getByRole('tab', { name: 'Visuals' }).click();
   await page.getByTestId('preset-select').selectOption('Neon Ribbons');
   await seek(page, 0.8, duration);
-  await page.waitForTimeout(4000);
+  const stage = page.getByTestId('visual-stage');
+  const blueness = async () => {
+    const [region] = await measure(page, await stage.screenshot(), [
+      { x: 0, y: 0, width: 1, height: 1 },
+    ]);
+    const [red, green, blue] = region!.mean;
+    return blue - Math.max(red, green);
+  };
+  await expect.poll(blueness, { timeout: 90_000 }).toBeGreaterThan(5);
+  await page.waitForTimeout(2000);
   await shot(page, 'neon-ribbons');
 
   // A TikTok frame with its safe areas, and the Visuals tab.

@@ -33,6 +33,18 @@ async function playTrack(page: Page) {
   await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');
 }
 
+/**
+ * Presses `key` in the mini player's window, which closes it. The window may close while the key
+ * is still being sent, before the browser confirms it: then the key fails, as it may.
+ */
+async function pressToClose(mini: Page, key: string): Promise<void> {
+  const closed = mini.waitForEvent('close');
+  const pressed = mini.keyboard.down(key).catch((error: Error) => error);
+  await closed;
+  const result = await pressed;
+  if (result instanceof Error) expect(result.message).toContain('closed');
+}
+
 /** Opens the mini player with `open`, and gives its window, 4:3 like no aspect ratio of the app. */
 async function openMiniPlayer(context: BrowserContext, open: () => Promise<void>): Promise<Page> {
   const opened = context.waitForEvent('page');
@@ -96,18 +108,14 @@ test('the mini player shows the visuals in a window of their own (DS-06)', async
   // M opens it, and M in its window closes it; the stage comes back once more. (The window
   // closes on the key going down: there is no page left for it to come up in.)
   const again = await openMiniPlayer(context, () => page.keyboard.press('m'));
-  const closedAgain = again.waitForEvent('close');
-  await again.keyboard.down('m');
-  await closedAgain;
+  await pressToClose(again, 'm');
   await expect(home).toHaveAttribute('data-status', 'running');
   await expectMotion(home);
 
   // F in its window brings the visuals back for the fullscreen (which the browser may refuse to
   // a key in another window).
   const third = await openMiniPlayer(context, () => page.keyboard.press('m'));
-  const closedThird = third.waitForEvent('close');
-  await third.keyboard.down('f');
-  await closedThird;
+  await pressToClose(third, 'f');
   await expect(home).toHaveAttribute('data-status', 'running');
   await expect(page.getByTestId('mini-note')).toHaveCount(0);
   await page.evaluate(() => document.fullscreenElement && document.exitFullscreen());

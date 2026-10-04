@@ -189,7 +189,9 @@ test('a DDJ-FLX2 plays, sets hot cues, filters and changes the tempo (CTL-02, CT
   await expect(inMark).toBeVisible();
   expect(Number(await inMark.getAttribute('aria-valuenow'))).toBeCloseTo(jogged, -0.5);
   await expect.poll(() => light(page, 0x90, 0x0c)).toBe(0x7f);
-  const cuePoint = await elapsed();
+  // The playhead goes to the marker, on the beat; the time it stands at then is the cue point.
+  // (The light is no sign that it is there: until then it blinks, and is on half of the time.)
+  const cuePoint = await settled();
   // Held at the cue point, it plays until let go, then goes back.
   await receive(page, cue(true));
   await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause');

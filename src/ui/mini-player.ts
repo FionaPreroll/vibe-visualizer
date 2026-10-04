@@ -2,8 +2,8 @@ import { aspectRatio, type AspectRatio } from '../core/export/video-format';
 
 /**
  * The mini player (DS-06): the visuals in a small window of their own, which stays on top while
- * the user works in other tabs and apps. A Document Picture-in-Picture window (Chrome and Edge);
- * other browsers have none, and the app offers no mini player there.
+ * the user works in other tabs and apps. A Document Picture-in-Picture window (Chrome, Edge and
+ * Firefox); Safari has none, and the app offers no mini player there.
  */
 
 /** The part of the Document Picture-in-Picture API used here (not in TypeScript's DOM types). */
