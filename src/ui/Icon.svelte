@@ -6,6 +6,7 @@
     next: 'M16 6h2v12h-2zM6 18l8.5-6L6 6z',
     stop: 'M7 7h10v10H7z',
     plus: 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z',
+    minus: 'M5 11h14v2H5z',
     trash: 'M9 3h6l1 2h4v2H4V5h4zM6 9h12l-1 11H7z',
     close:
       'M6.4 5L12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4z',

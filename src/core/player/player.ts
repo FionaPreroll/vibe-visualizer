@@ -38,6 +38,7 @@ import {
 } from '../library/queue-store';
 import { TrackAnalyzer, type TrackAnalysisState } from '../library/track-analyzer';
 import { readCover, writeCover } from '../library/track-covers';
+import { sameTrackColors, sanitizeTrackColors, type TrackColors } from '../render/cover-palette';
 import { nextTrack, previousTrack, type PlayOrder } from './play-order';
 import {
   CUE_COUNT,
@@ -762,6 +763,17 @@ export class Player {
     if (file) this.requestAnalysis(fingerprint, file, id === this.state.currentId);
   }
 
+  /**
+   * Gives the file of track `id` colours for the visuals (VE-12), for every entry of that file:
+   * its cover's, colours of the user's own, or the look's; null: its cover's, as found.
+   */
+  setTrackColors(id: string, colors: TrackColors | null): void {
+    const track = this.state.tracks.find((entry) => entry.id === id);
+    const fingerprint = track?.fingerprint;
+    if (!fingerprint || sameTrackColors(track.colors, colors)) return;
+    this.dispatch({ type: 'tracks/colors', fingerprint, colors: sanitizeTrackColors(colors) });
+  }
+
   /** New grids in the new tempo range (AN-12) for the files without a tempo given. */
   private regridAll(): void {
     const done = new Set<string>();
@@ -1428,8 +1440,8 @@ export class Player {
   }
 
   /**
-   * Keeps the cues, markers, tempo, grid correction and names of each file (TR-05), so they come
-   * back with it.
+   * Keeps the cues, markers, tempo, grid correction, names and colours of each file (TR-05), so
+   * they come back with it.
    */
   private storeTrackData(previous: readonly Track[], next: readonly Track[]): void {
     const before = new Map(previous.map((track) => [track.id, track]));
@@ -1443,10 +1455,19 @@ export class Player {
         old.tempo === track.tempo &&
         old.fixedTempo === track.fixedTempo &&
         old.gridEdit === track.gridEdit &&
-        old.edit === track.edit;
+        old.edit === track.edit &&
+        old.colors === track.colors;
       if (!unchanged) {
-        const { cues, marks, tempo, fixedTempo, gridEdit, edit } = track;
-        saveTrackData(track.fingerprint, { cues, marks, tempo, fixedTempo, gridEdit, edit });
+        const { cues, marks, tempo, fixedTempo, gridEdit, edit, colors } = track;
+        saveTrackData(track.fingerprint, {
+          cues,
+          marks,
+          tempo,
+          fixedTempo,
+          gridEdit,
+          edit,
+          colors,
+        });
       }
     }
   }

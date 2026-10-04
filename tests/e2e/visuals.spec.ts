@@ -730,7 +730,7 @@ test('a track can be given a cover of your own, kept for the file (LS-21)', asyn
   await item.hover();
   await page.getByTestId('queue-rename').click();
   const dialog = page.getByTestId('track-name-dialog');
-  await expect(dialog).toContainText('Title, artist and cover');
+  await expect(dialog).toContainText('Title, artist, cover and colours');
   await expect(page.getByTestId('track-cover-remove')).toBeDisabled();
   const input = page.getByTestId('track-cover-input');
   await input.setInputFiles({

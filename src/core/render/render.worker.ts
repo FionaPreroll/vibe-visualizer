@@ -6,9 +6,13 @@ import {
 import { F } from '../analysis/features';
 import {
   COVER_BLEND_SECONDS,
-  coverPalette,
+  coverTonesOf,
+  sameTrackColors,
+  trackPalette,
   type CoverColors,
   type CoverPalette,
+  type Tone,
+  type TrackColors,
 } from './cover-palette';
 import { DEFAULT_KALEIDO } from './kaleido-settings';
 import { KaleidoscopeScene } from './kaleidoscope';
@@ -83,7 +87,12 @@ let overlayRate = 1;
 const covers = new Map<number, ImageBitmap>();
 let coverToken = -1;
 let coverLogo = false;
-/** The colours of each cover (VE-12), by token, and whether the visuals take them. */
+/**
+ * The colours of the tracks (VE-12) by token: the tones of each cover, the colours the user gave
+ * each track, and the palettes they make; and whether the visuals take them.
+ */
+const coverTones = new Map<number, Tone[] | null>();
+const trackColors = new Map<number, TrackColors | null>();
 const palettes = new Map<number, CoverPalette | null>();
 let coverColorsOn = false;
 /** The cover colours shown: blending from the last file's to the one heard (null: the look's). */
@@ -244,6 +253,11 @@ function coverColors(dt: number, token: number): CoverColors | null {
   return shownColors.blend >= 1 && !shownColors.to ? null : shownColors;
 }
 
+/** The palette of the file with `token`, made anew when its cover or its colours changed. */
+function updatePalette(token: number): void {
+  palettes.set(token, trackPalette(trackColors.get(token) ?? null, coverTones.get(token) ?? null));
+}
+
 /** The cover art of the file heard, for the Logo Spectrum's logo (LS-15). */
 function showCover(token: number): void {
   if (token === coverToken || !logoSpectrum) return;
@@ -399,29 +413,37 @@ scope.addEventListener('message', (event) => {
       case 'tracks': {
         overlayTracks.clear();
         calmTokens.clear();
-        for (const { token, track, calm } of message.tracks) {
+        for (const { token, track, calm, colors } of message.tracks) {
           if (track) overlayTracks.set(token, track);
           if (calm) calmTokens.add(token);
+          // A palette made anew only when the colours changed: it blends in as a new one.
+          if (!trackColors.has(token) || !sameTrackColors(trackColors.get(token)!, colors)) {
+            trackColors.set(token, colors);
+            updatePalette(token);
+          }
         }
         overlayRate = message.rate;
-        // The covers of files that left the stream go.
+        // The covers and colours of files that left the stream go.
+        const inStream = (token: number) => message.tracks.some((entry) => entry.token === token);
         for (const [token, image] of covers) {
-          if (message.tracks.some((entry) => entry.token === token)) continue;
+          if (inStream(token)) continue;
           image.close();
           covers.delete(token);
+        }
+        for (const token of [...palettes.keys()]) {
+          if (inStream(token)) continue;
+          coverTones.delete(token);
+          trackColors.delete(token);
           palettes.delete(token);
         }
         break;
       }
       case 'cover':
         covers.get(message.token)?.close();
-        if (message.image) {
-          covers.set(message.token, message.image);
-          palettes.set(message.token, coverPalette(message.image));
-        } else {
-          covers.delete(message.token);
-          palettes.delete(message.token);
-        }
+        if (message.image) covers.set(message.token, message.image);
+        else covers.delete(message.token);
+        coverTones.set(message.token, message.image ? coverTonesOf(message.image) : null);
+        updatePalette(message.token);
         // The file heard got its cover: it shows at once.
         if (message.token === coverToken) {
           coverToken = -1;
@@ -460,6 +482,8 @@ scope.addEventListener('message', (event) => {
         overlay?.dispose();
         for (const image of covers.values()) image.close();
         covers.clear();
+        coverTones.clear();
+        trackColors.clear();
         palettes.clear();
         logoSpectrum = null;
         kaleidoscope = null;

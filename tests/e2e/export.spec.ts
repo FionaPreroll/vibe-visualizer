@@ -289,7 +289,9 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
   expect(errors).toEqual([]);
 });
 
-test('a video of tracks takes the colours of the cover art of each (VE-12)', async ({ page }) => {
+test('a video of tracks takes the colours of each: its cover art, or its own (VE-12)', async ({
+  page,
+}) => {
   test.setTimeout(240_000);
   const errors = collectErrors(page);
   await page.addInitScript(() => {
@@ -297,7 +299,7 @@ test('a video of tracks takes the colours of the cover art of each (VE-12)', asy
     localStorage.setItem('vibe-visualizer:settings:v1', JSON.stringify(settings));
   });
   await page.goto('/');
-  const tagged = (title: string, cover: Buffer) => ({
+  const tagged = (title: string, cover?: Buffer) => ({
     name: `${title}.wav`,
     mimeType: 'audio/wav',
     buffer: createTaggedWav(3, { title, artist: 'The Testers', cover }),
@@ -307,20 +309,25 @@ test('a video of tracks takes the colours of the cover art of each (VE-12)', asy
       'Blue',
       createPng(32, 32, () => [30, 70, 235]),
     ),
-    tagged(
-      'Orange',
-      createPng(32, 32, () => [250, 120, 20]),
-    ),
+    tagged('Orange'),
   ]);
   const items = page.getByTestId('queue-item');
   await expect(items).toHaveCount(2);
   for (const item of await items.all()) await expect(item).toHaveAttribute('data-status', 'ready');
+  // The second track has no cover art: it gets a colour of its own, orange.
+  await items.nth(1).hover();
+  await items.nth(1).getByTestId('queue-rename').click();
+  await page.getByTestId('track-colors-own').click();
+  await page.getByTestId('track-colors-pick').first().fill('#fa7814');
+  await page.getByRole('button', { name: 'Remove the last colour' }).click();
+  await expect(page.getByTestId('track-colors-pick')).toHaveCount(1);
+  await page.getByTestId('track-name-save').click();
 
   await page.getByTestId('export-button').click();
   await chooseSmallFormat(page);
   await page.getByTestId('export-range-tracks').check();
   await expect(page.getByTestId('export-cover-colors')).toHaveText(
-    '(in the colours of the cover art)',
+    '(in the colours of the tracks)',
   );
   await page.getByTestId('export-start').click();
   await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });

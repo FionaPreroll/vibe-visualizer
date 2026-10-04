@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   coverBlend,
+  coverTones,
+  cuspLightness,
   lchHex,
   oklab,
-  paletteFromPixels,
+  paletteFromTones,
   partColors,
+  sameTrackColors,
+  sanitizeTrackColors,
+  toneColor,
+  trackPalette,
   type CoverPalette,
 } from './cover-palette';
 import { parseColor } from './visual-settings';
@@ -28,6 +34,8 @@ function lch(color: string): { L: number; C: number; h: number } {
   return { L, C: Math.hypot(a, b), h: ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360 };
 }
 
+const paletteOf = (pixels: Uint8ClampedArray) => paletteFromTones(coverTones(pixels)!);
+
 const hueOf = (color: [number, number, number]) =>
   lch(`#${color.map((c) => c.toString(16).padStart(2, '0')).join('')}`).h;
 const near = (a: number, b: number, within: number) =>
@@ -48,10 +56,27 @@ describe('colours from the cover art (VE-12)', () => {
     expect(lch(vivid).L).toBeCloseTo(0.9, 1);
   });
 
+  it('puts each colour where its hue can glow: blue darker, yellow brighter', () => {
+    const blueCusp = cuspLightness((hueOf([0, 0, 255]) * Math.PI) / 180);
+    const yellowCusp = cuspLightness((hueOf([255, 255, 0]) * Math.PI) / 180);
+    expect(blueCusp).toBeCloseTo(0.45, 1);
+    expect(yellowCusp).toBeGreaterThan(0.9);
+    // Blue and yellow: blue in the middle of the gradient, yellow towards the bright end, both
+    // colourful; the main colour, yellow, in front of the layers.
+    const palette = paletteFromTones([
+      { h: (hueOf([255, 255, 0]) * Math.PI) / 180, C: 0.2 },
+      { h: (hueOf([0, 0, 255]) * Math.PI) / 180, C: 0.25 },
+    ]);
+    const [, , middle, bright] = palette.gradient.map(lch);
+    expect(near(middle!.h, hueOf([0, 0, 255]), 10)).toBe(true);
+    expect(near(bright!.h, hueOf([255, 255, 0]), 10)).toBe(true);
+    expect(middle!.C).toBeGreaterThan(0.2);
+    expect(bright!.C).toBeGreaterThan(0.15);
+    expect(near(lch(palette.layers[0]!).h, hueOf([255, 255, 0]), 10)).toBe(true);
+  });
+
   it('builds a gradient, dark to bright, and layers from the main colours of a cover', () => {
-    const palette = paletteFromPixels(
-      cover({ color: BLUE, share: 0.7 }, { color: ORANGE, share: 0.3 }),
-    )!;
+    const palette = paletteOf(cover({ color: BLUE, share: 0.7 }, { color: ORANGE, share: 0.3 }))!;
     expect(palette.gradient).toHaveLength(5);
     expect(palette.layers).toHaveLength(8);
     const stops = palette.gradient.map(lch);
@@ -71,7 +96,7 @@ describe('colours from the cover art (VE-12)', () => {
 
   it('finds a small bright patch on grey, and gives a grey cover greys', () => {
     const red: [number, number, number] = [230, 30, 40];
-    const patch = paletteFromPixels(
+    const patch = paletteOf(
       cover(
         { color: [40, 40, 40], share: 0.6 },
         { color: [200, 200, 200], share: 0.34 },
@@ -82,7 +107,7 @@ describe('colours from the cover art (VE-12)', () => {
       ),
     )!;
     expect(near(lch(patch.gradient[2]!).h, hueOf(red), 15)).toBe(true);
-    const grey = paletteFromPixels(
+    const grey = paletteOf(
       cover({ color: [30, 30, 30], share: 0.5 }, { color: [220, 220, 220], share: 0.5 }),
     )!;
     for (const color of [...grey.gradient, ...grey.layers]) expect(lch(color).C).toBeLessThan(0.01);
@@ -90,8 +115,80 @@ describe('colours from the cover art (VE-12)', () => {
 
   it('gives the same colours for the same picture, and none without pixels', () => {
     const pixels = cover({ color: ORANGE, share: 0.5 }, { color: BLUE, share: 0.5 });
-    expect(paletteFromPixels(pixels)).toEqual(paletteFromPixels(pixels.slice()));
-    expect(paletteFromPixels(new Uint8ClampedArray(64))).toBeNull();
+    expect(coverTones(pixels)).toEqual(coverTones(pixels.slice()));
+    expect(coverTones(new Uint8ClampedArray(64))).toBeNull();
+  });
+
+  it('keeps the colour of thin lines on a plain cover, and takes each hue once', () => {
+    // Cream, a small orange dot, and thin blue lines mixed half with the cream when scaled down.
+    const lines: [number, number, number] = [
+      Math.round((26 + 239) / 2),
+      Math.round((42 + 230) / 2),
+      Math.round((128 + 216) / 2),
+    ];
+    const plain = coverTones(
+      cover(
+        { color: [239, 230, 216], share: 0.9 },
+        { color: ORANGE, share: 0.05 },
+        { color: lines, share: 0.05 },
+      ),
+    )!;
+    expect(plain).toHaveLength(2);
+    expect(near((plain[0]!.h * 180) / Math.PI, hueOf(ORANGE), 15)).toBe(true);
+    expect(near((plain[1]!.h * 180) / Math.PI, hueOf([26, 42, 128]), 20)).toBe(true);
+    // Colourful enough to glow, however pale the lines are after scaling.
+    expect(plain[1]!.C).toBeGreaterThanOrEqual(0.08);
+    // Two oranges are one colour: the blue comes second.
+    const oranges = coverTones(
+      cover(
+        { color: [150, 60, 0], share: 0.3 },
+        { color: [255, 160, 60], share: 0.3 },
+        { color: BLUE, share: 0.05 },
+        { color: [20, 20, 20], share: 0.35 },
+      ),
+    )!;
+    expect(oranges).toHaveLength(2);
+    expect(near((oranges[1]!.h * 180) / Math.PI, hueOf(BLUE), 15)).toBe(true);
+  });
+
+  it("gives a track its cover's colours, its own, or the look's, more or less colourful", () => {
+    const tones = coverTones(cover({ color: BLUE, share: 1 }))!;
+    const blue = trackPalette(null, tones)!;
+    expect(blue).toEqual(paletteFromTones(tones));
+    expect(trackPalette({ source: 'cover', own: [], vivid: 1 }, null)).toBeNull();
+    expect(trackPalette({ source: 'look', own: [], vivid: 1 }, tones)).toBeNull();
+    // Its own colours, whatever the cover has.
+    const own = trackPalette({ source: 'own', own: ['#ff8c14'], vivid: 1 }, tones)!;
+    expect(near(lch(own.gradient[2]!).h, hueOf(ORANGE), 10)).toBe(true);
+    // Grey at 0, more colourful above 1 (a muted blue has room for it).
+    const grey = trackPalette({ source: 'cover', own: [], vivid: 0 }, tones)!;
+    for (const color of grey.gradient) expect(lch(color).C).toBeLessThan(0.01);
+    const muted = coverTones(cover({ color: [90, 110, 160], share: 1 }))!;
+    const as = (vivid: number) => trackPalette({ source: 'cover', own: [], vivid }, muted)!;
+    expect(lch(as(2).gradient[2]!).C).toBeGreaterThan(lch(as(1).gradient[2]!).C + 0.05);
+    // A tone shown to pick from: its colour at the middle of a palette.
+    expect(lch(toneColor(tones[0]!)).L).toBeCloseTo(0.68, 1);
+  });
+
+  it('keeps track colours as stored only when they are valid and not the defaults', () => {
+    expect(sanitizeTrackColors(null)).toBeNull();
+    expect(sanitizeTrackColors({ source: 'cover', own: [], vivid: 1 })).toBeNull();
+    // Own colours without one are the cover's.
+    expect(sanitizeTrackColors({ source: 'own', own: [], vivid: 1 })).toBeNull();
+    expect(
+      sanitizeTrackColors({
+        source: 'own',
+        own: ['#FF0000', 'red', '#00ff00', '#0000ff', '#ffffff'],
+      }),
+    ).toEqual({ source: 'own', own: ['#ff0000', '#00ff00', '#0000ff'], vivid: 1 });
+    expect(sanitizeTrackColors({ source: 'odd', vivid: 7 })).toEqual({
+      source: 'cover',
+      own: [],
+      vivid: 2,
+    });
+    // Own colours that are not used change nothing.
+    expect(sameTrackColors({ source: 'cover', own: ['#ff0000'], vivid: 1 }, null)).toBe(true);
+    expect(sameTrackColors({ source: 'own', own: ['#ff0000'], vivid: 1 }, null)).toBe(false);
   });
 
   it("blends from one cover's colours to the next, or to the look's own", () => {

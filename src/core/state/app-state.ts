@@ -8,6 +8,7 @@ import {
 } from '../audio/dsp/sound-settings';
 import type { LiveSourceKind } from '../audio/live-input';
 import type { AspectRatio } from '../export/video-format';
+import type { TrackColors } from '../render/cover-palette';
 import { DEFAULT_OVERLAY, type OverlaySettings } from '../render/overlay-settings';
 import { DEFAULT_AUTO_PRESETS, type AutoPresets } from '../render/preset-director';
 import {
@@ -74,6 +75,8 @@ export interface Track {
   gridEdit: GridEdit;
   /** The title and artist the user gave the file (LS-18); null: those of the file. */
   edit: TrackEdit | null;
+  /** The colours the user gave the file for the visuals (VE-12); null: its cover's, as found. */
+  colors: TrackColors | null;
 }
 
 /** A title and artist the user gives a file, for the overlay and wherever the track is named. */
@@ -111,7 +114,10 @@ export function trackEdit(track: Track, title: string, artist: string): TrackEdi
   return { title: cleanTitle, artist: cleanArtist };
 }
 
-/** What is kept per file (TR-05): cues, markers, a corrected tempo and beat grid, the names. */
+/**
+ * What is kept per file (TR-05): cues, markers, a corrected tempo and beat grid, the names, the
+ * colours.
+ */
 export interface TrackData {
   cues: Cues;
   marks: Marks;
@@ -119,6 +125,7 @@ export interface TrackData {
   fixedTempo: boolean;
   gridEdit: GridEdit;
   edit: TrackEdit | null;
+  colors: TrackColors | null;
 }
 
 export interface Marks {
@@ -307,6 +314,8 @@ export type AppAction =
   | { type: 'tracks/cover'; fingerprint: string; url: string | null }
   /** One tempo throughout for a file (TR-12), for every entry of that file. */
   | { type: 'tracks/fixed'; fingerprint: string; fixed: boolean }
+  /** The colours the user gave a file (VE-12; null: its cover's), for every entry of it. */
+  | { type: 'tracks/colors'; fingerprint: string; colors: TrackColors | null }
   /** The correction of a file's beat grid (TR-11), for every entry of that file. */
   | { type: 'tracks/grid'; fingerprint: string; edit: GridEdit }
   /**
@@ -420,6 +429,7 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
     fixedTempo: false,
     gridEdit: NO_GRID_EDIT,
     edit: null,
+    colors: null,
   };
 }
 
@@ -600,6 +610,13 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         tracks: state.tracks.map((track) =>
           track.fingerprint === action.fingerprint ? { ...track, fixedTempo: action.fixed } : track,
+        ),
+      };
+    case 'tracks/colors':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.fingerprint === action.fingerprint ? { ...track, colors: action.colors } : track,
         ),
       };
     case 'tracks/grid':

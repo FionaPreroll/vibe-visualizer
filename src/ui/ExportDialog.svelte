@@ -199,6 +199,7 @@
       },
       range,
       cut: range.end < duration,
+      colors: entry.colors,
     };
   }
 
@@ -283,6 +284,12 @@
   function namesOf(names: readonly string[]): string {
     if (names.length < 2) return names[0] ?? '';
     return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  }
+
+  /** Whether `entry` has colours of its own for the visuals (VE-12): its cover's or as set. */
+  function hasColors(entry: Track): boolean {
+    const source = entry.colors?.source ?? 'cover';
+    return source === 'own' || (source === 'cover' && shownCover(entry) !== null);
   }
 
   /** The visuals of the video: the current settings, and the preset switching if it is on. */
@@ -874,11 +881,11 @@
                   : 'its cover art as the logo'})</span
               >
             {/if}
-            {#if $app.settings.coverColors && chosen.some(shownCover)}
+            {#if $app.settings.coverColors && chosen.some(hasColors)}
               <span data-testid="export-cover-colors"
                 >({chosen.length > 1
-                  ? 'in the colours of the cover art'
-                  : 'in the colours of its cover art'})</span
+                  ? 'in the colours of the tracks'
+                  : "in the track's colours"})</span
               >
             {/if}
             {#if fitted.fade > 0}

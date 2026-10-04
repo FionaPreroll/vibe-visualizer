@@ -75,6 +75,7 @@ describe('app state', () => {
           fixedTempo: true,
           gridEdit: { shift: 0.02, downbeat: 1.5 },
           edit: { title: 'Better title', artist: null },
+          colors: { source: 'own', own: ['#ff2fd6'], vivid: 1.4 },
         },
       },
     });
@@ -85,6 +86,7 @@ describe('app state', () => {
       fixedTempo: true,
       gridEdit: { shift: 0.02, downbeat: 1.5 },
       edit: { title: 'Better title', artist: null },
+      colors: { source: 'own', own: ['#ff2fd6'], vivid: 1.4 },
     });
     state = reducer(state, { type: 'tracks/cue', id: 't0', index: 1, seconds: 500 });
     expect(state.tracks[0]!.cues[1]).toBe(180);
@@ -144,7 +146,7 @@ describe('app state', () => {
     expect(state.tracks.map(shownTitle)).toEqual(['a', 'b', 'c']);
   });
 
-  it('sets the tempo, fixed or not, and the grid correction of every entry of a file', () => {
+  it('sets the tempo, fixed or not, the grid correction and the colours of every entry of a file', () => {
     let state = withTracks('a', 'b', 'c');
     state = {
       ...state,
@@ -154,9 +156,12 @@ describe('app state', () => {
     const edit = { shift: -0.01, downbeat: 2.5 };
     state = reducer(state, { type: 'tracks/grid', fingerprint: 'same', edit });
     state = reducer(state, { type: 'tracks/fixed', fingerprint: 'same', fixed: true });
+    const colors = { source: 'look' as const, own: [], vivid: 1 };
+    state = reducer(state, { type: 'tracks/colors', fingerprint: 'same', colors });
     expect(state.tracks.map((track) => track.tempo)).toEqual([174, 174, null]);
     expect(state.tracks.map((track) => track.fixedTempo)).toEqual([true, true, false]);
     expect(state.tracks.map((track) => track.gridEdit)).toEqual([edit, edit, NO_GRID_EDIT]);
+    expect(state.tracks.map((track) => track.colors)).toEqual([colors, colors, null]);
   });
 
   it("shows the cover the user gave a file, on every entry of it, instead of the file's (LS-21)", () => {
@@ -226,6 +231,7 @@ describe('app state', () => {
           fixedTempo: false,
           gridEdit: NO_GRID_EDIT,
           edit: null,
+          colors: null,
         }),
         restoredTrack('r1', { ...info, fileName: 'Gone.mp3' }, 'missing'),
       ],

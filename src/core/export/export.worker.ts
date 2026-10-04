@@ -26,7 +26,7 @@ import { openInput } from '../audio/decode-stream';
 import { DspCore } from '../audio/dsp/dsp-core';
 import type { SoundSettings } from '../audio/dsp/sound-settings';
 import { SignalsmithStretch } from '../audio/stretch/signalsmith-stretch';
-import { coverPalette, partColors, type CoverColors } from '../render/cover-palette';
+import { coverTonesOf, partColors, trackPalette, type CoverColors } from '../render/cover-palette';
 import { PictureFade } from '../render/fade';
 import { sanitizeKaleido, type KaleidoSettings } from '../render/kaleido-settings';
 import { KaleidoscopeScene } from '../render/kaleidoscope';
@@ -768,13 +768,17 @@ async function videoPass(
   });
   if (!gl) throw new Error('WebGL2 is not available.');
   const { scene, switching, logo } = createScene(gl, manifest.visuals, pictures.images);
-  // Each part's cover art as the logo (LS-15) and its colours (VE-12); the covers go with the
-  // job only when they show (a job of before the colours has them only for the logo).
+  // Each part's cover art as the logo (LS-15), and the colours of its track (VE-12): its own, or
+  // its cover's. The covers go with the job only when they show (a job of before the colours
+  // has them only for the logo).
   const covers = pictures.covers;
   const visuals = manifest.visuals;
   logo?.setCoverLogo(visuals.coverLogo ?? covers.some((cover) => cover !== null));
   const palettes = visuals.coverColors
-    ? covers.map((cover) => (cover ? coverPalette(cover) : null))
+    ? manifest.parts.map((part, index) => {
+        const cover = covers[index];
+        return trackPalette(part.colors ?? null, cover ? coverTonesOf(cover) : null);
+      })
     : null;
   let shownPart = -1;
   // The track overlay (LS-18, LS-19), over the picture: it has no state of its own, its text

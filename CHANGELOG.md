@@ -4,7 +4,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 ## 3 October 2026
 
-- **Colours from the cover art:** a switch under the palettes lets the visuals take the colours of the cover of the track playing, in both modes, live and in videos.
+- **The colours of the track:** a switch under the palettes lets the visuals take the colours of the track playing, in both modes, live and in videos: those of its cover art, small bright details too, or colours you set for the track with ✎ (your own, or the look's), more or less colourful.
 - **Covers of your own:** in the dialog for the title and artist (✎ or **F2**), a track gets a cover of its own, kept for the file: in the queue, as the logo and in exports, also where the file has none.
 - **An image under the Kaleidoscope:** with the Kaleidoscope behind the Logo Spectrum, the background image can show under it.
 - **Fixed tempo:** in the tempo menu of a track, one straight beat grid from start to end, so the bars no longer drift after a correction or through a break.

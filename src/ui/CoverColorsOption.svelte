@@ -2,9 +2,9 @@
   import { usePlayer } from './player-context';
 
   /**
-   * The switch for the colours of the cover art (VE-12): the palette of the track playing's
-   * cover instead of the look's, in both modes, live and in exports. An app setting, as the
-   * cover as the logo is: the looks and their presets keep their palettes.
+   * The switch for the colours of the track (VE-12): those of the track playing's cover art, or
+   * as set for the track, instead of the look's palette, in both modes, live and in exports. An
+   * app setting, as the cover as the logo is: the looks and their presets keep their palettes.
    */
   const player = usePlayer();
   const app = player.store;
@@ -17,11 +17,12 @@
     onchange={(event) => player.updateSettings({ coverColors: event.currentTarget.checked })}
     data-testid="cover-colors"
   />
-  Colours from the cover art of the track playing
+  The colours of the track playing
 </label>
 {#if $app.settings.coverColors}
   <p class="hint" data-testid="cover-colors-hint">
-    Instead of the palette, live and in videos; tracks without cover art keep the palette.
+    From its cover art, or as you set them with ✎ in the queue, instead of the palette; live and in
+    videos. Tracks without either keep the palette.
   </p>
 {/if}
 

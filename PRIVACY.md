@@ -13,7 +13,7 @@ FibeStation is a private, non-commercial project by FionaPreroll ([github.com/Fi
 The app keeps what it needs in your browser's storage for this site (local storage, IndexedDB and the origin private file system), on your computer:
 
 - your settings and presets, and the background and logo images you add;
-- for each track: its cues, markers, tempo, name and the cover you gave it, and its analysis (the waveform and the beat grid), found again by a fingerprint of the file's content;
+- for each track: its cues, markers, tempo, name, and the cover and colours you gave it, and its analysis (the waveform and the beat grid), found again by a fingerprint of the file's content;
 - the queue, and in Chrome and Edge the access to its files, so that it survives a reload;
 - exports in progress, so that they can go on after a crash; and in browsers that cannot write straight to a file, the finished videos until you download them.
 

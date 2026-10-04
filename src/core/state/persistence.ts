@@ -13,6 +13,7 @@ import {
 } from '../render/visual-settings';
 import { isAspectRatio, sanitizeExportOptions, type ExportOptions } from '../export/video-format';
 import { RENDER_SCALE_RANGE } from '../render/auto-quality';
+import { sanitizeTrackColors } from '../render/cover-palette';
 import { sanitizeOverlay } from '../render/overlay-settings';
 import { sanitizeAutoPresets } from '../render/preset-director';
 import {
@@ -94,8 +95,8 @@ function trackEdit(value: unknown): TrackEdit | null {
 }
 
 /**
- * The cues, markers, tempo (fixed or not), grid correction and names stored for a file (TR-05),
- * validated against its duration.
+ * The cues, markers, tempo (fixed or not), grid correction, names and colours stored for a file
+ * (TR-05), validated against its duration.
  */
 export function loadTrackData(fingerprint: string, duration: number): TrackData | null {
   const stored = read(TRACK_PREFIX + fingerprint) as {
@@ -105,6 +106,7 @@ export function loadTrackData(fingerprint: string, duration: number): TrackData 
     fixed?: unknown;
     grid?: unknown;
     edit?: unknown;
+    colors?: unknown;
   } | null;
   if (!stored || typeof stored !== 'object') return null;
   const cues = Array.isArray(stored.cues) ? stored.cues : [];
@@ -117,12 +119,13 @@ export function loadTrackData(fingerprint: string, duration: number): TrackData 
     fixedTempo: stored.fixed === true,
     gridEdit: gridEdit(stored.grid, duration),
     edit: trackEdit(stored.edit),
+    colors: sanitizeTrackColors(stored.colors),
   };
 }
 
 /**
- * Stores the cues, markers, tempo, grid correction and names of a file; nothing to store removes
- * it.
+ * Stores the cues, markers, tempo, grid correction, names and colours of a file; nothing to
+ * store removes it.
  */
 export function saveTrackData(fingerprint: string, data: TrackData): void {
   if (!saving) return;
@@ -133,7 +136,8 @@ export function saveTrackData(fingerprint: string, data: TrackData): void {
     data.tempo === null &&
     !data.fixedTempo &&
     !isGridEdited(data.gridEdit) &&
-    data.edit === null;
+    data.edit === null &&
+    data.colors === null;
   if (empty) {
     try {
       localStorage.removeItem(TRACK_PREFIX + fingerprint);
@@ -149,6 +153,7 @@ export function saveTrackData(fingerprint: string, data: TrackData): void {
     ...(data.fixedTempo ? { fixed: true } : {}),
     ...(isGridEdited(data.gridEdit) ? { grid: data.gridEdit } : {}),
     ...(data.edit ? { edit: data.edit } : {}),
+    ...(data.colors ? { colors: data.colors } : {}),
   });
 }
 

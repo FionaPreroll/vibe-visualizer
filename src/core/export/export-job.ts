@@ -8,6 +8,7 @@ import {
   type SoundSettings,
 } from '../audio/dsp/sound-settings';
 import { CROSSFADE_SECONDS } from '../audio/stream-joiner';
+import type { TrackColors } from '../render/cover-palette';
 import type { KaleidoSettings } from '../render/kaleido-settings';
 import { clockText, type OverlaySettings, type OverlayTrack } from '../render/overlay-settings';
 import type { AutoPresets } from '../render/preset-director';
@@ -109,6 +110,8 @@ export interface ExportPart {
   cut: boolean;
   /** How loud its file gets, if it has been analysed: the analysis's auto-gain stays above it. */
   loudness?: TrackLoudness | null;
+  /** The colours the user gave its track (VE-12); not given: its cover's, as found. */
+  colors?: TrackColors | null;
 }
 
 export interface ExportTiming {

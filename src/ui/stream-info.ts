@@ -53,6 +53,7 @@ export class StreamInfo {
       token,
       track: track ? overlayTrack(track) : null,
       calm: track ? stillCalm(track, analyses) : false,
+      colors: track?.colors ?? null,
     }));
     const key = JSON.stringify([overlay, rate]);
     if (key !== this.sent) {
