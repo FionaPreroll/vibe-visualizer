@@ -93,12 +93,24 @@ test('the mini player shows the visuals in a window of their own (DS-06)', async
   await expect(page.getByTestId('mini-note')).toBeHidden();
   await expectMotion(home);
 
-  // M opens it, and M in its window closes it; the stage comes back once more.
+  // M opens it, and M in its window closes it; the stage comes back once more. (The window
+  // closes on the key going down: there is no page left for it to come up in.)
   const again = await openMiniPlayer(context, () => page.keyboard.press('m'));
   const closedAgain = again.waitForEvent('close');
-  await again.keyboard.press('m');
+  await again.keyboard.down('m');
   await closedAgain;
   await expect(home).toHaveAttribute('data-status', 'running');
+  await expectMotion(home);
+
+  // F in its window brings the visuals back for the fullscreen (which the browser may refuse to
+  // a key in another window).
+  const third = await openMiniPlayer(context, () => page.keyboard.press('m'));
+  const closedThird = third.waitForEvent('close');
+  await third.keyboard.down('f');
+  await closedThird;
+  await expect(home).toHaveAttribute('data-status', 'running');
+  await expect(page.getByTestId('mini-note')).toHaveCount(0);
+  await page.evaluate(() => document.fullscreenElement && document.exitFullscreen());
   await expectMotion(home);
   expect(errors).toEqual([]);
 });
