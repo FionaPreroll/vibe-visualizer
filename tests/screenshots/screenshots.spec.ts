@@ -123,9 +123,18 @@ test('screenshots for the README', async ({ page, context }) => {
   await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause', {
     timeout: 20_000,
   });
+  // In the first picture, the logo stands upright, its name easy to read: the record does not
+  // turn for it, and the look is the default again afterwards.
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.locator('summary', { hasText: /^Logo$/ }).click();
+  await page.getByTestId('logo-spin').selectOption('0');
+  await page.getByRole('tab', { name: 'Queue' }).click();
   await seek(page, 0.8, duration);
   await page.waitForTimeout(2500);
   await shot(page, 'logo-spectrum');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByTestId('preset-select').selectOption('Blue-Pink Vortex');
+  await page.getByRole('tab', { name: 'Queue' }).click();
 
   // The tempo menu of the track.
   await page.getByTestId('queue-bpm').click();
