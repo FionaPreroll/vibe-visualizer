@@ -148,14 +148,20 @@ test('a DDJ-FLX2 plays, sets hot cues, filters and changes the tempo (CTL-02, CT
   // far with SHIFT held.
   const elapsed = async () =>
     Number(await page.getByTestId('elapsed').getAttribute('data-seconds'));
-  // The time shown follows the engine at the next frame, which comes late on a busy machine,
-  // while the jog wheel starts from where the engine stopped: read the time once it stands
-  // still.
+  // The time shown follows the engine at the next frame, which comes late on a busy machine
+  // (on CI, more than 250 ms late), while the jog wheel starts from where the engine stopped:
+  // read the time after two frames were drawn, once it stands still.
+  const shown = async () => {
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
+    return elapsed();
+  };
   const settled = async () => {
-    let last = await elapsed();
+    let last = await shown();
     for (let i = 0; i < 20; i++) {
       await page.waitForTimeout(250);
-      const now = await elapsed();
+      const now = await shown();
       if (now === last) break;
       last = now;
     }
