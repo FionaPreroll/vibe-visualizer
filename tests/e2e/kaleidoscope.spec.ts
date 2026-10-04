@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { measure } from './pixels';
+import { expectMotion, measure } from './pixels';
 import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';
 
@@ -38,16 +38,12 @@ test('Kaleidoscope renders, moves with the music and switches scenes and modes',
     .poll(async () => Number(await stage.getAttribute('data-fps')), { timeout: 15_000 })
     .toBeGreaterThan(0);
 
-  const first = await stage.screenshot();
-  await page.waitForTimeout(700);
-  expect(first.equals(await stage.screenshot())).toBe(false);
+  await expectMotion(stage);
 
   await page.getByRole('tab', { name: 'Visuals' }).click();
   await page.getByTestId('scene-crystal').click();
   await expect(page.getByTestId('scene-crystal')).toHaveAttribute('aria-checked', 'true');
-  const crystal = await stage.screenshot();
-  await page.waitForTimeout(700);
-  expect(crystal.equals(await stage.screenshot())).toBe(false);
+  await expectMotion(stage);
 
   // Neon Ribbons (KA-04): its own controls, and it moves too.
   await page.getByTestId('scene-ribbons').click();
@@ -55,9 +51,7 @@ test('Kaleidoscope renders, moves with the music and switches scenes and modes',
   await expect(page.getByTestId('preset-select')).toHaveValue('Neon Ribbons');
   await expect(page.getByRole('slider', { name: 'Ribbons', exact: true })).toHaveValue('4');
   await expect(page.getByRole('slider', { name: 'Lobes', exact: true })).toHaveValue('5');
-  const ribbons = await stage.screenshot();
-  await page.waitForTimeout(700);
-  expect(ribbons.equals(await stage.screenshot())).toBe(false);
+  await expectMotion(stage);
   await expect(stage).toHaveAttribute('data-status', 'running');
 
   // Logo Spectrum and back: the same render worker keeps running.

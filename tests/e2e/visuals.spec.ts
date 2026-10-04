@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startWithClassicLook } from './looks';
-import { COVER, logoQuarters, measure, showsCover, type Region } from './pixels';
+import { COVER, expectMotion, logoQuarters, measure, showsCover, type Region } from './pixels';
 import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';
 
@@ -63,10 +63,7 @@ test('Logo Spectrum renders in a worker and moves with the music @firefox', asyn
     .toBeGreaterThan(0);
 
   // Consecutive pictures differ: the ring, the particles and the pulse move.
-  const first = await stage.screenshot();
-  await page.waitForTimeout(700);
-  const second = await stage.screenshot();
-  expect(first.equals(second)).toBe(false);
+  await expectMotion(stage);
   expect(errors).toEqual([]);
 });
 
@@ -112,9 +109,7 @@ test('the visuals can rest while the music plays on (DS-05)', async ({ page }) =
   await page.keyboard.press('b');
   await expect(page.getByTestId('visuals-paused')).toBeHidden();
   await expect(stage).toHaveAttribute('data-paused', 'false');
-  const moving = await stage.screenshot();
-  await page.waitForTimeout(700);
-  expect((await stage.screenshot()).equals(moving)).toBe(false);
+  await expectMotion(stage);
   await expect.poll(stored).toBe(false);
   expect(errors).toEqual([]);
 });
@@ -151,9 +146,7 @@ test('the visuals come back after the graphics card was reset (NF-09)', async ({
   await expect
     .poll(async () => Number(await stage.getAttribute('data-fps')), { timeout: 15_000 })
     .toBeGreaterThan(0);
-  const first = await stage.screenshot();
-  await page.waitForTimeout(700);
-  expect(first.equals(await stage.screenshot())).toBe(false);
+  await expectMotion(stage);
 
   // Three times a minute at most; then the visuals wait for a click.
   for (const generation of ['2', '3']) {
@@ -438,9 +431,7 @@ test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page 
   await expect
     .poll(async () => Number(await stage.getAttribute('data-fps')), { timeout: 15_000 })
     .toBeGreaterThan(0);
-  const first = await stage.screenshot();
-  await page.waitForTimeout(700);
-  expect(first.equals(await stage.screenshot())).toBe(false);
+  await expectMotion(stage);
 
   // A green image picked there shows under the Kaleidoscope at once, half of it (Kanban #20).
   const corner: Region[] = [{ x: 0.01, y: 0.02, width: 0.1, height: 0.12 }];
@@ -460,9 +451,7 @@ test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page 
   await page.getByRole('button', { name: 'Logo Spectrum' }).click();
   await expect(stage).toHaveAttribute('data-scene', 'logoSpectrum');
   await expect(stage).toHaveAttribute('data-status', 'running');
-  const back = await stage.screenshot();
-  await page.waitForTimeout(700);
-  expect(back.equals(await stage.screenshot())).toBe(false);
+  await expectMotion(stage);
   expect(errors).toEqual([]);
 });
 

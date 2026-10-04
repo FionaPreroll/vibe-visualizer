@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { createPng } from './png';
 
 /** A part of a picture, in shares of its width and height from the top left. */
@@ -115,4 +115,13 @@ export function showsCover(quarters: { mean: [number, number, number] }[]): bool
     dark![0] < 110 &&
     dark![1] < 110
   );
+}
+
+/**
+ * Waits until the picture of `stage` changes: it moves. CI draws in software, at one or two
+ * frames a second for the Kaleidoscope, so a fixed wait may see no new frame at all.
+ */
+export async function expectMotion(stage: Locator, timeout = 10_000): Promise<void> {
+  const first = await stage.screenshot();
+  await expect.poll(async () => first.equals(await stage.screenshot()), { timeout }).toBe(false);
 }

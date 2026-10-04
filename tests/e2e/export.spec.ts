@@ -73,6 +73,9 @@ async function inspect(data: Buffer) {
 }
 
 test('exports the range between the markers as a video file @firefox', async ({ page }) => {
+  // The Kaleidoscope draws in software in CI: its feedback runs on a square around the picture
+  // (no turning rectangle), about twice the pixels of the picture.
+  test.setTimeout(240_000);
   const errors = collectErrors(page);
   await page.goto('/');
   await addTrack(page, 10);
@@ -107,7 +110,7 @@ test('exports the range between the markers as a video file @firefox', async ({ 
   await expect(page.getByTestId('export-progress')).toBeVisible();
   // The live visuals pause while exporting; the top bar shows the progress.
   await expect(page.getByTestId('export-button')).toContainText('%');
-  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 100_000 });
+  await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 200_000 });
 
   const file = await download(page);
   expect(file.name).toMatch(/^Clicks \(0m05s-0m09s\)\.(mp4|webm)$/);
