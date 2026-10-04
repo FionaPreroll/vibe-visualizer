@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { elapsed, shown, speed } from './time';
 import { createWav } from './wav';
 
 // The welcome (tested in visuals.spec.ts) would cover the page.
@@ -40,9 +41,9 @@ test('the app starts in this browser, which has all it needs (NF-02) @firefox', 
   });
 });
 
-async function addFiles(page: Page) {
+async function addFiles(page: Page, firstSeconds = 4) {
   await page.getByTestId('file-input').setInputFiles([
-    { name: 'First.wav', mimeType: 'audio/wav', buffer: createWav(4, 44100) },
+    { name: 'First.wav', mimeType: 'audio/wav', buffer: createWav(firstSeconds, 44100) },
     { name: 'Second.wav', mimeType: 'audio/wav', buffer: createWav(3, 48000) },
     { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not audio') },
   ]);
@@ -52,10 +53,6 @@ async function addFiles(page: Page) {
   await expect(items.nth(1)).toHaveAttribute('data-status', 'ready');
   await expect(items.nth(2)).toHaveAttribute('data-status', 'unsupported');
   return items;
-}
-
-async function elapsed(page: Page): Promise<number> {
-  return Number(await page.getByTestId('elapsed').getAttribute('data-seconds'));
 }
 
 test('queue: adds files, reports unsupported ones, reorders and removes', async ({ page }) => {
@@ -135,7 +132,7 @@ test('playback: plays, seeks, shows the analysis and moves on to the next track 
 }) => {
   const errors = collectErrors(page);
   await page.goto('/');
-  await addFiles(page);
+  await addFiles(page, 8);
 
   await page.getByTestId('play-button').click();
   await expect(page.getByTestId('now-title')).toHaveText('First');
@@ -145,17 +142,17 @@ test('playback: plays, seeks, shows the analysis and moves on to the next track 
   const queue = page.getByRole('listbox', { name: 'Queue tracks' });
   await expect(queue.getByRole('option', { selected: true })).toContainText('First');
 
-  // Seek by clicking at 50 % of the timeline (4 s track → 2 s).
+  // Seek by clicking at 50 % of the timeline (8 s track → 4 s): far ahead of the playhead, and
+  // far from the end, even on a slow machine.
   const box = (await page.getByTestId('timeline').boundingBox())!;
   await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2);
-  await expect.poll(() => elapsed(page)).toBeGreaterThan(1.9);
+  await expect.poll(() => elapsed(page)).toBeGreaterThan(3.9);
 
-  // The 44.1 kHz file plays at the right speed on the 48 kHz engine.
-  const before = await elapsed(page);
-  await page.waitForTimeout(1000);
-  const advanced = (await elapsed(page)) - before;
-  expect(advanced).toBeGreaterThan(0.85);
-  expect(advanced).toBeLessThan(1.15);
+  // The 44.1 kHz file plays at the right speed on the 48 kHz engine. (Measured in the page: on
+  // a busy machine the time shown follows late, as frames do.)
+  const rate = await speed(page, 1000);
+  expect(rate).toBeGreaterThan(0.85);
+  expect(rate).toBeLessThan(1.15);
 
   // At the end of the track the next one starts (the unsupported file is skipped).
   await expect(page.getByTestId('now-title')).toHaveText('Second', { timeout: 10_000 });
@@ -164,9 +161,9 @@ test('playback: plays, seeks, shows the analysis and moves on to the next track 
   // Space pauses.
   await page.locator('body').press(' ');
   await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Play');
-  const paused = await elapsed(page);
+  const paused = await shown(page);
   await page.waitForTimeout(500);
-  expect(await elapsed(page)).toBeCloseTo(paused, 1);
+  expect(await shown(page)).toBeCloseTo(paused, 1);
   expect(errors).toEqual([]);
 });
 

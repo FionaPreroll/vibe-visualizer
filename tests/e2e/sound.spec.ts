@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { ALL_FORMATS, BufferSource, Input } from 'mediabunny';
 import { readFile } from 'node:fs/promises';
+import { speed } from './time';
 import { createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
@@ -24,34 +25,6 @@ async function addTrack(page: Page, seconds: number) {
     buffer: createWav(seconds, 44100),
   });
   await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
-}
-
-/**
- * Track seconds played per second of real time: the slope through every update of the elapsed
- * time over `ms`, measured in the page (robust against a slow display rate).
- */
-function speed(page: Page, ms = 2000): Promise<number> {
-  return page.evaluate(async (duration) => {
-    const element = document.querySelector('[data-testid="elapsed"]')!;
-    const points: [number, number][] = [];
-    const record = () =>
-      points.push([performance.now() / 1000, Number(element.getAttribute('data-seconds'))]);
-    // Only updates: each value is fresh at the moment it is recorded.
-    const observer = new MutationObserver(record);
-    observer.observe(element, { attributes: true, attributeFilter: ['data-seconds'] });
-    await new Promise((resolve) => setTimeout(resolve, duration));
-    observer.disconnect();
-    if (points.length < 2) return 0;
-    const meanTime = points.reduce((sum, [time]) => sum + time, 0) / points.length;
-    const meanValue = points.reduce((sum, [, value]) => sum + value, 0) / points.length;
-    let covariance = 0;
-    let variance = 0;
-    for (const [time, value] of points) {
-      covariance += (time - meanTime) * (value - meanValue);
-      variance += (time - meanTime) ** 2;
-    }
-    return covariance / variance;
-  }, ms);
 }
 
 test('the tempo fader changes the speed, with vinyl and with key lock', async ({ page }) => {
