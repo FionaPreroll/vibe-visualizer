@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { startWithClassicLook } from './looks';
 import { COVER, expectMotion, logoQuarters, measure, showsCover, type Region } from './pixels';
+import { moreAction, openMore } from './topbar';
 import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';
 
@@ -86,12 +87,15 @@ test('the visuals can rest while the music plays on (DS-05)', async ({ page }) =
   const elapsed = async () =>
     Number(await page.getByTestId('elapsed').getAttribute('data-seconds'));
 
-  // Paused with the button: the stage keeps its last picture, dimmed, and says so.
-  await page.getByTestId('visuals-pause').click();
-  await expect(page.getByTestId('visuals-pause')).toHaveAttribute('aria-pressed', 'true');
+  // Paused from the ⋯ menu: the stage keeps its last picture, dimmed, and says so.
+  await moreAction(page, 'visuals-pause');
   await expect(page.getByTestId('visuals-paused')).toBeVisible();
   await expect(stage).toHaveAttribute('data-paused', 'true');
+  await openMore(page);
+  await expect(page.getByTestId('visuals-pause')).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByTestId('picture-button')).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('more-menu')).toBeHidden();
   await page.waitForTimeout(300);
   const first = await stage.screenshot();
   const before = await elapsed();

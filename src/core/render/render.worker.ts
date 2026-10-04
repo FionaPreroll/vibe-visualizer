@@ -58,6 +58,15 @@ let clock: { contextTime: number; performanceTime: number; live: boolean } | nul
 let running = false;
 let request = 0;
 let lastTime = -1;
+/**
+ * Backup frames (DS-06): while on, a timer draws when no animation frame has come for a while,
+ * as behind other tabs while the canvas shows in the mini player's window.
+ */
+let backupTimer: ReturnType<typeof setInterval> | undefined;
+/** When the last animation frame came (performance.now()). */
+let lastAnimationFrame = 0;
+/** No animation frame for this long (ms): the timer draws. */
+const BACKUP_AFTER_MS = 250;
 let startTime = -1;
 let frames = 0;
 let statsStart = 0;
@@ -156,8 +165,10 @@ function playedSince(dt: number, sampled: boolean, live: boolean): number {
   return step > 0 && step < 3 * dt * overlayRate + 0.03 ? dt * overlayRate : step;
 }
 
-function frame(now: number): void {
+/** Draws a frame at `now`, and asks for the next; from the backup timer, `backup`. */
+function frame(now: number, backup = false): void {
   request = 0;
+  if (!backup) lastAnimationFrame = performance.now();
   if (!running || !scene || lost) return;
   if (startTime < 0) startTime = now;
   const dt = lastTime < 0 ? 1 / 60 : (now - lastTime) / 1000;
@@ -301,12 +312,27 @@ function setRunning(value: boolean): void {
     lastTime = -1;
     statsStart = performance.now();
     statsFrames = 0;
+    lastAnimationFrame = statsStart;
     request = scope.requestAnimationFrame(frame);
   }
   if (!running && request) {
     scope.cancelAnimationFrame(request);
     request = 0;
   }
+}
+
+function setBackupFrames(on: boolean): void {
+  clearInterval(backupTimer);
+  backupTimer = on ? setInterval(backupFrame, 1000 / 60) : undefined;
+}
+
+/** The animation frame asked for has not come for a while: this one draws, and asks anew. */
+function backupFrame(): void {
+  if (!running || !scene || lost) return;
+  const now = performance.now();
+  if (now - lastAnimationFrame < BACKUP_AFTER_MS) return;
+  if (request) scope.cancelAnimationFrame(request);
+  frame(now, true);
 }
 
 /** Shows `kind` from the next frame on (the scene's buffers follow the canvas size). */
@@ -467,6 +493,9 @@ scope.addEventListener('message', (event) => {
       case 'running':
         setRunning(message.running);
         break;
+      case 'backupFrames':
+        setBackupFrames(message.on);
+        break;
       case 'capture':
         if (running && scene && !lost) captures.push(message);
         else
@@ -477,6 +506,7 @@ scope.addEventListener('message', (event) => {
         break;
       case 'dispose':
         setRunning(false);
+        setBackupFrames(false);
         logoSpectrum?.dispose();
         kaleidoscope?.dispose();
         overlay?.dispose();
