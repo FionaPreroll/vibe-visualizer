@@ -216,6 +216,19 @@ test('screenshots for the README', async ({ page, context }) => {
   await shot(page, 'controller');
   await page.keyboard.press('Escape');
 
+  // The mini player (DS-06): the visuals in a window of their own, with its controls.
+  await seek(page, 0.8, duration);
+  const opened = context.waitForEvent('page');
+  await moreAction(page, 'mini-player');
+  const mini = await opened;
+  await mini.setViewportSize({ width: 640, height: 360 });
+  await mini.mouse.move(320, 180);
+  await mini.waitForTimeout(2500);
+  await mini.screenshot({ path: `${OUT}/mini-player.jpg`, type: 'jpeg', quality: 85 });
+  const closed = mini.waitForEvent('close');
+  await mini.getByTestId('mini-back').click();
+  await closed;
+
   // The tracks of the queue as one video, with chapters.
   await page.getByTestId('file-input').setInputFiles({ ...file, name: 'Second Demo.wav' });
   await expect(page.getByTestId('queue-item').nth(1)).toHaveAttribute('data-status', 'ready', {
@@ -225,4 +238,73 @@ test('screenshots for the README', async ({ page, context }) => {
   await page.getByTestId('export-range-tracks').check();
   await page.waitForTimeout(800);
   await shot(page, 'export-tracks');
+});
+
+test('screenshots of the top bar and its ⋯ menu', async ({ page, context }) => {
+  test.setTimeout(240_000);
+  mkdirSync(OUT, { recursive: true });
+  await page.addInitScript(() => {
+    localStorage.setItem('vibe-visualizer:welcome:v1', '1');
+    // The export below is downloaded at its end: no dialog asks where to save it.
+    delete (window as { showSaveFilePicker?: unknown }).showSaveFilePicker;
+    delete (window as { showDirectoryPicker?: unknown }).showDirectoryPicker;
+  });
+  await page.goto('/');
+  const mix = createDrumMix(48000);
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'FibeStation Demo.wav',
+    mimeType: 'audio/wav',
+    buffer: wav(mix.left, mix.right, mix.sampleRate),
+  });
+  await expect(page.getByTestId('queue-bpm')).toBeVisible({ timeout: 60_000 });
+
+  // The ⋯ menu, open: the corner of the window it is in.
+  await page.getByTestId('more-button').click();
+  await expect(page.getByTestId('more-menu')).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.screenshot({
+    path: `${OUT}/menu.jpg`,
+    type: 'jpeg',
+    quality: 85,
+    clip: { x: 800, y: 0, width: 640, height: 400 },
+  });
+  await page.keyboard.press('Escape');
+
+  // The bar at four widths, then while an export runs; one picture of them all.
+  const widths = [
+    [1440, '1440 px'],
+    [1280, '1280 px: the aspect ratio without its platforms'],
+    [1100, '1100 px: the modes as icons'],
+    [800, '800 px: the logo without the name'],
+  ] as const;
+  const bars: { label: string; png: Buffer }[] = [];
+  const takeBars = async (note: string) => {
+    for (const [width, label] of widths) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(300);
+      bars.push({ label: label + note, png: await page.locator('header.topbar').screenshot() });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+  };
+  await takeBars('');
+  await page.getByTestId('export-button').click();
+  await page.getByTestId('export-start').click();
+  await expect(page.getByTestId('export-progress')).toHaveAttribute('data-phase', 'video', {
+    timeout: 120_000,
+  });
+  await page.keyboard.press('Escape');
+  await takeBars(', an export running');
+  const sheet = await context.newPage();
+  const rows = bars
+    .map(
+      ({ label, png }) =>
+        `<p>${label}</p><img src="data:image/png;base64,${png.toString('base64')}">`,
+    )
+    .join('');
+  await sheet.setContent(
+    `<style>body{margin:0;background:#28282e}main{display:inline-block}` +
+      `p{margin:0;padding:6px 8px 4px;font:16px system-ui,sans-serif;color:#ebebf0}` +
+      `img{display:block;margin-bottom:6px}</style><main>${rows}</main>`,
+  );
+  await sheet.locator('main').screenshot({ path: `${OUT}/top-bar.png` });
 });
