@@ -50,8 +50,35 @@ async function seek(page: Page, fraction: number, duration: number): Promise<voi
   await expect.poll(async () => Math.abs(await offset()), { timeout: 10_000 }).toBeLessThan(1);
 }
 
-test('screenshots for the README', async ({ page }) => {
-  test.setTimeout(300_000);
+/**
+ * A DDJ-FLX2 that is not there (as in the e2e tests): Web MIDI with one input and one output
+ * named like the controller, for the screenshot of the controller dialog.
+ */
+async function fakeController(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const input = { id: 'flx2-in', name: 'DDJ-FLX2', type: 'input', state: 'connected' };
+    const output = {
+      id: 'flx2-out',
+      name: 'DDJ-FLX2',
+      type: 'output',
+      state: 'connected',
+      send: () => undefined,
+    };
+    const access = {
+      inputs: new Map([[input.id, { ...input, onmidimessage: null }]]),
+      outputs: new Map([[output.id, output]]),
+      onstatechange: null,
+      sysexEnabled: false,
+    };
+    Object.defineProperty(Navigator.prototype, 'requestMIDIAccess', {
+      configurable: true,
+      value: () => Promise.resolve(access),
+    });
+  });
+}
+
+test('screenshots for the README', async ({ page, context }) => {
+  test.setTimeout(600_000);
   mkdirSync(OUT, { recursive: true });
   const mix = createDrumMix(48000);
   const duration = mix.left.length / mix.sampleRate;
@@ -61,6 +88,8 @@ test('screenshots for the README', async ({ page }) => {
     buffer: wav(mix.left, mix.right, mix.sampleRate),
   };
 
+  await context.grantPermissions(['midi']);
+  await fakeController(page);
   // Software rendering is slow: the screenshots keep the full resolution (VE-07).
   await page.addInitScript(() => {
     const key = 'vibe-visualizer:settings:v1';
@@ -99,6 +128,13 @@ test('screenshots for the README', async ({ page }) => {
   await page.waitForTimeout(4000);
   await shot(page, 'kaleidoscope');
 
+  // Neon Ribbons, with its controls.
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByTestId('preset-select').selectOption('Neon Ribbons');
+  await seek(page, 0.8, duration);
+  await page.waitForTimeout(4000);
+  await shot(page, 'neon-ribbons');
+
   // A TikTok frame with its safe areas, and the Visuals tab.
   await page.getByRole('button', { name: 'Logo Spectrum' }).click();
   await page.getByTestId('aspect-select').selectOption('9:16');
@@ -115,4 +151,57 @@ test('screenshots for the README', async ({ page }) => {
   await expect(page.getByTestId('export-dialog')).toBeVisible();
   await page.waitForTimeout(800);
   await shot(page, 'export');
+  await page.keyboard.press('Escape');
+
+  // Rain in the Logo Spectrum (LS-17).
+  await page.getByTestId('preset-select').selectOption('Night Rain');
+  await seek(page, 0.8, duration);
+  await page.waitForTimeout(2500);
+  await shot(page, 'night-rain');
+
+  // The Sound and Live tabs.
+  await page.getByRole('tab', { name: 'Sound' }).click();
+  await page.waitForTimeout(800);
+  await shot(page, 'sound');
+  await page.getByRole('tab', { name: 'Live' }).click();
+  await page.waitForTimeout(800);
+  await shot(page, 'live');
+
+  // What the visuals react to.
+  await page.getByRole('button', { name: 'Analysis' }).click();
+  await seek(page, 0.8, duration);
+  await page.waitForTimeout(2500);
+  await shot(page, 'analysis');
+  await page.getByRole('button', { name: 'Logo Spectrum' }).click();
+
+  // The colours of a track: two of your own, with the preview.
+  await page.getByRole('tab', { name: 'Queue' }).click();
+  await page.getByTestId('queue-rename').first().click();
+  await page.getByTestId('track-colors-own').click();
+  const picks = page.getByTestId('track-colors-pick');
+  await picks.first().fill('#ff5ca8');
+  await page.getByRole('button', { name: 'Add a colour' }).click();
+  await picks.nth(1).fill('#3d7bff');
+  await page.waitForTimeout(800);
+  await shot(page, 'track-colours');
+  await page.keyboard.press('Escape');
+
+  // The DJ controller, connected.
+  await page.getByTestId('controller-button').click();
+  const controller = page.getByTestId('controller-dialog');
+  await controller.getByTestId('controller-connect').click();
+  await expect(controller.getByTestId('controller-status')).toHaveText('Connected');
+  await page.waitForTimeout(500);
+  await shot(page, 'controller');
+  await page.keyboard.press('Escape');
+
+  // The tracks of the queue as one video, with chapters.
+  await page.getByTestId('file-input').setInputFiles({ ...file, name: 'Second Demo.wav' });
+  await expect(page.getByTestId('queue-item').nth(1)).toHaveAttribute('data-status', 'ready', {
+    timeout: 60_000,
+  });
+  await page.getByTestId('export-button').click();
+  await page.getByTestId('export-range-tracks').check();
+  await page.waitForTimeout(800);
+  await shot(page, 'export-tracks');
 });
