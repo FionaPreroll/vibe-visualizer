@@ -7,6 +7,9 @@ import { createPng } from './png';
 import { moreAction } from './topbar';
 import { createTaggedWav, createWav } from './wav';
 
+// On CI four jobs share these tests by their times there: the tag @ci-exports-1, 2 or 3 puts a
+// test in one of the first three jobs, and the fourth takes the tests without such a tag.
+
 test.beforeEach(async ({ page }) => {
   await startWithClassicLook(page);
   await page.addInitScript(() => {
@@ -73,7 +76,9 @@ async function inspect(data: Buffer) {
   };
 }
 
-test('exports the range between the markers as a video file @firefox', async ({ page }) => {
+test('exports the range between the markers as a video file @firefox @ci-exports-2', async ({
+  page,
+}) => {
   // The Kaleidoscope draws in software in CI: its feedback runs on a square around the picture
   // (no turning rectangle), about twice the pixels of the picture.
   test.setTimeout(240_000);
@@ -123,7 +128,7 @@ test('exports the range between the markers as a video file @firefox', async ({ 
   expect(errors).toEqual([]);
 });
 
-test('the video shows the track overlay and the cover art (LS-15, LS-18, LS-19)', async ({
+test('the video shows the track overlay and the cover art (LS-15, LS-18, LS-19) @ci-exports-3', async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -293,7 +298,7 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
   expect(errors).toEqual([]);
 });
 
-test('a video of tracks takes the colours of each: its cover art, or its own (VE-12)', async ({
+test('a video of tracks takes the colours of each: its cover art, or its own (VE-12) @ci-exports-3', async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -371,7 +376,9 @@ async function addBatchTracks(page: Page, seconds: number) {
   for (const item of await items.all()) await expect(item).toHaveAttribute('data-status', 'ready');
 }
 
-test('a video of each track, waiting in browser storage (EX-09)', async ({ page }) => {
+test('a video of each track, waiting in browser storage (EX-09) @ci-exports-3', async ({
+  page,
+}) => {
   test.setTimeout(240_000);
   const errors = collectErrors(page);
   await page.goto('/');
@@ -420,7 +427,7 @@ test('a video of each track, waiting in browser storage (EX-09)', async ({ page 
   expect(errors).toEqual([]);
 });
 
-test('a video of each track, into a folder you pick (EX-09)', async ({ page }) => {
+test('a video of each track, into a folder you pick (EX-09) @ci-exports-2', async ({ page }) => {
   test.setTimeout(240_000);
   const errors = collectErrors(page);
   await page.addInitScript(() => {
@@ -525,7 +532,7 @@ test('the picture on the stage is saved as a PNG thumbnail (EX-10)', async ({ pa
   expect(errors).toEqual([]);
 });
 
-test('an interrupted export resumes after a reload', async ({ page }) => {
+test('an interrupted export resumes after a reload @ci-exports-1', async ({ page }) => {
   // Two scenes per frame in software rendering, and the frames after the last whole segment
   // twice: about 2¼ min here and 3½ min on CI, the slowest test there. A runner may be slower.
   test.setTimeout(420_000);
