@@ -43,8 +43,9 @@ jobs:
 
   # The end-to-end tests in Chromium, in four jobs at once. Each runner draws in software and
   # runs its tests one at a time; the exports take more than half of the time, so they have
-  # two jobs of their own. Each pair of filters is complementary, so every test runs once:
-  # the exports with several tracks and the others; the other files in two halves.
+  # two jobs of their own, split by how long the tests took on CI. Each pair of filters is
+  # complementary, so every test runs once: the exports in two parts; the other files in two
+  # halves.
   e2e:
     name: e2e (${{ matrix.part }})
     runs-on: ubuntu-24.04
@@ -52,10 +53,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - part: exports of several tracks
-            args: tests/e2e/export.spec.ts --grep "tracks|each track"
-          - part: the other exports
-            args: tests/e2e/export.spec.ts --grep-invert "tracks|each track"
+          - part: exports, 1 of 2
+            args: tests/e2e/export.spec.ts --grep "tracks of the queue|video of tracks|waiting in browser storage|resumes after a reload"
+          - part: exports, 2 of 2
+            args: tests/e2e/export.spec.ts --grep-invert "tracks of the queue|video of tracks|waiting in browser storage|resumes after a reload"
           - part: the rest, 1 of 2
             args: --grep-invert "export\.spec" --fully-parallel --shard=1/2
           - part: the rest, 2 of 2
