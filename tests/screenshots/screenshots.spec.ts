@@ -41,10 +41,16 @@ async function shot(page: Page, name: string): Promise<void> {
 }
 
 /**
- * Jumps to `fraction` of the track (`duration` seconds long) by a click on the timeline, and
- * clicks again when a click did not take (on a slow runner, the first can come too early).
+ * Jumps to `fraction` of the track (`duration` seconds long) by a click on the timeline, playing,
+ * and clicks again when a click did not take (on a slow runner, the first can come too early).
  */
 async function seek(page: Page, fraction: number, duration: number): Promise<void> {
+  // The track may have played to its end since the last jump: it plays again.
+  const play = page.getByTestId('play-button');
+  if ((await play.getAttribute('aria-label')) === 'Play') {
+    await play.click();
+    await expect(play).toHaveAttribute('aria-label', 'Pause');
+  }
   const offset = async () =>
     Number(await page.getByTestId('elapsed').getAttribute('data-seconds')) - fraction * duration;
   await expect(async () => {
