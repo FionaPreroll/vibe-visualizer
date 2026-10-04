@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { startWithClassicLook } from './looks';
+import { moreAction } from './topbar';
 import { createWav } from './wav';
 
 /**
@@ -92,11 +93,13 @@ test('a DDJ-FLX2 plays, sets hot cues, filters and changes the tempo (CTL-02, CT
   });
   await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
 
-  await page.getByTestId('controller-button').click();
+  await moreAction(page, 'controller-button');
   const dialog = page.getByTestId('controller-dialog');
   await dialog.getByTestId('controller-connect').click();
   await expect(dialog.getByTestId('controller-status')).toHaveText('Connected');
   await expect(dialog.getByTestId('controller-devices')).toContainText('Pioneer DJ DDJ-FLX2');
+  // The ⋯ menu of the top bar, where the dialog is, shows that a controller is connected.
+  await expect(page.getByTestId('more-dot')).toBeVisible();
   // The lights start off.
   expect(await light(page, 0x90, 0x0b)).toBe(0);
   await page.keyboard.press('Escape');
@@ -198,7 +201,7 @@ test('a DDJ-FLX2 plays, sets hot cues, filters and changes the tempo (CTL-02, CT
 
   // After a reload the controller comes back by itself, as MIDI is allowed.
   await page.reload();
-  await page.getByTestId('controller-button').click();
+  await moreAction(page, 'controller-button');
   await expect(dialog.getByTestId('controller-status')).toHaveText('Connected');
   await dialog.getByTestId('controller-disconnect').click();
   await expect(dialog.getByTestId('controller-status')).toHaveText('Not connected');
@@ -220,7 +223,7 @@ test('the jog wheel stays in the track, step by step', async ({ page, context })
   const items = page.getByTestId('queue-item');
   await expect(items.first()).toHaveAttribute('data-status', 'ready');
   await expect(items.nth(1)).toHaveAttribute('data-status', 'ready');
-  await page.getByTestId('controller-button').click();
+  await moreAction(page, 'controller-button');
   const dialog = page.getByTestId('controller-dialog');
   await dialog.getByTestId('controller-connect').click();
   await expect(dialog.getByTestId('controller-status')).toHaveText('Connected');
@@ -256,7 +259,7 @@ test('the playhead follows the jog wheel smoothly', async ({ page, context }) =>
     buffer: createWav(60, 44100),
   });
   await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
-  await page.getByTestId('controller-button').click();
+  await moreAction(page, 'controller-button');
   const dialog = page.getByTestId('controller-dialog');
   await dialog.getByTestId('controller-connect').click();
   await expect(dialog.getByTestId('controller-status')).toHaveText('Connected');
@@ -298,7 +301,7 @@ test('the playhead follows the jog wheel smoothly', async ({ page, context }) =>
 
 test('the MIDI monitor shows what a controller sends', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('controller-button').click();
+  await moreAction(page, 'controller-button');
   const dialog = page.getByTestId('controller-dialog');
   await dialog.getByTestId('controller-connect').click();
   await expect(dialog.getByTestId('controller-status')).toHaveText('Connected');
@@ -320,7 +323,7 @@ test('the MIDI monitor shows what a controller sends', async ({ page }) => {
 
 test('what the controls do is in the help, which the dialog opens', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('controller-button').click();
+  await moreAction(page, 'controller-button');
   const dialog = page.getByTestId('controller-dialog');
   await expect(dialog).toBeVisible();
   await dialog.getByTestId('controller-help').click();

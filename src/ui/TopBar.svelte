@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MediaQuery } from 'svelte/reactivity';
   import { ASPECT_RATIOS, isAspectRatio } from '../core/export/video-format';
   import { APP_NAME_LENGTH, DEFAULT_APP_NAME, type VisualMode } from '../core/state/app-state';
   import { useControllers } from './controller-context';
@@ -6,6 +7,7 @@
   import Icon, { type IconName } from './Icon.svelte';
   import { usePlayer } from './player-context';
   import { useCapture } from './stage-capture';
+  import TopBarMenu, { type TopBarMenuItem } from './TopBarMenu.svelte';
 
   interface Props {
     onFullscreen: () => void;
@@ -48,6 +50,51 @@
     const name = draft.trim().slice(0, APP_NAME_LENGTH);
     player.updateSettings({ appName: name || DEFAULT_APP_NAME });
   }
+
+  /**
+   * Narrower windows (the bar spans the window): the aspect ratio without its platforms, and
+   * the export's progress without "Exporting"; narrower still, the CSS keeps the modes' icons
+   * only and then hides the app's name.
+   */
+  const compact = new MediaQuery('max-width: 1359px');
+
+  /** The actions used now and then, in the ⋯ menu. */
+  const menuItems = $derived<TopBarMenuItem[]>([
+    {
+      label: 'Safe areas',
+      icon: 'safe',
+      checked: $app.settings.safeAreas,
+      title: 'Where the platforms put their buttons and captions',
+      testid: 'safe-areas-toggle',
+      onselect: () => player.updateSettings({ safeAreas: !$app.settings.safeAreas }),
+    },
+    {
+      label: 'Only the music',
+      icon: 'visualsOff',
+      key: 'B',
+      checked: $app.settings.visualsPaused,
+      title: 'Pause the visuals; the music plays on',
+      testid: 'visuals-pause',
+      onselect: () => player.updateSettings({ visualsPaused: !$app.settings.visualsPaused }),
+    },
+    {
+      label: 'Save the picture as a PNG',
+      icon: 'camera',
+      key: 'C',
+      disabled: !$captureReady || $exporter.status === 'running' || $app.settings.visualsPaused,
+      title: 'The picture on the stage, e.g. as a thumbnail',
+      testid: 'picture-button',
+      onselect: onPicture,
+    },
+    {
+      label: 'DJ controller',
+      icon: 'controller',
+      note: controllerOn ? 'connected' : undefined,
+      title: controllerOn ? 'DJ controller: connected' : 'Connect a DJ controller',
+      testid: 'controller-button',
+      onselect: onController,
+    },
+  ]);
 
   const MODES: { id: VisualMode; label: string; title: string; icon: IconName }[] = [
     { id: 'logoSpectrum', label: 'Logo Spectrum', title: 'Logo Spectrum visuals', icon: 'ring' },
@@ -106,7 +153,7 @@
           title={mode.title}
         >
           <Icon name={mode.icon} size={18} />
-          {mode.label}
+          <span class="mode-label">{mode.label}</span>
         </button>
       {/each}
     </div>
@@ -122,41 +169,13 @@
       data-testid="aspect-select"
     >
       {#each ASPECT_RATIOS as entry (entry.id)}
-        <option value={entry.id}>{entry.id} · {entry.hint}</option>
+        <option value={entry.id}
+          >{compact.current ? entry.id : `${entry.id} · ${entry.hint}`}</option
+        >
       {/each}
     </select>
-    <button
-      class="toggle"
-      class:on={$app.settings.safeAreas}
-      onclick={() => player.updateSettings({ safeAreas: !$app.settings.safeAreas })}
-      aria-pressed={$app.settings.safeAreas}
-      title="Safe areas"
-    >
-      <Icon name="safe" size={18} />
-    </button>
     <button class="toggle" onclick={onFullscreen} title="Fullscreen (F)">
       <Icon name="fullscreen" size={18} />
-    </button>
-    <button
-      class="toggle"
-      class:on={$app.settings.visualsPaused}
-      onclick={() => player.updateSettings({ visualsPaused: !$app.settings.visualsPaused })}
-      aria-pressed={$app.settings.visualsPaused}
-      title="Pause the visuals; the music plays on (B)"
-      aria-label="Pause the visuals"
-      data-testid="visuals-pause"
-    >
-      <Icon name="visualsOff" size={18} />
-    </button>
-    <button
-      class="toggle"
-      onclick={onPicture}
-      disabled={!$captureReady || $exporter.status === 'running' || $app.settings.visualsPaused}
-      title="Save the picture as a PNG, e.g. as a thumbnail (C)"
-      aria-label="Save the picture"
-      data-testid="picture-button"
-    >
-      <Icon name="camera" size={18} />
     </button>
     <button
       class="toggle"
@@ -167,22 +186,12 @@
     >
       <Icon name="panel" size={18} />
     </button>
-    <button
-      class="toggle controller"
-      class:on={controllerOn}
-      onclick={onController}
-      title={controllerOn ? 'DJ controller: connected' : 'DJ controller'}
-      aria-label="DJ controller"
-      data-testid="controller-button"
-    >
-      <Icon name="controller" size={18} />
-      {#if controllerOn}<span class="dot"></span>{/if}
-    </button>
+    <TopBarMenu items={menuItems} dot={controllerOn} />
     <button class="primary export" onclick={onExport} data-testid="export-button">
       <Icon name="export" size={18} />
       {#if $exporter.status === 'running'}
         {@const job = $exporter.job}
-        {job.paused ? 'Paused' : 'Exporting'}
+        {#if job.paused}Paused{:else if !compact.current}Exporting{/if}
         {#if job.batch}{job.batch.index + 1}/{job.batch.count} ·{/if}
         {Math.floor(job.progress * 100)} %
       {:else}
@@ -235,6 +244,13 @@
     font: inherit;
     font-size: 16px;
   }
+  /* A long name (up to 40 characters) must not push the buttons out of the bar. */
+  button.name {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   button.name:hover {
     border-color: var(--border);
   }
@@ -273,18 +289,6 @@
   .toggle.on {
     background: var(--surface-2);
   }
-  .controller {
-    position: relative;
-  }
-  .controller .dot {
-    position: absolute;
-    top: 4px;
-    right: 5px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #4ade80;
-  }
   .help {
     width: 32px;
     justify-content: center;
@@ -302,5 +306,38 @@
     margin-left: 8px;
     padding: 5px 12px;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .toggle,
+  .aspect {
+    white-space: nowrap;
+  }
+  /* Narrower: the modes show their icons only (the label stays for screen readers). */
+  @media (max-width: 1119px) {
+    .modes .toggle {
+      padding: 5px 9px;
+    }
+    .mode-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+  /* Narrower still: the logo without the name (Settings renames the app). */
+  @media (max-width: 819px) {
+    .name {
+      display: none;
+    }
+  }
+  /* The last resort: a second row, rather than buttons out of reach. */
+  @media (max-width: 699px) {
+    .topbar,
+    nav {
+      flex-wrap: wrap;
+      row-gap: 6px;
+    }
   }
 </style>

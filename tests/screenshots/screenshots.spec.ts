@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { createDrumMix } from '../../src/core/analysis/eval/drum-mix';
+import { moreAction } from '../e2e/topbar';
 
 /**
  * The screenshots of the README (docs/screenshots), taken while a synthetic EDM mix plays:
@@ -158,14 +159,14 @@ test('screenshots for the README', async ({ page, context }) => {
   // A TikTok frame with its safe areas, and the Visuals tab.
   await page.getByRole('button', { name: 'Logo Spectrum' }).click();
   await page.getByTestId('aspect-select').selectOption('9:16');
-  await page.getByTitle('Safe areas').click();
+  await moreAction(page, 'safe-areas-toggle');
   await page.getByRole('tab', { name: 'Visuals' }).click();
   await seek(page, 0.8, duration);
   await page.waitForTimeout(2500);
   await shot(page, 'tiktok');
 
   // The export dialog.
-  await page.getByTitle('Safe areas').click();
+  await moreAction(page, 'safe-areas-toggle');
   await page.getByTestId('aspect-select').selectOption('16:9');
   await page.getByTestId('export-button').click();
   await expect(page.getByTestId('export-dialog')).toBeVisible();
@@ -207,7 +208,7 @@ test('screenshots for the README', async ({ page, context }) => {
   await page.keyboard.press('Escape');
 
   // The DJ controller, connected.
-  await page.getByTestId('controller-button').click();
+  await moreAction(page, 'controller-button');
   const controller = page.getByTestId('controller-dialog');
   await controller.getByTestId('controller-connect').click();
   await expect(controller.getByTestId('controller-status')).toHaveText('Connected');

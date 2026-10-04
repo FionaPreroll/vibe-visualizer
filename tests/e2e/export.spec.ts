@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { startWithClassicLook } from './looks';
 import { COVER, logoQuarters, measure, showsCover, videoFrame } from './pixels';
 import { createPng } from './png';
+import { moreAction } from './topbar';
 import { createTaggedWav, createWav } from './wav';
 
 test.beforeEach(async ({ page }) => {
@@ -507,7 +508,7 @@ test('the picture on the stage is saved as a PNG thumbnail (EX-10)', async ({ pa
     };
   };
   // YouTube's thumbnail size, named after the track, with the cover and the title.
-  const picture = await save(() => page.getByTestId('picture-button').click());
+  const picture = await save(() => moreAction(page, 'picture-button'));
   expect(picture).toMatchObject({ name: 'The Testers - Sunrise.png', width: 1280, height: 720 });
   expect(picture.data.length).toBeLessThan(2 * 1024 * 1024);
   const [title, ...quarters] = await measure(page, picture.data, [
@@ -659,7 +660,7 @@ test('the stage follows the aspect ratio and shows safe areas', async ({ page })
   expect(await ratio()).toBeCloseTo(16 / 9, 1);
   await page.getByTestId('aspect-select').selectOption('9:16');
   await expect.poll(ratio).toBeCloseTo(9 / 16, 1);
-  await page.getByRole('button', { name: 'Safe areas' }).click();
+  await moreAction(page, 'safe-areas-toggle');
   await expect(page.getByTestId('safe-areas')).toContainText('Buttons');
   // Choosing the TikTok preset in the export dialog keeps 9:16; YouTube switches back.
   await page.getByTestId('export-button').click();
