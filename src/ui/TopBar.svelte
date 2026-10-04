@@ -65,9 +65,9 @@
   }
 
   /**
-   * Narrower windows (the bar spans the window): the aspect ratio without its platforms, and
-   * the export's progress without "Exporting"; narrower still, the CSS keeps the modes' icons
-   * only and then hides the app's name.
+   * Narrower windows (the bar spans the window): the aspect ratio without its platforms. The CSS
+   * shows a running export's progress without "Exporting" there; narrower still, the modes'
+   * icons only, and then no app name.
    */
   const compact = new MediaQuery('max-width: 1359px');
 
@@ -220,7 +220,7 @@
       <Icon name="export" size={18} />
       {#if $exporter.status === 'running'}
         {@const job = $exporter.job}
-        {#if job.paused}Paused{:else if !compact.current}Exporting{/if}
+        {#if job.paused}Paused{:else}<span class="export-label">Exporting</span>{/if}
         {#if job.batch}{job.batch.index + 1}/{job.batch.count} ·{/if}
         {Math.floor(job.progress * 100)} %
       {:else}
@@ -341,7 +341,18 @@
   .aspect {
     white-space: nowrap;
   }
-  /* Narrower: the modes show their icons only (the label stays for screen readers). */
+  /* Narrower: a running export shows its progress only (the word stays for screen readers). */
+  @media (max-width: 1359px) {
+    .export-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+  /* Narrower still: the modes show their icons only (the label stays for screen readers). */
   @media (max-width: 1119px) {
     .modes .toggle {
       padding: 5px 9px;
@@ -355,7 +366,7 @@
       white-space: nowrap;
     }
   }
-  /* Narrower still: the logo without the name (Settings renames the app). */
+  /* Narrower again: the logo without the name (Settings renames the app). */
   @media (max-width: 819px) {
     .name {
       display: none;
