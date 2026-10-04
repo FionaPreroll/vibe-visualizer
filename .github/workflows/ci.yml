@@ -54,9 +54,9 @@ jobs:
       matrix:
         include:
           - part: exports, 1 of 2
-            args: tests/e2e/export.spec.ts --grep "tracks of the queue|resumes after a reload"
+            args: tests/e2e/export.spec.ts --grep "tracks of the queue|video of tracks|resumes after a reload"
           - part: exports, 2 of 2
-            args: tests/e2e/export.spec.ts --grep-invert "tracks of the queue|resumes after a reload"
+            args: tests/e2e/export.spec.ts --grep-invert "tracks of the queue|video of tracks|resumes after a reload"
           - part: the rest, 1 of 2
             args: --grep-invert "export\.spec" --fully-parallel --shard=1/2
           - part: the rest, 2 of 2
