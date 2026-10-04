@@ -76,11 +76,14 @@
   /** The palette the visuals take for this track, as set here; null: the look's own. */
   const palette = $derived(trackPalette(colors, tones));
 
-  // The tones of the cover shown, found as the render worker finds them.
+  // The tones of the cover shown, found as the render worker finds them; those of the cover
+  // before stay until then, so the preview does not flicker.
   $effect(() => {
     const url = preview;
-    tones = null;
-    if (!url) return;
+    if (!url) {
+      tones = null;
+      return;
+    }
     let current = true;
     fetch(url)
       .then((response) => response.blob())
