@@ -12,7 +12,8 @@ export default defineConfig({
   // compete for the CPU and miss their timeouts.
   workers: process.env['CI'] ? 1 : undefined,
   forbidOnly: !!process.env['CI'],
-  reporter: process.env['CI'] ? 'github' : 'list',
+  // On CI also the list, whose line for each test gives its time: the jobs are split by them.
+  reporter: process.env['CI'] ? [['github'], ['list']] : 'list',
   use: {
     baseURL: 'http://localhost:4173',
     trace: 'retain-on-failure',
