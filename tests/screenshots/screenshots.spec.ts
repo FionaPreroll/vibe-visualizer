@@ -119,17 +119,18 @@ test('screenshots for the README', async ({ page, context }) => {
   // The Logo Spectrum in the drop of the mix, with its beat grid and waveforms.
   await page.getByTestId('file-input').setInputFiles(file);
   await expect(page.getByTestId('queue-bpm')).toBeVisible({ timeout: 60_000 });
+  // In the first picture, the logo stands upright, its name easy to read: the record does not
+  // turn for it, from before the music starts, so it never turned (coming back upright takes a
+  // while at the few frames a second of the runner); the look is the default again afterwards.
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.locator('summary', { hasText: /^Logo$/ }).click();
+  await page.getByTestId('logo-spin').selectOption('0');
+  await page.getByRole('tab', { name: 'Queue' }).click();
   await page.getByTestId('play-button').click();
   // The timeline takes clicks once the track is loaded.
   await expect(page.getByTestId('play-button')).toHaveAttribute('aria-label', 'Pause', {
     timeout: 20_000,
   });
-  // In the first picture, the logo stands upright, its name easy to read: the record does not
-  // turn for it, and the look is the default again afterwards.
-  await page.getByRole('tab', { name: 'Visuals' }).click();
-  await page.locator('summary', { hasText: /^Logo$/ }).click();
-  await page.getByTestId('logo-spin').selectOption('0');
-  await page.getByRole('tab', { name: 'Queue' }).click();
   await seek(page, 0.8, duration);
   await page.waitForTimeout(2500);
   await shot(page, 'logo-spectrum');
