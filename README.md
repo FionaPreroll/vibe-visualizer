@@ -19,6 +19,7 @@ Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and 
 - **Videos for YouTube and TikTok:** MP4 in 1080p60, 4K30 or 1080×1920, of a whole track, a clip between two markers, or several tracks of the queue: as one video with chapters for YouTube, or a video of each. With fades if you like, rendered frame by frame (smooth on any machine) and resumable after a crash. A click saves the picture on the stage as a thumbnail.
 - **A player made for DJs:** a gapless queue, waveforms and eight hot cues per track, a beat grid with bars that you can correct (tempo, downbeat, phase), tempo with vinyl or key lock, a DJ filter, delay, reverb and one-click "Slowed + Reverb".
 - **Live input:** visualises music from a DJ mixer, an audio interface, another app or a browser tab.
+- **Mini player:** the visuals in a small window that stays on top while you work in other tabs and apps, with play, pause and skip (Chrome and Edge).
 - **DJ controller:** play, cue, set hot cues, filter and change the tempo from a Pioneer DJ DDJ-FLX2 (Web MIDI), with its lights.
 - **Private:** everything runs in the browser; no server, no uploads. A backup file takes your settings, presets, cues and images to another browser.
 

@@ -62,6 +62,12 @@ export type RenderRequest =
    */
   | { type: 'clock'; contextTime: number; performanceTime: number; live: boolean }
   | { type: 'running'; running: boolean }
+  /**
+   * Animation frames come from the tab's page: behind other tabs it gets none, even while the
+   * canvas shows in the mini player's window (DS-06). With backup frames, a timer draws when they
+   * stop coming.
+   */
+  | { type: 'backupFrames'; on: boolean }
   /** The picture of the next frame, scaled to `width` × `height`, as a PNG (EX-10). */
   | { type: 'capture'; id: number; width: number; height: number }
   /** Loses the graphics context on purpose, as a reset of the graphics card does (for tests). */

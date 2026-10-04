@@ -25,7 +25,8 @@
    * The worker switches presets on its own (PR-02) and says so, so the panels show the preset.
    * It draws at a share of the canvas's device pixels (VE-07): the render scale, lowered by the
    * auto-quality while the frame rate drops. When the graphics card is reset and the context is
-   * lost, or drawing fails, a new worker takes over on a new canvas (NF-09).
+   * lost, or drawing fails, a new worker takes over on a new canvas (NF-09). It can move into the
+   * mini player's window (DS-06) and back, drawing on.
    */
   interface Props {
     mode: SceneKind;
@@ -35,8 +36,10 @@
     paused: boolean;
     /** The visuals rest at the user's wish (DS-05): the stage says so. */
     resting: boolean;
+    /** The window the stage shows in: the tab's, or the mini player's (DS-06). */
+    view?: Window;
   }
-  let { mode, aspect, safeAreas, paused, resting }: Props = $props();
+  let { mode, aspect, safeAreas, paused, resting, view = window }: Props = $props();
 
   const player = usePlayer();
   const assets = useAssets();
@@ -85,6 +88,48 @@
     renderer?.setRunning(visible && !paused);
   });
 
+  // It draws while the window it shows in can be seen: in the mini player's, also while the tab
+  // is behind others. Its worker then gets no animation frames: a timer draws instead.
+  $effect(() => {
+    const doc = view.document;
+    const onVisibility = () => (visible = doc.visibilityState === 'visible');
+    doc.addEventListener('visibilitychange', onVisibility);
+    onVisibility();
+    return () => doc.removeEventListener('visibilitychange', onVisibility);
+  });
+
+  $effect(() => {
+    renderer?.setBackupFrames(view !== window);
+  });
+
+  /** Device pixels of the canvas, at the pixel ratio of the window it shows in. */
+  function measure(element: HTMLCanvasElement): readonly [number, number] {
+    const ratio = view.devicePixelRatio || 1;
+    return [
+      Math.max(1, Math.round(element.clientWidth * ratio)),
+      Math.max(1, Math.round(element.clientHeight * ratio)),
+    ];
+  }
+
+  // The canvas's size, from a resize observer of the window it shows in: another window's
+  // observer reports only while that window draws (a tab behind others does not).
+  $effect(() => {
+    const instance = renderer;
+    const element = canvas;
+    if (!instance || !element) return;
+    const observer = new (view as Window & typeof globalThis).ResizeObserver((entries) => {
+      const device = entries[0]?.devicePixelContentBoxSize?.[0];
+      box = device ? [device.inlineSize, device.blockSize] : measure(element);
+      instance.resize(...scaled());
+    });
+    try {
+      observer.observe(element, { box: 'device-pixel-content-box' });
+    } catch {
+      observer.observe(element);
+    }
+    return () => observer.disconnect();
+  });
+
   const reduceFlashing = $derived($app.settings.reduceFlashing);
   $effect(() => {
     renderer?.setReduceFlashing(reduceFlashing);
@@ -127,14 +172,7 @@
   /** Starts a render worker on the canvas; returns what stops it again. */
   function start(): () => void {
     const element = canvas!;
-    const size = () => {
-      const ratio = window.devicePixelRatio || 1;
-      return [
-        Math.max(1, Math.round(element.clientWidth * ratio)),
-        Math.max(1, Math.round(element.clientHeight * ratio)),
-      ] as const;
-    };
-    box = size();
+    box = measure(element);
     const instance = new Renderer(element, player.engine, ...scaled());
     // The first frame already shows the right scene (the effect takes over after mounting).
     instance.setScene(mode);
@@ -160,17 +198,6 @@
         reportProblem(new Error(event.message), 'The render worker');
       }
     };
-
-    const observer = new ResizeObserver((entries) => {
-      const device = entries[0]?.devicePixelContentBoxSize?.[0];
-      box = device ? [device.inlineSize, device.blockSize] : size();
-      instance.resize(...scaled());
-    });
-    try {
-      observer.observe(element, { box: 'device-pixel-content-box' });
-    } catch {
-      observer.observe(element);
-    }
 
     let lastVisuals = $app.visuals;
     let lastKaleido = $app.kaleido;
@@ -211,9 +238,6 @@
       }
     });
 
-    const onVisibility = () => (visible = document.visibilityState === 'visible');
-    document.addEventListener('visibilitychange', onVisibility);
-    onVisibility();
     // Leaving the page: the render worker stops before the page is torn down (see AppShell).
     const onPageHide = (event: PageTransitionEvent) => {
       if (!event.persisted) instance.dispose(true);
@@ -226,11 +250,9 @@
       renderer = null;
       instance.onEvent = null;
       capture.attach(null);
-      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
       unsubscribeSettings();
       unsubscribeAssets();
-      observer.disconnect();
       instance.dispose();
     };
   }

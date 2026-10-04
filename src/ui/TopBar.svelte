@@ -5,6 +5,7 @@
   import { useControllers } from './controller-context';
   import { useExporter } from './exporter-context';
   import Icon, { type IconName } from './Icon.svelte';
+  import { supportsMiniPlayer } from './mini-player';
   import { usePlayer } from './player-context';
   import { useCapture } from './stage-capture';
   import TopBarMenu, { type TopBarMenuItem } from './TopBarMenu.svelte';
@@ -17,8 +18,20 @@
     onSettings: () => void;
     onHelp: () => void;
     onController: () => void;
+    /** Whether the mini player is open (DS-06). */
+    miniPlayer: boolean;
+    onMiniPlayer: () => void;
   }
-  let { onFullscreen, onPicture, onExport, onSettings, onHelp, onController }: Props = $props();
+  let {
+    onFullscreen,
+    onPicture,
+    onExport,
+    onSettings,
+    onHelp,
+    onController,
+    miniPlayer,
+    onMiniPlayer,
+  }: Props = $props();
 
   const player = usePlayer();
   const app = player.store;
@@ -58,8 +71,24 @@
    */
   const compact = new MediaQuery('max-width: 1359px');
 
+  /** Whether the browser has a mini player (DS-06): Chrome and Edge do. */
+  const canMiniPlayer = supportsMiniPlayer();
+
   /** The actions used now and then, in the ⋯ menu. */
   const menuItems = $derived<TopBarMenuItem[]>([
+    ...(canMiniPlayer
+      ? [
+          {
+            label: 'Mini player',
+            icon: 'miniPlayer',
+            key: 'M',
+            checked: miniPlayer,
+            title: 'The visuals in a small window of their own, on top of other tabs and apps',
+            testid: 'mini-player',
+            onselect: onMiniPlayer,
+          } satisfies TopBarMenuItem,
+        ]
+      : []),
     {
       label: 'Safe areas',
       icon: 'safe',

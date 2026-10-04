@@ -12,7 +12,7 @@ FibeStation turns music into visuals: a logo with a spectrum ring, or kaleidosco
 
 To visualise music from somewhere else (a DJ mixer, another app or a browser tab), use the **Live** tab instead of the queue.
 
-The top bar, after the app's name: the modes, the aspect ratio, fullscreen, the side panel, **⋯**, **Export**, **Settings** and **?** for this help. **⋯** holds what is used now and then: the safe areas, *Only the music*, the picture as a PNG and the DJ controller. In a narrower window the modes show only their icons (hover for the name), and below about 820 pixels only the logo shows, without the name.
+The top bar, after the app's name: the modes, the aspect ratio, fullscreen, the side panel, **⋯**, **Export**, **Settings** and **?** for this help. **⋯** holds what is used now and then: the mini player, the safe areas, *Only the music*, the picture as a PNG and the DJ controller. In a narrower window the modes show only their icons (hover for the name), and below about 820 pixels only the logo shows, without the name.
 
 The app is called *FibeStation* until you rename it: in **Settings** (the gear in the top bar), or with a double-click on the name in the top bar. The default logo shows the name too. **Settings** also makes and restores backups; this help only explains.
 
@@ -67,6 +67,7 @@ Double-click a slider's label to reset it. **V** switches to the next view, **[*
 - **Display:** in **Visuals → Display**, the resolution the visuals draw at (50–100 % of the screen's), which is lowered on its own while the visuals stutter and raised again once they run smoothly (exports always render at their own resolution); and **Reduce flashing**, which damps sudden jumps in brightness, in exports too. The welcome at the first start offers it as well.
 - **Aspect ratio:** the stage shows the visuals in the frame of your video, chosen in the top bar: 16:9 (YouTube), 9:16 (TikTok, Shorts, Reels), 1:1, 4:5 or 21:9. **⋯ → Safe areas** shows the safe areas, and on 9:16 the parts the apps cover with their buttons and captions.
 - **Fullscreen:** **F**; only the visuals show, and the mouse cursor hides when you do not move it.
+- **Mini player:** **⋯ → Mini player** in the top bar (or **M**) puts the visuals into a small window of their own, which stays on top while you work in other tabs and apps. Move it and drag its edges to size it; the visuals fit in with their aspect ratio. Point at it for the track playing, previous, play or pause, and next; the keys work there too. The button at the right of its controls, **M**, or the browser's own *back to tab* button brings the visuals back into the tab. Meanwhile the tab can show the *Analysis*, and **F** brings them back in fullscreen. This works in Chrome and Edge; other browsers have no such windows for pages.
 - **Only the music:** **⋯ → Only the music** in the top bar (or **B**) lets the visuals rest while the music plays on, for when you only listen: the stage keeps its last picture, dimmed, and the graphics card is spared. Exports are not affected.
 - **A/V sync:** if the visuals run ahead of the sound (Bluetooth headphones, a TV, or Chrome on a Mac), open **Visuals → A/V sync** and click **Calibrate…**: a tick plays every second and a circle flashes; move the slider until both come together. Exports are always in sync.
 

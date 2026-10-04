@@ -120,6 +120,11 @@ export class Renderer {
     this.send({ type: 'running', running });
   }
 
+  /** A timer draws when the animation frames stop coming (the stage in the mini player). */
+  setBackupFrames(on: boolean): void {
+    this.send({ type: 'backupFrames', on });
+  }
+
   /** The picture of the next frame, scaled to `width` × `height`, as a PNG (EX-10). */
   capture(width: number, height: number): Promise<Blob> {
     const id = ++this.captureId;

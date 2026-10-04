@@ -35,11 +35,17 @@ test('the top bar fits narrower windows, the rare actions in its ⋯ menu @firef
   await page.setViewportSize({ width: 1440, height: 800 });
   await expect(aspect).toHaveText('16:9 · YouTube');
 
-  // The ⋯ menu, with the keys.
+  // The ⋯ menu, with the keys. The mini player comes first, where the browser has one.
   const menu = page.getByTestId('more-menu');
+  const miniPlayer = await page.evaluate(() => 'documentPictureInPicture' in window);
   await page.getByTestId('more-button').focus();
   await page.keyboard.press('Enter');
   await expect(menu).toBeVisible();
+  await expect(page.getByTestId('mini-player')).toHaveCount(miniPlayer ? 1 : 0);
+  if (miniPlayer) {
+    await expect(page.getByTestId('mini-player')).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+  }
   await expect(page.getByTestId('safe-areas-toggle')).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByTestId('visuals-pause')).toBeFocused();

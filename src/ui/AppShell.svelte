@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { flushSync, getAllContexts, mount, onDestroy, onMount, unmount } from 'svelte';
   import { isClean } from '../core/audio/dsp/sound-settings';
   import { ControllerService } from '../core/control/controller-service';
   import { REPEAT_MODES } from '../core/state/app-state';
   import { errorMessage } from '../core/util/format';
   import { Exporter } from '../core/export/exporter';
   import { Player } from '../core/player/player';
+  import type { SceneKind } from '../core/render/render-protocol';
   import { VisualAssets } from '../core/render/visual-assets';
   import AnalysisView from './AnalysisView.svelte';
   import { provideControllers } from './controller-context';
@@ -20,8 +21,11 @@
   import NewVersionNotice from './NewVersionNotice.svelte';
   import { provideExporter } from './exporter-context';
   import Icon from './Icon.svelte';
+  import { openMiniPlayerWindow, supportsMiniPlayer } from './mini-player';
+  import MiniPlayerControls from './MiniPlayerControls.svelte';
   import { savePicture } from './picture';
   import { providePlayer } from './player-context';
+  import { portal } from './portal';
   import ProblemNotice from './ProblemNotice.svelte';
   import QueuePanel from './QueuePanel.svelte';
   import SettingsDialog from './SettingsDialog.svelte';
@@ -65,6 +69,7 @@
   const appName = $derived($app.settings.appName);
   $effect(() => {
     document.title = appName;
+    if (miniWindow) miniWindow.document.title = appName;
   });
   $effect(() => {
     let current = true;
@@ -76,9 +81,15 @@
     };
   });
 
-  /** Stops the controllers, the export, the audio and the workers. */
+  /** Stops the controllers, the export, the audio and the workers; the mini player goes. */
   function teardown() {
     clearTimeout(idleTimer);
+    if (miniWindow) {
+      miniWindow.removeEventListener('pagehide', bringBack);
+      miniWindow.close();
+    }
+    if (miniControls) void unmount(miniControls);
+    miniControls = null;
     controllers.dispose();
     exporter.dispose();
     player.dispose();
@@ -107,8 +118,97 @@
   }
 
   function toggleFullscreen() {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void stage.requestFullscreen();
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else if (miniWindow) {
+      // The visuals come back from the mini player for it. From its window, the browser may
+      // refuse the tab's fullscreen: the visuals are back in the tab then.
+      closeMiniPlayer();
+      stage.requestFullscreen().catch(() => undefined);
+    } else {
+      void stage.requestFullscreen();
+    }
+  }
+
+  /** The mini player's window (DS-06) while it is open, and where the stage goes in it. */
+  let miniWindow = $state<Window | null>(null);
+  let miniSlot = $state<HTMLElement | null>(null);
+  /** Its controls: a Svelte root of their own, which also handles the events in that window. */
+  let miniControls: ReturnType<typeof mount> | null = null;
+  let miniOpening = false;
+  /** The player, the assets and the rest, for the controls in the mini player's window. */
+  const contexts = getAllContexts();
+
+  /**
+   * The visual mode on the stage. In the Analysis, the mini player goes on showing the visual
+   * mode before it.
+   */
+  let lastScene: SceneKind = 'logoSpectrum';
+  const stageMode = $derived.by(() => {
+    const mode = $app.settings.visualMode;
+    if (mode !== 'analysis') lastScene = mode;
+    return lastScene;
+  });
+
+  /**
+   * Opens the mini player (DS-06): the stage moves into a small window of its own, on top of the
+   * other tabs and apps, with controls for the music.
+   */
+  async function openMiniPlayer() {
+    if (miniWindow || miniOpening || !supportsMiniPlayer()) return;
+    miniOpening = true;
+    let view: Window | null = null;
+    try {
+      view = await openMiniPlayerWindow($app.settings.aspect, appName);
+      const slot = view.document.createElement('div');
+      slot.style.cssText = 'position: fixed; inset: 0';
+      view.document.body.append(slot);
+      miniControls = mount(MiniPlayerControls, {
+        target: view.document.body,
+        props: { onback: closeMiniPlayer },
+        context: contexts,
+      });
+      view.addEventListener('keydown', onKey);
+      view.addEventListener('keyup', onKeyUp);
+      view.addEventListener('blur', releaseNudge);
+      // Its own close button, and the browser's "back to tab".
+      view.addEventListener('pagehide', bringBack, { once: true });
+      miniWindow = view;
+      miniSlot = slot;
+    } catch (error) {
+      if (miniControls) void unmount(miniControls);
+      miniControls = null;
+      view?.close();
+      player.reportError(`The mini player could not open: ${errorMessage(error)}`);
+    } finally {
+      miniOpening = false;
+    }
+  }
+
+  /** The stage comes back into the tab, before the mini player's window goes. */
+  function bringBack() {
+    const view = miniWindow;
+    if (!view) return;
+    miniSlot = null;
+    miniWindow = null;
+    flushSync();
+    if (miniControls) void unmount(miniControls);
+    miniControls = null;
+    view.removeEventListener('keydown', onKey);
+    view.removeEventListener('keyup', onKeyUp);
+    view.removeEventListener('blur', releaseNudge);
+    view.removeEventListener('pagehide', bringBack);
+  }
+
+  function closeMiniPlayer() {
+    const view = miniWindow;
+    bringBack();
+    view?.close();
+  }
+
+  function toggleMiniPlayer() {
+    if (miniWindow) closeMiniPlayer();
+    else void openMiniPlayer();
   }
 
   /** Saves the picture on the stage as a PNG (EX-10); not while an export renders. */
@@ -166,124 +266,134 @@
     control.blur();
   }
 
+  /** The keyboard shortcuts (UI-04), in the tab and in the mini player's window. */
+  function onKey(event: KeyboardEvent) {
+    // Ctrl+Z (Cmd+Z) undoes a removal or deletion; text fields keep their own undo.
+    const command = event.metaKey || event.ctrlKey;
+    if (command && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
+      if (ownsKey(event.target, event.key) || document.querySelector('dialog[open]')) return;
+      if (player.state.undo) {
+        player.undo();
+        event.preventDefault();
+      }
+      return;
+    }
+    // Brackets need AltGr or Option on some layouts (German, for one).
+    const bracket = event.key === '[' || event.key === ']';
+    if (event.metaKey || ((event.ctrlKey || event.altKey) && !bracket)) return;
+    if (ownsKey(event.target, event.key)) return;
+    // A modal dialog (the export) has the keyboard to itself.
+    if (document.querySelector('dialog[open]')) return;
+    // Hot cues (TR-04): 1–8 jump to a cue or set an empty one; with Shift they are deleted.
+    // By key position, so Shift works on every keyboard layout.
+    const digit = /^Digit([1-8])$/.exec(event.code);
+    if (digit) {
+      const index = Number(digit[1]) - 1;
+      if (event.shiftKey) player.setCue(index, null);
+      else void player.cue(index);
+      event.preventDefault();
+      return;
+    }
+    const step = event.shiftKey ? 30 : 5;
+    switch (event.key) {
+      case ' ':
+        void player.toggle();
+        break;
+      case 'ArrowLeft':
+        void player.seek(player.position - step);
+        break;
+      case 'ArrowRight':
+        void player.seek(player.position + step);
+        break;
+      case 'n':
+        void player.next();
+        break;
+      case 'p':
+        void player.previous();
+        break;
+      case 'f':
+        toggleFullscreen();
+        break;
+      case 'm':
+        toggleMiniPlayer();
+        break;
+      case 'c':
+        takePicture();
+        break;
+      case 'w':
+        player.updateSettings({ detailWaveform: !player.state.settings.detailWaveform });
+        break;
+      case 's':
+        player.updateSettings({ shuffle: !player.state.settings.shuffle });
+        break;
+      case 'q':
+        player.updateSettings({ quantize: !player.state.settings.quantize });
+        break;
+      case 'r': {
+        const index = REPEAT_MODES.indexOf(player.state.settings.repeat);
+        player.updateSettings({ repeat: REPEAT_MODES[(index + 1) % REPEAT_MODES.length]! });
+        break;
+      }
+      case 'v':
+        nextVisualMode(player);
+        break;
+      case 'b':
+        player.updateSettings({ visualsPaused: !player.state.settings.visualsPaused });
+        break;
+      case '[':
+        stepPreset(player, -1);
+        break;
+      case ']':
+        stepPreset(player, 1);
+        break;
+      case '?':
+        helpSection = 'keyboard-shortcuts';
+        helpOpen = true;
+        break;
+      // In/out markers of the export range (TR-09); with Shift they are cleared.
+      case 'i':
+      case 'I':
+        player.mark('in', event.shiftKey ? null : player.position);
+        break;
+      case 'o':
+      case 'O':
+        player.mark('out', event.shiftKey ? null : player.position);
+        break;
+      // Tempo in fine steps, and nudging while the key is held (TMP-03).
+      case '-':
+        player.stepTempo(-1);
+        break;
+      case '+':
+      case '=':
+        player.stepTempo(1);
+        break;
+      case ',':
+        if (!event.repeat) player.nudge(-1);
+        break;
+      case '.':
+        if (!event.repeat) player.nudge(1);
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+  }
+
+  function onKeyUp(event: KeyboardEvent) {
+    if (event.key === ',' || event.key === '.') player.nudge(0);
+  }
+
+  /** A nudge held with a key ends when the window loses the keyboard. */
+  function releaseNudge() {
+    player.nudge(0);
+  }
+
   onMount(() => {
     // A DJ controller connected before comes back by itself, where MIDI is still allowed.
     void controllers.resume();
     // Entering fullscreen starts the countdown for hiding the cursor, even without movement.
     const onFullscreen = () => onPointerMove();
     document.addEventListener('fullscreenchange', onFullscreen);
-    const onKey = (event: KeyboardEvent) => {
-      // Ctrl+Z (Cmd+Z) undoes a removal or deletion; text fields keep their own undo.
-      const command = event.metaKey || event.ctrlKey;
-      if (command && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
-        if (ownsKey(event.target, event.key) || document.querySelector('dialog[open]')) return;
-        if (player.state.undo) {
-          player.undo();
-          event.preventDefault();
-        }
-        return;
-      }
-      // Brackets need AltGr or Option on some layouts (German, for one).
-      const bracket = event.key === '[' || event.key === ']';
-      if (event.metaKey || ((event.ctrlKey || event.altKey) && !bracket)) return;
-      if (ownsKey(event.target, event.key)) return;
-      // A modal dialog (the export) has the keyboard to itself.
-      if (document.querySelector('dialog[open]')) return;
-      // Hot cues (TR-04): 1–8 jump to a cue or set an empty one; with Shift they are deleted.
-      // By key position, so Shift works on every keyboard layout.
-      const digit = /^Digit([1-8])$/.exec(event.code);
-      if (digit) {
-        const index = Number(digit[1]) - 1;
-        if (event.shiftKey) player.setCue(index, null);
-        else void player.cue(index);
-        event.preventDefault();
-        return;
-      }
-      const step = event.shiftKey ? 30 : 5;
-      switch (event.key) {
-        case ' ':
-          void player.toggle();
-          break;
-        case 'ArrowLeft':
-          void player.seek(player.position - step);
-          break;
-        case 'ArrowRight':
-          void player.seek(player.position + step);
-          break;
-        case 'n':
-          void player.next();
-          break;
-        case 'p':
-          void player.previous();
-          break;
-        case 'f':
-          toggleFullscreen();
-          break;
-        case 'c':
-          takePicture();
-          break;
-        case 'w':
-          player.updateSettings({ detailWaveform: !player.state.settings.detailWaveform });
-          break;
-        case 's':
-          player.updateSettings({ shuffle: !player.state.settings.shuffle });
-          break;
-        case 'q':
-          player.updateSettings({ quantize: !player.state.settings.quantize });
-          break;
-        case 'r': {
-          const index = REPEAT_MODES.indexOf(player.state.settings.repeat);
-          player.updateSettings({ repeat: REPEAT_MODES[(index + 1) % REPEAT_MODES.length]! });
-          break;
-        }
-        case 'v':
-          nextVisualMode(player);
-          break;
-        case 'b':
-          player.updateSettings({ visualsPaused: !player.state.settings.visualsPaused });
-          break;
-        case '[':
-          stepPreset(player, -1);
-          break;
-        case ']':
-          stepPreset(player, 1);
-          break;
-        case '?':
-          helpSection = 'keyboard-shortcuts';
-          helpOpen = true;
-          break;
-        // In/out markers of the export range (TR-09); with Shift they are cleared.
-        case 'i':
-        case 'I':
-          player.mark('in', event.shiftKey ? null : player.position);
-          break;
-        case 'o':
-        case 'O':
-          player.mark('out', event.shiftKey ? null : player.position);
-          break;
-        // Tempo in fine steps, and nudging while the key is held (TMP-03).
-        case '-':
-          player.stepTempo(-1);
-          break;
-        case '+':
-        case '=':
-          player.stepTempo(1);
-          break;
-        case ',':
-          if (!event.repeat) player.nudge(-1);
-          break;
-        case '.':
-          if (!event.repeat) player.nudge(1);
-          break;
-        default:
-          return;
-      }
-      event.preventDefault();
-    };
-    const onKeyUp = (event: KeyboardEvent) => {
-      if (event.key === ',' || event.key === '.') player.nudge(0);
-    };
-    const release = () => player.nudge(0);
     // Whether the last input came from a pointer (a select chosen with the mouse lets go too).
     let pointing = false;
     const onPointerDown = () => (pointing = true);
@@ -299,7 +409,7 @@
     window.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', release);
+    window.addEventListener('blur', releaseNudge);
     window.addEventListener('click', onClick);
     window.addEventListener('change', onChange);
     return () => {
@@ -307,7 +417,7 @@
       window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', release);
+      window.removeEventListener('blur', releaseNudge);
       window.removeEventListener('click', onClick);
       window.removeEventListener('change', onChange);
       document.removeEventListener('fullscreenchange', onFullscreen);
@@ -323,6 +433,8 @@
     onSettings={() => (settingsOpen = true)}
     onHelp={() => (helpOpen = true)}
     onController={() => (controllerOpen = true)}
+    miniPlayer={miniWindow !== null}
+    onMiniPlayer={toggleMiniPlayer}
   />
 
   <main
@@ -335,16 +447,30 @@
     <Guard where="The visuals">
       {#if $app.settings.visualMode === 'analysis'}
         <AnalysisView />
-      {:else}
-        <VisualStage
-          mode={$app.settings.visualMode}
-          aspect={$app.settings.aspect}
-          safeAreas={$app.settings.safeAreas}
-          paused={$exporter.status === 'running' || $app.settings.visualsPaused}
-          resting={$app.settings.visualsPaused}
-        />
+      {/if}
+      <!-- The mini player's window takes the stage (DS-06), also while the tab shows the Analysis. -->
+      {#if $app.settings.visualMode !== 'analysis' || miniWindow}
+        <div class="stage-host" use:portal={miniSlot}>
+          <VisualStage
+            mode={stageMode}
+            aspect={$app.settings.aspect}
+            safeAreas={$app.settings.safeAreas}
+            paused={$exporter.status === 'running' || $app.settings.visualsPaused}
+            resting={$app.settings.visualsPaused}
+            view={miniWindow ?? window}
+          />
+        </div>
       {/if}
     </Guard>
+    {#if miniWindow && $app.settings.visualMode !== 'analysis'}
+      <div class="mini-note" data-testid="mini-note">
+        <div class="card">
+          <Icon name="miniPlayer" size={28} />
+          <p>The visuals play in the mini player.</p>
+          <button onclick={closeMiniPlayer} data-testid="mini-bring-back">Bring them back</button>
+        </div>
+      </div>
+    {/if}
     {#if $app.tracks.length === 0 && $app.live.status === 'off'}
       <div class="welcome" data-testid="empty-hint">
         <div class="card">
@@ -508,6 +634,33 @@
   }
   .stage.idle {
     cursor: none;
+  }
+  /* The stage's place: in the tab it adds no box, in the mini player's window it fills it. */
+  .stage-host {
+    display: contents;
+  }
+  .mini-note {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    pointer-events: none;
+  }
+  .mini-note .card {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    padding: 18px 26px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--muted);
+    text-align: center;
+    pointer-events: auto;
+  }
+  .mini-note p {
+    margin: 0;
+    color: var(--text);
   }
   .panel {
     min-height: 0;

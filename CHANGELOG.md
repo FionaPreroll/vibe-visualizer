@@ -6,6 +6,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 - **Neon Ribbons, in a new light:** fine rings of light and soft, out-of-focus lights instead of fractal blossoms and little flowers, a colour that drifts along each tube, cool colours (*Iris*), and a haze instead of plain black (**Haze**, for every Kaleidoscope scene). *Neon Mandala* and *Lava Braid* follow. The look of before stays as the preset *Flower Power*, and looks you saved keep theirs.
 - **Rain:** the particles of the Logo Spectrum can fall as rain, streaks in a wind that sways and that the bass blows, faster when the music is loud. The new preset *Night Rain* shows it.
+- **Mini player:** the visuals in a small window of their own, on top while you work in other tabs and apps, with the track playing, play and pause, and skip (**⋯ → Mini player** or **M**, in Chrome and Edge).
 - **A tidier top bar:** what is used now and then (the safe areas, *Only the music*, the picture as a PNG and the DJ controller) is in **⋯** now, so the bar fits narrower windows; there the modes show only their icons.
 
 ## 3 October 2026
