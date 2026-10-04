@@ -71,7 +71,7 @@
    */
   const compact = new MediaQuery('max-width: 1359px');
 
-  /** Whether the browser has a mini player (DS-06): Chrome and Edge do. */
+  /** Whether the browser has a mini player (DS-06): Chrome, Edge and Firefox do, Safari not. */
   const canMiniPlayer = supportsMiniPlayer();
 
   /** The actions used now and then, in the ⋯ menu. */
