@@ -53,6 +53,14 @@ test('Kaleidoscope renders, moves with the music and switches scenes and modes',
   await expect(page.getByRole('slider', { name: 'Lobes', exact: true })).toHaveValue('5');
   await expectMotion(stage);
   await expect(stage).toHaveAttribute('data-status', 'running');
+  // Rings of light and soft lights instead of blossoms and flowers, which Flower Power keeps
+  // (Kanban 15).
+  await expect(page.getByRole('slider', { name: 'Halo', exact: true })).toHaveValue('0.6');
+  await expect(page.getByRole('slider', { name: 'Flowers', exact: true })).toHaveValue('0');
+  await page.getByTestId('preset-select').selectOption('Flower Power');
+  await expect(page.getByRole('slider', { name: 'Flowers', exact: true })).toHaveValue('0.5');
+  await expect(page.getByRole('slider', { name: 'Halo', exact: true })).toHaveValue('0');
+  await expectMotion(stage);
 
   // Logo Spectrum and back: the same render worker keeps running.
   await page.getByRole('button', { name: 'Logo Spectrum' }).click();

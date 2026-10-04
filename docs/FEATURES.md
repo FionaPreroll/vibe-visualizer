@@ -158,7 +158,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | KA-01 | M | Shader-based scene system: every scene declares typed parameters, and the UI controls are generated from them |
 | KA-02 | M | Scene "Vortex" (ref K1) |
 | KA-03 | M | Scene "Crystal Mandala" (ref K2) |
-| KA-04 | S | Scene "Neon Ribbons" (ref K3), the most complex one (3D look) |
+| KA-04 | S | Scene "Neon Ribbons" (ref K3), the most complex one (3D look). Since Kanban 15: rings of light (halo), out-of-focus lights (bokeh) and a sheen along the tubes instead of the reference's blossoms and flowers, which the preset *Flower Power* keeps |
 | KA-05 | M | Kaleidoscope controls: symmetry order (number of segments), mirroring, rotation, zoom/tunnel speed, centre position |
 | KA-06 | M | MilkDrop-style feedback: the previous frame is warped (zoom, rotate, swirl) and faded, which creates trails and endless tunnels |
 | KA-07 | M | Colour palettes: presets and custom gradients; hue cycling |

@@ -53,6 +53,41 @@ describe('kaleidoscope settings', () => {
     expect(gradientColors(DEFAULT_KALEIDO)).toEqual(KALEIDO_PALETTES.vortex);
   });
 
+  it('keeps the look of Neon Ribbons stored before its rings and lights (Kanban 15)', () => {
+    const before = { ribbons: 3, lobes: 6, weave: 0.8, thickness: 0.35, blossoms: 0.2 };
+    const shown = sanitizeKaleido({ scene: 'ribbons', scenes: { ribbons: before } });
+    // The new parts off, the blossoms as stored and the flowers as they were by default.
+    expect(shown.scenes.ribbons).toMatchObject({
+      ...before,
+      flowers: 0.5,
+      halo: 0,
+      bokeh: 0,
+      sheen: 0,
+    });
+    // A look of another scene never showed its Ribbons: they take today's defaults.
+    const unseen = sanitizeKaleido({ scene: 'vortex', scenes: { ribbons: before } });
+    expect(unseen.scenes.ribbons).toEqual(sceneDefaults('ribbons').scenes.ribbons);
+    // Looks stored since keep what they say.
+    const today = sanitizeKaleido({ scene: 'ribbons', scenes: { ribbons: { halo: 0.2 } } });
+    expect(today.scenes.ribbons).toMatchObject({ halo: 0.2, bokeh: 0.65, blossoms: 0, flowers: 0 });
+  });
+
+  it('gives Neon Ribbons cool light, and keeps its old look as Flower Power', () => {
+    const neon = BUILT_IN_KALEIDO_PRESETS.find((preset) => preset.name === 'Neon Ribbons')!;
+    expect(neon.settings.common).toMatchObject({ palette: 'iris', haze: 0.5 });
+    expect(neon.settings.scenes.ribbons).toMatchObject({ blossoms: 0, flowers: 0 });
+    const retro = BUILT_IN_KALEIDO_PRESETS.find((preset) => preset.name === 'Flower Power')!;
+    expect(retro.settings.scene).toBe('ribbons');
+    expect(retro.settings.common).toMatchObject({ palette: 'ribbons', haze: 0 });
+    expect(retro.settings.scenes.ribbons).toMatchObject({
+      halo: 0,
+      bokeh: 0,
+      sheen: 0,
+      blossoms: 0.6,
+      flowers: 0.5,
+    });
+  });
+
   it('has valid built-in presets with unique names', () => {
     const names = new Set(BUILT_IN_KALEIDO_PRESETS.map((preset) => preset.name));
     expect(names.size).toBe(BUILT_IN_KALEIDO_PRESETS.length);

@@ -50,6 +50,8 @@ export const KALEIDO_PALETTES = {
   neon: ['#0b0016', '#3d00a8', '#ff2fd6', '#1ff0ff', '#f2ffff'],
   /** Neon tubes: violet, then pink, yellow, green and cyan (orange between pink and yellow). */
   ribbons: ['#1c0638', '#ff2d6a', '#ffe83b', '#3dff8e', '#27e3ff'],
+  /** Cool light: cyan, azure, lilac and a pearl white. */
+  iris: ['#020511', '#14c8ff', '#4d7cff', '#b06cff', '#f3ecff'],
   mono: ['#000000', '#2e2e2e', '#7c7c7c', '#c6c6c6', '#ffffff'],
 } as const;
 
@@ -216,6 +218,17 @@ export const COMMON_PARAMS: readonly ParamSpec[] = [
     default: 0.5,
     format: 'percent',
   },
+  {
+    kind: 'number',
+    key: 'haze',
+    label: 'Haze',
+    group: 'post',
+    min: 0,
+    max: 1,
+    default: 0,
+    format: 'percent',
+    hint: "A faint light in the dark, in the palette's darkest colours",
+  },
 ];
 
 export interface KaleidoScene {
@@ -358,7 +371,8 @@ export const KALEIDO_SCENES: readonly KaleidoScene[] = [
   {
     id: 'ribbons',
     name: 'Neon Ribbons',
-    description: 'Neon tubes weave around the centre, blossoms glow in the lobes, flowers float',
+    description:
+      'Neon tubes weave around the centre, rings of light glow in the lobes, soft lights drift',
     params: [
       {
         kind: 'number',
@@ -416,12 +430,45 @@ export const KALEIDO_SCENES: readonly KaleidoScene[] = [
       },
       {
         kind: 'number',
+        key: 'halo',
+        label: 'Halo',
+        group: 'scene',
+        min: 0,
+        max: 1,
+        default: 0.6,
+        format: 'percent',
+        hint: 'Fine rings of light in the lobes and around the centre',
+      },
+      {
+        kind: 'number',
+        key: 'bokeh',
+        label: 'Bokeh',
+        group: 'scene',
+        min: 0,
+        max: 1,
+        default: 0.65,
+        format: 'percent',
+        hint: 'Soft round lights drift outward, as if out of focus',
+      },
+      {
+        kind: 'number',
+        key: 'sheen',
+        label: 'Sheen',
+        group: 'scene',
+        min: 0,
+        max: 1,
+        default: 0.5,
+        format: 'percent',
+        hint: 'The colour drifts along each tube',
+      },
+      {
+        kind: 'number',
         key: 'blossoms',
         label: 'Blossoms',
         group: 'scene',
         min: 0,
         max: 1,
-        default: 0.6,
+        default: 0,
         format: 'percent',
       },
       {
@@ -431,7 +478,7 @@ export const KALEIDO_SCENES: readonly KaleidoScene[] = [
         group: 'scene',
         min: 0,
         max: 1,
-        default: 0.5,
+        default: 0,
         format: 'percent',
       },
     ],
@@ -441,10 +488,11 @@ export const KALEIDO_SCENES: readonly KaleidoScene[] = [
       flow: 0.25,
       twist: 0.15,
       trails: 0.12,
-      palette: 'ribbons',
+      palette: 'iris',
       spin: 0.6,
       barShift: 0,
       bloom: 0.7,
+      haze: 0.5,
     },
   },
 ];
@@ -524,6 +572,20 @@ function sanitizeGroup(
   );
 }
 
+/** The blossoms and flowers of Neon Ribbons before its rings and lights (Kanban 15). */
+const LEGACY_RIBBONS = { blossoms: 0.6, flowers: 0.5 } as const;
+
+/**
+ * Neon Ribbons parameters stored before the scene had its halo, bokeh and sheen: a look that
+ * shows the scene keeps how it looked (the new parts off, blossoms and flowers as they were);
+ * in a look of another scene they were never seen, and the new defaults take their place.
+ */
+function migrateRibbons(stored: unknown, scene: KaleidoSceneId): unknown {
+  if (typeof stored !== 'object' || stored === null || 'halo' in stored) return stored;
+  if (scene !== 'ribbons') return undefined;
+  return { ...LEGACY_RIBBONS, ...stored, halo: 0, bokeh: 0, sheen: 0 };
+}
+
 /**
  * Valid settings from whatever is stored; unknown keys dropped, values checked by their specs.
  * Missing or invalid values take the scene's defaults (with its look).
@@ -537,9 +599,13 @@ export function sanitizeKaleido(value: unknown): KaleidoSettings {
     ? (input['scene'] as KaleidoSceneId)
     : DEFAULT_SCENE;
   const base = sceneDefaults(scene);
-  const scenes = (
+  const stored = (
     typeof input['scenes'] === 'object' && input['scenes'] !== null ? input['scenes'] : {}
   ) as Record<string, unknown>;
+  const scenes: Record<string, unknown> = {
+    ...stored,
+    ribbons: migrateRibbons(stored['ribbons'], scene),
+  };
   return {
     scene,
     common: sanitizeGroup(COMMON_PARAMS, input['common'], base.common),
@@ -621,14 +687,21 @@ export const BUILT_IN_KALEIDO_PRESETS: readonly KaleidoPreset[] = [
   preset(
     'Neon Mandala',
     'ribbons',
-    { palette: 'neon', segments: 10, mirror: true, spin: -0.8 },
-    { ribbons: 3, lobes: 6, weave: 0.8, flowers: 0.3 },
+    { palette: 'neon', segments: 6, mirror: true, spin: -0.5, haze: 0.6 },
+    { ribbons: 3, lobes: 6, weave: 0.8, bokeh: 0.3, thickness: 0.12 },
   ),
   preset(
     'Lava Braid',
     'ribbons',
-    { palette: 'ember', trails: 0.3, bloom: 0.8 },
-    { ribbons: 3, weave: 0.3, thickness: 0.7, blossoms: 0.8 },
+    { palette: 'ember', trails: 0.3, bloom: 0.8, haze: 0.6 },
+    { ribbons: 3, weave: 0.3, thickness: 0.7, halo: 0.8, bokeh: 0.35 },
+  ),
+  /** The look of Neon Ribbons before Kanban 15, retro on purpose: rainbow tubes, flowers. */
+  preset(
+    'Flower Power',
+    'ribbons',
+    { palette: 'ribbons', haze: 0 },
+    { halo: 0, bokeh: 0, sheen: 0, ...LEGACY_RIBBONS },
   ),
 ];
 
