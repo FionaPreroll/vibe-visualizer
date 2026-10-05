@@ -16,6 +16,7 @@ function running(changes: Partial<RunningExport> = {}): ExportState {
       preview: null,
       paused: false,
       batch: null,
+      soundOnly: false,
       ...changes,
     },
   };

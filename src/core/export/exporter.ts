@@ -67,6 +67,8 @@ export interface ExportRequest {
   fileName: string;
   /** Shorter segments (tests). */
   segmentSeconds?: number;
+  /** Only the sound, as a WAV file (EX-11). */
+  soundOnly?: boolean;
 }
 
 /** A finished video of a batch (EX-09). */
@@ -93,6 +95,8 @@ export interface RunningExport {
   paused: boolean;
   /** In a batch (EX-09): which video this is (from 0) of how many. */
   batch: { index: number; count: number } | null;
+  /** Only the sound (EX-11). */
+  soundOnly: boolean;
 }
 
 export type ExportState =
@@ -138,7 +142,9 @@ interface Batch {
 }
 
 /** Shares of the phases in the overall progress. */
-const WEIGHTS = { audio: 0.08, video: 0.87, join: 0.05 };
+const VIDEO_WEIGHTS = { audio: 0.08, video: 0.87, join: 0.05 };
+/** Only the sound (EX-11): the sound is nearly all of it. */
+const SOUND_WEIGHTS = { audio: 0.95, video: 0, join: 0.05 };
 
 export class Exporter {
   private client: WorkerClient | null = null;
@@ -331,6 +337,7 @@ export class Exporter {
       folder: request.folder ?? null,
       output: request.output ?? null,
       segmentSeconds: request.segmentSeconds,
+      soundOnly: request.soundOnly === true,
     };
     const duration = partsSeconds(parts, request.sound);
     const result = await this.run('start', args, transfer, request, duration, batch);
@@ -466,7 +473,7 @@ export class Exporter {
     method: 'start' | 'resume',
     args: StartArgs | ResumeArgs,
     transfer: Transferable[],
-    job: { fileName: string; format: VideoFormat },
+    job: { fileName: string; format: VideoFormat; soundOnly?: boolean },
     duration: number,
     batch: RunningExport['batch'],
   ): Promise<ExportResult | null> {
@@ -484,6 +491,7 @@ export class Exporter {
         preview: null,
         paused: false,
         batch,
+        soundOnly: job.soundOnly === true,
       },
     });
     void this.keepAwake();
@@ -528,6 +536,7 @@ export class Exporter {
     }
     const job = this.current.job;
     const fraction = update.total > 0 ? update.done / update.total : 0;
+    const WEIGHTS = job.soundOnly ? SOUND_WEIGHTS : VIDEO_WEIGHTS;
     if (update.phase === 'audio') {
       this.update({ phase: 'audio', progress: WEIGHTS.audio * fraction });
     } else if (update.phase === 'video') {
@@ -694,10 +703,10 @@ export function pickFolder(): Promise<FileSystemDirectoryHandle> {
   return host.showDirectoryPicker({ id: 'videos', mode: 'readwrite', startIn: 'videos' });
 }
 
-/** Asks where to save the video; throws an AbortError when you cancel the dialog. */
+/** Asks where to save the video (or the sound); throws an AbortError when you cancel. */
 export function pickFile(
   fileName: string,
-  container: 'mp4' | 'webm',
+  container: 'mp4' | 'webm' | 'wav',
 ): Promise<FileSystemFileHandle> {
   const host = window as unknown as {
     showSaveFilePicker(options: {
@@ -708,10 +717,12 @@ export function pickFile(
   return host.showSaveFilePicker({
     suggestedName: fileName,
     types: [
-      {
-        description: container === 'mp4' ? 'MP4 video' : 'WebM video',
-        accept: { [`video/${container}`]: [`.${container}`] },
-      },
+      container === 'wav'
+        ? { description: 'WAV audio', accept: { 'audio/wav': ['.wav'] } }
+        : {
+            description: container === 'mp4' ? 'MP4 video' : 'WebM video',
+            accept: { [`video/${container}`]: [`.${container}`] },
+          },
     ],
   });
 }

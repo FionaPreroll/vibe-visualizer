@@ -100,4 +100,9 @@ describe('video formats', () => {
       resolution: 360,
     });
   });
+
+  it('keeps the choice of only the sound (EX-11)', () => {
+    expect(sanitizeExportOptions({ content: 'sound' }).content).toBe('sound');
+    expect(sanitizeExportOptions({ content: 'pictures' }).content).toBe('video');
+  });
 });

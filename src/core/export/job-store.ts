@@ -76,6 +76,9 @@ export async function clearShelf(): Promise<void> {
 }
 
 /** Writes in the job directory (dedicated workers only). */
+/** Bytes copied at a time. */
+const COPY_CHUNK = 8 * 1024 * 1024;
+
 export class JobWriter {
   private constructor(private readonly dir: FileSystemDirectoryHandle) {}
 
@@ -122,6 +125,20 @@ export class JobWriter {
     const handle = await this.open(name);
     try {
       handle.write(bytes, { at: 0 });
+      handle.flush();
+    } finally {
+      handle.close();
+    }
+  }
+
+  /** Copies `file` into the file `name`, in chunks: a long WAV is too big to hold at once. */
+  async copy(name: string, file: Blob): Promise<void> {
+    const handle = await this.open(name);
+    try {
+      for (let at = 0; at < file.size; at += COPY_CHUNK) {
+        const chunk = new Uint8Array(await file.slice(at, at + COPY_CHUNK).arrayBuffer());
+        handle.write(chunk, { at });
+      }
       handle.flush();
     } finally {
       handle.close();

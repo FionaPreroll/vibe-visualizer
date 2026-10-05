@@ -69,6 +69,8 @@ export interface ExportOptions {
   /** Tracks of the queue as a video of each, not one video (EX-09). */
   perTrack: boolean;
   fade: FadeSeconds;
+  /** A video, or only its sound as a WAV file (EX-11). */
+  content: 'video' | 'sound';
 }
 
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
@@ -79,6 +81,7 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   range: 'marks',
   perTrack: false,
   fade: 0,
+  content: 'video',
 };
 
 /** A concrete video format. */
@@ -165,6 +168,9 @@ export function fitOptions(options: ExportOptions, aspect: AspectRatio): ExportO
   return { ...options, preset: fitting?.id ?? 'custom' };
 }
 
+/** Bytes per second of the WAV of only the sound (EX-11): 48 kHz, stereo, 16 bits. */
+export const WAV_BYTES_PER_SECOND = 48_000 * 2 * 2;
+
 /** Estimated file size in bytes. */
 export function estimateBytes(format: VideoFormat, seconds: number): number {
   return ((format.videoBitrate + format.audioBitrate) * seconds) / 8;
@@ -235,6 +241,7 @@ export function sanitizeExportOptions(value: unknown): ExportOptions {
     ),
     perTrack: input['perTrack'] === true,
     fade: pick(input['fade'], FADE_CHOICES, DEFAULT_EXPORT_OPTIONS.fade),
+    content: pick(input['content'], ['video', 'sound'] as const, DEFAULT_EXPORT_OPTIONS.content),
   };
 }
 

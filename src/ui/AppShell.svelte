@@ -4,6 +4,7 @@
   import { ControllerService } from '../core/control/controller-service';
   import { REPEAT_MODES } from '../core/state/app-state';
   import { errorMessage } from '../core/util/format';
+  import { isSoundFile } from '../core/export/export-job';
   import { Exporter, type ExportState } from '../core/export/exporter';
   import { Player } from '../core/player/player';
   import type { SceneKind } from '../core/render/render-protocol';
@@ -78,6 +79,11 @@
     document.title = title;
     if (miniWindow) miniWindow.document.title = title;
   });
+  /** "Your video is ready.", or "Your sounds are ready." and so on. */
+  function readyNote(count: number, fileName: string): string {
+    const [one, many] = isSoundFile(fileName) ? ['sound', 'sounds'] : ['video', 'videos'];
+    return count > 1 ? `Your ${many} are ready.` : `Your ${one} is ready.`;
+  }
   let exportStatus: ExportState['status'] = 'idle';
   $effect(() => {
     const state = $exporter;
@@ -90,10 +96,11 @@
     const name = untrack(() => appName);
     if (state.status === 'done') {
       const several = state.videos.length > 1;
+      const [one, many] = isSoundFile(state.fileName) ? ['sound', 'sounds'] : ['video', 'videos'];
       notifyExportEnd(
         name,
-        several ? 'Your videos are ready' : 'Your video is ready',
-        several ? `${state.videos.length} videos` : state.fileName,
+        several ? `Your ${many} are ready` : `Your ${one} is ready`,
+        several ? `${state.videos.length} ${many}` : state.fileName,
       );
     } else {
       notifyExportEnd(name, 'The export failed', state.message);
@@ -532,7 +539,7 @@
           {#if $exporter.status === 'interrupted'}
             An export was interrupted. Resume it…
           {:else if $exporter.status === 'done'}
-            {$exporter.videos.length > 1 ? 'Your videos are ready.' : 'Your video is ready.'}
+            {readyNote($exporter.videos.length, $exporter.fileName)}
           {:else}
             The export stopped. Details…
           {/if}

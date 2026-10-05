@@ -175,6 +175,8 @@ export interface ExportManifest {
     bytes: number | null;
   };
   resumeCount: number;
+  /** Only the sound, as a WAV file (EX-11): no video pass. */
+  soundOnly?: boolean;
 }
 
 /** The image files an export job keeps for the Logo Spectrum: its background and logo. */
@@ -479,6 +481,11 @@ export function videoFileName(
   }
   const title = `${first.source.title} and ${parts.length - 1} more`;
   return exportFileName({ title, artist: first.source.artist }, null, extension, sound);
+}
+
+/** Whether an export's file is only the sound (EX-11), a WAV. */
+export function isSoundFile(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith('.wav');
 }
 
 /** `name`, or "name (2).ext" and so on, whichever is not in `taken` yet (EX-09). */

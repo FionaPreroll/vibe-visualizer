@@ -4,6 +4,7 @@
   import {
     chapterProblem,
     chapterText,
+    isSoundFile,
     partChapters,
     partLayout,
     partsSeconds,
@@ -33,6 +34,7 @@
     QUALITIES,
     RESOLUTIONS,
     resolveFormat,
+    WAV_BYTES_PER_SECOND,
     type AspectRatio,
     type ExportOptions,
     type FadeSeconds,
@@ -114,6 +116,10 @@
   const parts = $derived(chosen.map((entry) => exportPart(entry, choice !== 'track')));
   /** A video of each track (EX-09), rather than one of them all. */
   const perTrack = $derived(choice === 'tracks' && fitted.perTrack);
+  /** Only the sound, as a WAV file (EX-11): no video, so any visual mode will do. */
+  const soundOnly = $derived(fitted.content === 'sound');
+  /** What the export makes, in the dialog's sentences. */
+  const what = $derived(soundOnly ? 'sound' : 'video');
   const sound = $derived($app.sound);
   /** Length of the video (of all of them, for a video of each): the parts at the tempo. */
   const seconds = $derived(
@@ -179,7 +185,7 @@
     player.updateSettings({ aspect: value });
   }
 
-  async function saveTarget(fileName: string, container: 'mp4' | 'webm') {
+  async function saveTarget(fileName: string, container: 'mp4' | 'webm' | 'wav') {
     if (!canPickFile()) return null;
     return pickFile(fileName, container);
   }
@@ -224,7 +230,7 @@
 
   async function start() {
     problem = null;
-    if (parts.length === 0 || !codecs || mode === 'analysis') return;
+    if (parts.length === 0 || (!soundOnly && (!codecs || mode === 'analysis'))) return;
     const tracks = chosen;
     const planned = parts;
     const files = tracks.map((entry) => player.fileFor(entry.id));
@@ -236,16 +242,16 @@
     // The track overlay names each track over the part the video plays (LS-18, LS-19).
     const overlay = $app.settings.overlay;
     // The cover art as the logo (LS-15), and its colours (VE-12).
-    const coverLogo = mode === 'logoSpectrum' && $app.settings.coverLogo;
-    const coverColors = $app.settings.coverColors;
+    const coverLogo = !soundOnly && mode === 'logoSpectrum' && $app.settings.coverLogo;
+    const coverColors = !soundOnly && $app.settings.coverColors;
     const visuals: ExportVisuals = {
-      ...visualsOf(mode),
+      ...visualsOf(mode === 'kaleidoscope' ? 'kaleidoscope' : 'logoSpectrum'),
       overlay: overlay.on ? overlay : undefined,
       coverLogo,
       coverColors,
     };
     const covered = coverLogo || coverColors;
-    const container = codecs.container;
+    const container = soundOnly ? 'wav' : codecs!.container;
     const each = perTrack;
     const fileName = videoFileName(planned, container, sound);
     // Where the video goes: a file you pick (Chromium) or a download; for a video of each
@@ -279,7 +285,14 @@
       cover: covers[index] ?? null,
     }));
     player.pause();
-    const common = { format, visuals, sound, fade: fitted.fade, images: assets.shown };
+    const common = {
+      format,
+      visuals,
+      sound,
+      fade: fitted.fade,
+      images: soundOnly ? { background: null, logo: null } : assets.shown,
+      soundOnly,
+    };
     const started = each
       ? exporter.startBatch(
           requested.map((part) => ({
@@ -293,10 +306,11 @@
     started.catch((error: unknown) => (problem = errorMessage(error)));
   }
 
-  /** "Your video is ready.", or how many of a batch's videos are. */
-  function readyText(count: number, planned: number): string {
-    if (count < planned) return `${count} of ${planned} videos are ready.`;
-    return count === 1 ? 'Your video is ready.' : `Your ${count} videos are ready.`;
+  /** "Your video is ready.", or how many of a batch's videos are; for sounds, "sound". */
+  function readyText(count: number, planned: number, fileName: string): string {
+    const [one, many] = isSoundFile(fileName) ? ['sound', 'sounds'] : ['video', 'videos'];
+    if (count < planned) return `${count} of ${planned} ${many} are ready.`;
+    return count === 1 ? `Your ${one} is ready.` : `Your ${count} ${many} are ready.`;
   }
 
   /** "A", "A and B", "A, B and C". */
@@ -382,7 +396,10 @@
     try {
       // A video of a batch goes into the batch's folder, without asking again.
       const intoFolder = manifest.destination === 'file' && exporter.batchFolder !== null;
-      if (!intoFolder) destination = await saveTarget(manifest.fileName, manifest.codecs.container);
+      if (!intoFolder) {
+        const container = manifest.soundOnly ? 'wav' : manifest.codecs.container;
+        destination = await saveTarget(manifest.fileName, container);
+      }
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         problem = errorMessage(error);
@@ -539,7 +556,9 @@
   {:else if $exporter.status === 'done'}
     {@const done = $exporter}
     <section class="result" data-testid="export-done">
-      <p class="big">{readyText(Math.max(1, done.videos.length), done.planned)}</p>
+      <p class="big">
+        {readyText(Math.max(1, done.videos.length), done.planned, done.fileName)}
+      </p>
       {#if done.videos.length > 0}
         {@render videoList(done.videos)}
       {:else}
@@ -631,7 +650,29 @@
       {/if}
     {/if}
     <section class="form">
-      <fieldset>
+      <div class="content" role="radiogroup" aria-label="What to make">
+        <label class:on={!soundOnly}>
+          <input
+            type="radio"
+            name="content"
+            checked={!soundOnly}
+            onchange={() => (options.content = 'video')}
+            data-testid="export-content-video"
+          />
+          A video
+        </label>
+        <label class:on={soundOnly}>
+          <input
+            type="radio"
+            name="content"
+            checked={soundOnly}
+            onchange={() => (options.content = 'sound')}
+            data-testid="export-content-sound"
+          />
+          Only the sound (WAV)
+        </label>
+      </div>
+      <fieldset hidden={soundOnly}>
         <legend>Format</legend>
         <div class="choices">
           {#each EXPORT_PRESETS as preset (preset.id)}
@@ -874,71 +915,76 @@
             {track ? shownTitle(track) : 'Add a track to the queue first'}
           {/if}
         </dd>
-        <dt>Visuals</dt>
-        <dd>
-          {#if mode === 'analysis'}
-            Switch to Logo Spectrum or Kaleidoscope first
-          {:else}
-            {mode === 'kaleidoscope' ? 'Kaleidoscope' : 'Logo Spectrum'}, with the current settings
-            {#if $app.settings.autoPresets.on}
-              <span data-testid="export-switching"
-                >({switchingSummary($app.settings.autoPresets)})</span
-              >
+        {#if !soundOnly}
+          <dt>Visuals</dt>
+          <dd>
+            {#if mode === 'analysis'}
+              Switch to Logo Spectrum or Kaleidoscope first
+            {:else}
+              {mode === 'kaleidoscope' ? 'Kaleidoscope' : 'Logo Spectrum'}, with the current
+              settings
+              {#if $app.settings.autoPresets.on}
+                <span data-testid="export-switching"
+                  >({switchingSummary($app.settings.autoPresets)})</span
+                >
+              {/if}
+              {#if $app.settings.reduceFlashing}
+                <span data-testid="export-calm">(flashing reduced)</span>
+              {/if}
+              {#if $app.settings.overlay.on}
+                <span data-testid="export-overlay"
+                  >({chosen.length > 1 ? 'with the titles' : "with the track's title"})</span
+                >
+              {/if}
+              {#if mode === 'logoSpectrum' && $app.settings.coverLogo && chosen.some(shownCover)}
+                <span data-testid="export-cover"
+                  >({chosen.length > 1
+                    ? 'the cover art as the logo'
+                    : 'its cover art as the logo'})</span
+                >
+              {/if}
+              {#if $app.settings.coverColors && chosen.some(hasColors)}
+                <span data-testid="export-cover-colors"
+                  >({chosen.length > 1
+                    ? 'in the colours of the tracks'
+                    : "in the track's colours"})</span
+                >
+              {/if}
+              {#if fitted.fade > 0}
+                <span data-testid="export-fades">(fading in and out over {fitted.fade} s)</span>
+              {/if}
             {/if}
-            {#if $app.settings.reduceFlashing}
-              <span data-testid="export-calm">(flashing reduced)</span>
-            {/if}
-            {#if $app.settings.overlay.on}
-              <span data-testid="export-overlay"
-                >({chosen.length > 1 ? 'with the titles' : "with the track's title"})</span
-              >
-            {/if}
-            {#if mode === 'logoSpectrum' && $app.settings.coverLogo && chosen.some(shownCover)}
-              <span data-testid="export-cover"
-                >({chosen.length > 1
-                  ? 'the cover art as the logo'
-                  : 'its cover art as the logo'})</span
-              >
-            {/if}
-            {#if $app.settings.coverColors && chosen.some(hasColors)}
-              <span data-testid="export-cover-colors"
-                >({chosen.length > 1
-                  ? 'in the colours of the tracks'
-                  : "in the track's colours"})</span
-              >
-            {/if}
-            {#if fitted.fade > 0}
-              <span data-testid="export-fades">(fading in and out over {fitted.fade} s)</span>
-            {/if}
-          {/if}
-        </dd>
-        <dt>Video</dt>
-        <dd>
-          {format.width}×{format.height} · {format.fps} fps ·
-          {#if codecs}{codecLabel(codecs)}{:else}checking the encoders…{/if}
-        </dd>
+          </dd>
+          <dt>Video</dt>
+          <dd>
+            {format.width}×{format.height} · {format.fps} fps ·
+            {#if codecs}{codecLabel(codecs)}{:else}checking the encoders…{/if}
+          </dd>
+        {/if}
         <dt>Sound</dt>
-        <dd data-testid="export-sound">{soundSummary(sound)} (set in the Sound tab)</dd>
+        <dd data-testid="export-sound">
+          {soundSummary(sound)} (set in the Sound tab){soundOnly ? ' · WAV, 48 kHz, 16 bit' : ''}
+        </dd>
         <dt>Length</dt>
         <dd data-testid="export-length">
           {formatDuration(seconds)}{perTrack && chosen.length > 1 ? ' in all' : ''} · about {formatBytes(
-            estimateBytes(format, seconds),
+            soundOnly ? seconds * WAV_BYTES_PER_SECOND : estimateBytes(format, seconds),
           )}
         </dd>
         <dt>Saving</dt>
         <dd>
           {#if perTrack}
             {canPickFolder()
-              ? 'You choose a folder; each video is written into it while rendering.'
-              : 'The videos wait in browser storage; you download each when it is finished.'}
+              ? `You choose a folder; each ${what} is written into it.`
+              : `The ${what}s wait in browser storage; you download each when it is finished.`}
           {:else}
             {canPickFile()
-              ? 'You choose a file; the video is written into it while rendering.'
-              : 'The video downloads when it is finished.'}
+              ? `You choose a file; the ${what} is written into it.`
+              : `The ${what} downloads when it is finished.`}
           {/if}
         </dd>
       </dl>
-      {#if codecs?.video === 'vp9'}
+      {#if codecs?.video === 'vp9' && !soundOnly}
         <p class="hint">This browser cannot encode H.264, so the video is a WebM file (VP9).</p>
       {/if}
       {#if notificationsAvailable()}
@@ -965,10 +1011,13 @@
         <button
           class="primary"
           onclick={start}
-          disabled={parts.length === 0 || !codecs || mode === 'analysis' || seconds <= 0}
+          disabled={parts.length === 0 ||
+            seconds <= 0 ||
+            (!soundOnly && (!codecs || mode === 'analysis'))}
           data-testid="export-start"
         >
-          <Icon name="export" size={16} /> Start export
+          <Icon name="export" size={16} />
+          {soundOnly ? 'Save the sound' : 'Start export'}
         </button>
         <button onclick={onclose}>Close</button>
       </div>
@@ -1215,6 +1264,20 @@
     color: #120a1f;
     font-weight: 600;
     text-decoration: none;
+  }
+  .content {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+    font-size: 14px;
+  }
+  .content label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .content label.on {
+    font-weight: 600;
   }
   .notify {
     display: flex;

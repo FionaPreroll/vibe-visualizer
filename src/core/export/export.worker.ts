@@ -11,6 +11,7 @@ import {
   Output,
   Quality,
   StreamTarget,
+  WavOutputFormat,
   WebMOutputFormat,
   type EncodedPacket,
   type StreamTargetChunk,
@@ -124,6 +125,8 @@ export interface StartArgs {
   output?: string | null;
   /** Shorter segments for tests. */
   segmentSeconds?: number;
+  /** Only the sound, as a WAV file (EX-11). */
+  soundOnly?: boolean;
 }
 
 export interface ResumeArgs {
@@ -311,6 +314,7 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
       output: args.destination || args.folder ? null : (args.output ?? null),
       progress: { audioDone: false, segmentsDone: 0, finished: false, bytes: null },
       resumeCount: 0,
+      soundOnly: args.soundOnly === true,
     };
     if (logoSpectrum) {
       for (const kind of JOB_IMAGES) {
@@ -394,6 +398,7 @@ async function run(
     manifest.progress.audioDone = true;
     await store.writeManifest(manifest);
   }
+  if (manifest.soundOnly) return finishSound(store, manifest, target, progress, started);
   // After a reset of the graphics card, the video goes on from its last finished segment, in a
   // new context (NF-09). Reset again and again before the next segment is finished, it stops.
   let losses = 0;
@@ -474,15 +479,20 @@ async function audioPass(
   let output: Output | null = null;
   let decoded: DecodedSource | null = null;
   try {
-    output = new Output({
-      format: new Mp4OutputFormat({ fastStart: false }),
-      target: await store.target('audio.mp4'),
-    });
+    // Only the sound (EX-11): uncompressed, 16 bits, as a WAV file.
+    output = manifest.soundOnly
+      ? new Output({ format: new WavOutputFormat(), target: await store.target(SOUND_FILE) })
+      : new Output({
+          format: new Mp4OutputFormat({ fastStart: false }),
+          target: await store.target('audio.mp4'),
+        });
     const bitrate = codecs.audio === 'opus' ? OPUS_BITRATE : format.audioBitrate;
-    const source = new AudioSampleSource({
-      codec: codecs.audio,
-      quality: new Quality({ bitrate }),
-    });
+    const source = manifest.soundOnly
+      ? new AudioSampleSource({ codec: 'pcm-s16' })
+      : new AudioSampleSource({
+          codec: codecs.audio,
+          quality: new Quality({ bitrate }),
+        });
     output.addAudioTrack(source);
     await output.start();
 
@@ -1052,6 +1062,59 @@ async function join(
     ? await destination.getFile()
     : await (shelf ?? store).file(shelf ? manifest.output! : OUTPUT_FILE);
   return written.size;
+}
+
+/** The WAV of an export of only the sound (EX-11), while it is made. */
+const SOUND_FILE = 'sound.wav';
+
+/**
+ * Finishes an export of only the sound (EX-11): no video, the WAV goes where the video would,
+ * into the picked file, or into browser storage for a download.
+ */
+async function finishSound(
+  store: JobWriter,
+  manifest: ExportManifest,
+  target: { file: FileSystemFileHandle | null; folder: FileSystemDirectoryHandle | null },
+  progress: (update: ExportProgress) => void,
+  started: number,
+): Promise<ExportResult> {
+  const sound = await store.file(SOUND_FILE);
+  const destination =
+    target.file ??
+    (await target.folder?.getFileHandle(manifest.fileName, { create: true })) ??
+    null;
+  if (destination) {
+    const file = await destination.createWritable();
+    try {
+      await file.write(sound);
+      await file.close();
+    } catch (error) {
+      await file.abort().catch(() => undefined);
+      throw error;
+    }
+  } else if (manifest.output) {
+    await (await JobWriter.shelf()).copy(manifest.output, sound);
+  } else {
+    await store.copy(OUTPUT_FILE, sound);
+  }
+  progress({ phase: 'join', done: 1, total: 1 });
+  const jobFiles = manifest.parts.flatMap((_, index) => [coverFile(index), gridFile(index)]);
+  for (const name of [SOUND_FILE, 'features.bin', ...jobFiles]) await store.remove(name);
+  if (destination) {
+    await clearJob();
+  } else {
+    manifest.progress.finished = true;
+    manifest.progress.bytes = sound.size;
+    await store.writeManifest(manifest);
+  }
+  return {
+    fileName: manifest.fileName,
+    bytes: sound.size,
+    destination: manifest.destination,
+    seconds: (performance.now() - started) / 1000,
+    chapters: partChapters(manifest.parts, manifest.timing, manifest.sound),
+    output: destination ? null : (manifest.output ?? null),
+  };
 }
 
 /** Deletes the job (after cancelling, or when you discard an unfinished export). */
