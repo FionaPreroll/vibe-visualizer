@@ -41,11 +41,13 @@ jobs:
           files: coverage/lcov.info
           use_oidc: true
 
-  # The end-to-end tests in Chromium, in four jobs at once. Each runner draws in software and
-  # runs its tests one at a time; the exports take more than half of the time, so they have
-  # two jobs of their own, split by how long the tests took on CI. Each pair of filters is
-  # complementary, so every test runs once: the exports in two parts; the other files in two
-  # halves.
+  # The end-to-end tests in Chromium, in eight jobs at once. Each runner draws in software and
+  # runs its tests one at a time; its log lists the time of each. The exports take more than
+  # half of the time. Four jobs share them by their times: the tags @ci-exports-1 to 3 in
+  # export.spec.ts, and in the fourth job the export tests without one. The slowest of all,
+  # the export resumed after a reload, has a job of its own. The other files run in four
+  # parts (in three, one part got most of their slow tests). So every test runs once, also one
+  # added or renamed.
   e2e:
     name: e2e (${{ matrix.part }})
     runs-on: ubuntu-24.04
@@ -53,14 +55,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - part: exports, 1 of 2
-            args: tests/e2e/export.spec.ts --grep "tracks of the queue|video of tracks|resumes after a reload"
-          - part: exports, 2 of 2
-            args: tests/e2e/export.spec.ts --grep-invert "tracks of the queue|video of tracks|resumes after a reload"
-          - part: the rest, 1 of 2
-            args: --grep-invert "export\.spec" --fully-parallel --shard=1/2
-          - part: the rest, 2 of 2
-            args: --grep-invert "export\.spec" --fully-parallel --shard=2/2
+          - part: exports, 1 of 4
+            args: tests/e2e/export.spec.ts --grep @ci-exports-1
+          - part: exports, 2 of 4
+            args: tests/e2e/export.spec.ts --grep @ci-exports-2
+          - part: exports, 3 of 4
+            args: tests/e2e/export.spec.ts --grep @ci-exports-3
+          - part: exports, 4 of 4
+            args: tests/e2e/export.spec.ts --grep-invert "@ci-exports-[123]"
+          - part: the rest, 1 of 4
+            args: --grep-invert "export\.spec" --fully-parallel --shard=1/4
+          - part: the rest, 2 of 4
+            args: --grep-invert "export\.spec" --fully-parallel --shard=2/4
+          - part: the rest, 3 of 4
+            args: --grep-invert "export\.spec" --fully-parallel --shard=3/4
+          - part: the rest, 4 of 4
+            args: --grep-invert "export\.spec" --fully-parallel --shard=4/4
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6

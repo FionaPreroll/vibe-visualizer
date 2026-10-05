@@ -34,15 +34,15 @@ async function playTrack(page: Page) {
 }
 
 /**
- * Presses `key` in the mini player's window, which closes it. The window may close while the key
- * is still being sent, before the browser confirms it: then the key fails, as it may.
+ * Does `action` in the mini player's window, which closes it: a key or a click. The window may
+ * close before the browser confirms the action: then the action fails for that, as it may.
  */
-async function pressToClose(mini: Page, key: string): Promise<void> {
+async function closeWith(mini: Page, action: () => Promise<void>): Promise<void> {
   const closed = mini.waitForEvent('close');
-  const pressed = mini.keyboard.down(key).catch((error: Error) => error);
+  await action().catch((error: Error) => {
+    if (!error.message.includes('closed')) throw error;
+  });
   await closed;
-  const result = await pressed;
-  if (result instanceof Error) expect(result.message).toContain('closed');
 }
 
 /** Opens the mini player with `open`, and gives its window, 4:3 like no aspect ratio of the app. */
@@ -97,9 +97,7 @@ test('the mini player shows the visuals in a window of their own (DS-06)', async
   await expect(stage).toHaveAttribute('data-scene', 'kaleidoscope');
 
   // Back to the tab: the window goes, and the stage draws in the tab again.
-  const closed = mini.waitForEvent('close');
-  await mini.getByTestId('mini-back').click();
-  await closed;
+  await closeWith(mini, () => mini.getByTestId('mini-back').click());
   const home = page.getByTestId('visual-stage');
   await expect(home).toHaveAttribute('data-status', 'running');
   await expect(page.getByTestId('mini-note')).toBeHidden();
@@ -108,14 +106,14 @@ test('the mini player shows the visuals in a window of their own (DS-06)', async
   // M opens it, and M in its window closes it; the stage comes back once more. (The window
   // closes on the key going down: there is no page left for it to come up in.)
   const again = await openMiniPlayer(context, () => page.keyboard.press('m'));
-  await pressToClose(again, 'm');
+  await closeWith(again, () => again.keyboard.down('m'));
   await expect(home).toHaveAttribute('data-status', 'running');
   await expectMotion(home);
 
   // F in its window brings the visuals back for the fullscreen (which the browser may refuse to
   // a key in another window).
   const third = await openMiniPlayer(context, () => page.keyboard.press('m'));
-  await pressToClose(third, 'f');
+  await closeWith(third, () => third.keyboard.down('f'));
   await expect(home).toHaveAttribute('data-status', 'running');
   await expect(page.getByTestId('mini-note')).toHaveCount(0);
   await page.evaluate(() => document.fullscreenElement && document.exitFullscreen());
