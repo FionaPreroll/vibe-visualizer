@@ -4,6 +4,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 ## 5 October 2026
 
+- **A second screen:** **⋯ → Second screen** puts the visuals into a window of their own, for a projector or another monitor, in fullscreen there (**F** or a double-click), while the controls stay in the tab. With two screens, Chrome and Edge can put it on the other one by themselves.
 - **A look per track:** in the dialog of a track (✎ or **F2**), **Look** gives it a preset of its own, of the Logo Spectrum or the Kaleidoscope: when the track plays, the visuals take it, also in videos of several tracks. It is kept for the file.
 - **Only the sound:** the export can save the music with its tempo and effects as a WAV file, without a video (*Only the sound (WAV)* in the export dialog).
 - **A draft first:** the export's format *Draft, quick to check* makes a small video (360 pixels, 30 fps) in a fraction of the time, to check a long video before making it in HD.

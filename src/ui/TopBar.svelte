@@ -21,6 +21,9 @@
     /** Whether the mini player is open (DS-06). */
     miniPlayer: boolean;
     onMiniPlayer: () => void;
+    /** Whether the second screen's window is open (DS-03). */
+    secondScreen: boolean;
+    onSecondScreen: () => void;
   }
   let {
     onFullscreen,
@@ -31,6 +34,8 @@
     onController,
     miniPlayer,
     onMiniPlayer,
+    secondScreen,
+    onSecondScreen,
   }: Props = $props();
 
   const player = usePlayer();
@@ -89,6 +94,14 @@
           } satisfies TopBarMenuItem,
         ]
       : []),
+    {
+      label: 'Second screen',
+      icon: 'secondScreen',
+      checked: secondScreen,
+      title: 'The visuals in a window of their own, for a projector or another monitor',
+      testid: 'second-screen',
+      onselect: onSecondScreen,
+    },
     {
       label: 'Safe areas',
       icon: 'safe',

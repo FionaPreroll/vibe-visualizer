@@ -42,7 +42,7 @@ export const SHORTCUTS: readonly { title: string; keys: readonly [string[], stri
     keys: [
       [['V'], 'Next visual mode'],
       [['[', ']'], 'Previous or next preset'],
-      [['F'], 'Fullscreen'],
+      [['F'], "Fullscreen (in the second screen's window: fullscreen there)"],
       [['M'], 'Mini player: the visuals in a small window on top (Chrome, Edge, Firefox)'],
       [['C'], 'Save the picture as a PNG, e.g. as a thumbnail'],
       [['B'], 'Pause the visuals, or show them again (the music plays on)'],
