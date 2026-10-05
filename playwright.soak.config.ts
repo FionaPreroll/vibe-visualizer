@@ -22,6 +22,9 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // The full Chromium (its new headless mode): Playwright's headless shell has no
+        // performance.measureUserAgentSpecificMemory.
+        channel: 'chromium',
         launchOptions: {
           executablePath,
           args: [
