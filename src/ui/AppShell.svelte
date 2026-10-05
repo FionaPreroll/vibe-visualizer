@@ -40,6 +40,9 @@
   import VisualStage from './VisualStage.svelte';
   import WelcomeIntro from './WelcomeIntro.svelte';
   import { windowTitle, type UnseenOutcome } from './window-title';
+  import { lookSettings } from './track-look';
+  import type { KaleidoSettings } from '../core/render/kaleido-settings';
+  import type { LogoSpectrumSettings } from '../core/render/visual-settings';
   import { provideAssets } from './visuals-context';
 
   const player = new Player();
@@ -84,6 +87,29 @@
     const [one, many] = isSoundFile(fileName) ? ['sound', 'sounds'] : ['video', 'videos'];
     return count > 1 ? `Your ${many} are ready.` : `Your ${one} is ready.`;
   }
+  // A track with a look of its own (PR-06): the visuals take it when it starts, or when the
+  // look is given to the track playing. In the analysis, only the mode's settings change.
+  const currentLook = $derived.by(() => {
+    const track = $app.tracks.find((entry) => entry.id === $app.currentId);
+    return track?.look ? `${track.id}|${track.look.mode}|${track.look.preset}` : null;
+  });
+  $effect(() => {
+    if (!currentLook) return;
+    untrack(() => {
+      const track = $app.tracks.find((entry) => entry.id === $app.currentId);
+      const settings = lookSettings(track?.look ?? null);
+      if (!track?.look || !settings) return;
+      if (track.look.mode === 'logoSpectrum') {
+        player.replaceVisuals(settings as LogoSpectrumSettings);
+      } else {
+        player.replaceKaleido(settings as KaleidoSettings);
+      }
+      const mode = $app.settings.visualMode;
+      if (mode !== 'analysis' && mode !== track.look.mode) {
+        player.updateSettings({ visualMode: track.look.mode });
+      }
+    });
+  });
   let exportStatus: ExportState['status'] = 'idle';
   $effect(() => {
     const state = $exporter;

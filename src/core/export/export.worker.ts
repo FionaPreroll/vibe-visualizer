@@ -713,7 +713,13 @@ function createScene(
   gl: WebGL2RenderingContext,
   visuals: ExportVisuals,
   images: ResumeArgs['images'],
-): { scene: Scene; switching: Switching | null; logo: LogoSpectrumScene | null } {
+): {
+  scene: Scene;
+  switching: Switching | null;
+  logo: LogoSpectrumScene | null;
+  /** Gives the scene a part's look (PR-06); the switching counts anew from it. */
+  applyLook: (look: unknown) => void;
+} {
   const config = visuals.auto?.config.on ? sanitizeAutoPresets(visuals.auto.config) : null;
   if (visuals.mode === 'logoSpectrum') {
     const front = new LogoSpectrumScene(gl);
@@ -728,7 +734,10 @@ function createScene(
       layer.setSettings(fallback);
       scene = new LayeredScene(front, layer, fallback);
     }
-    if (!config || !visuals.auto) return { scene, switching: null, logo: front };
+    if (!config || !visuals.auto) {
+      const applyLook = (look: unknown) => front.setSettings(sanitizeSettings(look));
+      return { scene, switching: null, logo: front, applyLook };
+    }
     const automation = new PresetAutomation(
       morphLogoSpectrum,
       settings,
@@ -736,16 +745,27 @@ function createScene(
     );
     automation.setAuto(config, visuals.auto.presets.map(sanitizeSettings));
     const switching = createSwitching(automation, (next) => front.setSettings(next));
-    return { scene, switching, logo: front };
+    const applyLook = (look: unknown) => {
+      automation.setSettings(sanitizeSettings(look));
+      front.setSettings(automation.current);
+    };
+    return { scene, switching, logo: front, applyLook };
   }
   const scene = new KaleidoscopeScene(gl);
   const settings = sanitizeKaleido(visuals.settings);
   scene.setSettings(settings);
-  if (!config || !visuals.auto) return { scene, switching: null, logo: null };
+  if (!config || !visuals.auto) {
+    const applyLook = (look: unknown) => scene.setSettings(sanitizeKaleido(look));
+    return { scene, switching: null, logo: null, applyLook };
+  }
   const automation = new PresetAutomation(morphKaleido, settings, SWITCHING_SEEDS.kaleidoscope);
   automation.setAuto(config, visuals.auto.presets.map(sanitizeKaleido));
   const switching = createSwitching(automation, (next) => scene.setSettings(next));
-  return { scene, switching, logo: null };
+  const applyLook = (look: unknown) => {
+    automation.setSettings(sanitizeKaleido(look));
+    scene.setSettings(automation.current);
+  };
+  return { scene, switching, logo: null, applyLook };
 }
 
 /**
@@ -777,7 +797,7 @@ async function videoPass(
     powerPreference: 'high-performance',
   });
   if (!gl) throw new Error('WebGL2 is not available.');
-  const { scene, switching, logo } = createScene(gl, manifest.visuals, pictures.images);
+  const { scene, switching, logo, applyLook } = createScene(gl, manifest.visuals, pictures.images);
   // Each part's cover art as the logo (LS-15), and the colours of its track (VE-12): its own, or
   // its cover's. The covers go with the job only when they show (a job of before the colours
   // has them only for the logo).
@@ -791,6 +811,8 @@ async function videoPass(
       })
     : null;
   let shownPart = -1;
+  /** The part whose look the scene took last (PR-06). */
+  let lookPart = -1;
   // The track overlay (LS-18, LS-19), over the picture: it has no state of its own, its text
   // follows from the frame's place in its part.
   const overlaySettings = manifest.visuals.overlay
@@ -827,6 +849,8 @@ async function videoPass(
       const snapshot = decodeSnapshot(await state.arrayBuffer());
       // The switching first: the scene continues with the settings it had.
       scene.restoreState(switching ? switching.restore(snapshot) : snapshot);
+      // The look of the part playing is in that state already (PR-06).
+      lookPart = partAt(manifest, fps, n - 1).index;
       const previous = frameTime(timing, fps, n - 1);
       feed.seek(previous);
       sampler.resetTo(previous);
@@ -841,9 +865,15 @@ async function videoPass(
       const at = frameTime(timing, fps, frame);
       await feed.ensure(at);
       sampler.sample(at, features);
+      const heard = partAt(manifest, fps, frame);
+      // A part with a look of its own (PR-06): the scene takes it as the part starts.
+      if (heard.index !== lookPart) {
+        lookPart = heard.index;
+        const look = manifest.parts[heard.index]?.look;
+        if (look) applyLook(look);
+      }
       // The switching counts from the first frame of the video, not in the pre-roll.
       if (frame >= 0) switching?.frame(1 / fps, features);
-      const heard = partAt(manifest, fps, frame);
       if (heard.index !== shownPart) {
         shownPart = heard.index;
         logo?.setCover(covers[heard.index] ?? null);

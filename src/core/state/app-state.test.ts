@@ -9,6 +9,7 @@ import {
   newTrack,
   reducer,
   restoredTrack,
+  sanitizeTrackLook,
   shownArtist,
   shownCover,
   shownTitle,
@@ -76,6 +77,7 @@ describe('app state', () => {
           gridEdit: { shift: 0.02, downbeat: 1.5 },
           edit: { title: 'Better title', artist: null },
           colors: { source: 'own', own: ['#ff2fd6'], vivid: 1.4 },
+          look: { mode: 'kaleidoscope', preset: 'Neon Mandala' },
         },
       },
     });
@@ -87,7 +89,11 @@ describe('app state', () => {
       gridEdit: { shift: 0.02, downbeat: 1.5 },
       edit: { title: 'Better title', artist: null },
       colors: { source: 'own', own: ['#ff2fd6'], vivid: 1.4 },
+      look: { mode: 'kaleidoscope', preset: 'Neon Mandala' },
     });
+    // A look of its own for every entry of the file (PR-06), and none again.
+    state = reducer(state, { type: 'tracks/look', fingerprint: 'abc', look: null });
+    expect(state.tracks[0]!.look).toBeNull();
     state = reducer(state, { type: 'tracks/cue', id: 't0', index: 1, seconds: 500 });
     expect(state.tracks[0]!.cues[1]).toBe(180);
     state = reducer(state, { type: 'tracks/cue', id: 't0', index: 0, seconds: null });
@@ -232,6 +238,7 @@ describe('app state', () => {
           gridEdit: NO_GRID_EDIT,
           edit: null,
           colors: null,
+          look: null,
         }),
         restoredTrack('r1', { ...info, fileName: 'Gone.mp3' }, 'missing'),
       ],
@@ -431,5 +438,17 @@ describe('app state', () => {
     expect(state.live).toEqual({ ...LIVE_OFF, error: 'Sharing has ended.' });
     state = reducer(state, { type: 'live/failed', message: 'Denied', running: false });
     expect(state.live.status).toBe('off');
+  });
+});
+
+describe('the look of a track (PR-06)', () => {
+  it('keeps a preset of a visual mode by name, and nothing else', () => {
+    expect(sanitizeTrackLook({ mode: 'logoSpectrum', preset: 'Night Rain' })).toEqual({
+      mode: 'logoSpectrum',
+      preset: 'Night Rain',
+    });
+    expect(sanitizeTrackLook({ mode: 'analysis', preset: 'Night Rain' })).toBeNull();
+    expect(sanitizeTrackLook({ mode: 'kaleidoscope', preset: ' ' })).toBeNull();
+    expect(sanitizeTrackLook('Night Rain')).toBeNull();
   });
 });

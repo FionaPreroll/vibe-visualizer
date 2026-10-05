@@ -56,6 +56,7 @@
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
   import { kaleidoPresets, logoSpectrumPresets } from './preset-store';
+  import { lookSettings } from './track-look';
   import { useAssets } from './visuals-context';
 
   /**
@@ -278,8 +279,16 @@
           : null;
       }),
     );
+    // Each track's look (PR-06), where it is of the video's mode.
+    const looks = tracks.map((entry) =>
+      !soundOnly && entry.look?.mode === mode ? lookSettings(entry.look) : null,
+    );
     const requested: RequestPart[] = tracks.map((entry, index) => ({
-      part: { ...planned[index]!, loudness: player.analysisOf(entry)?.loudness ?? null },
+      part: {
+        ...planned[index]!,
+        loudness: player.analysisOf(entry)?.loudness ?? null,
+        ...(looks[index] ? { look: looks[index] } : {}),
+      },
       file: files[index]!,
       grid: player.analysisOf(entry)?.grid ?? null,
       cover: covers[index] ?? null,

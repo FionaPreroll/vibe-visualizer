@@ -27,6 +27,8 @@
   import Slider from './controls/Slider.svelte';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
+  import { lookNames } from './track-look';
+  import { sanitizeTrackLook } from '../core/state/app-state';
 
   /**
    * Names a track (LS-18): the title and artist that the overlay, the queue and exports show,
@@ -56,6 +58,8 @@
   let problem = $state<string | null>(null);
   /** The colours of the visuals for this track (VE-12), saved with the names. */
   let colors = $state<TrackColors>(DEFAULT_TRACK_COLORS);
+  /** The look of the track (PR-06), as "mode|preset"; empty: none. */
+  let look = $state('');
   /** The tones of the cover shown here: what the colours of the cover are made of. */
   let tones = $state<Tone[] | null>(null);
 
@@ -124,6 +128,7 @@
       title = shownTitle(track);
       artist = shownArtist(track) ?? '';
       colors = { ...(track.colors ?? DEFAULT_TRACK_COLORS) };
+      look = track.look ? `${track.look.mode}|${track.look.preset}` : '';
       stage(undefined);
       problem = null;
       dialog.showModal();
@@ -153,6 +158,8 @@
       player.renameTrack(track.id, title, artist);
       if (cover !== undefined) void player.setOwnCover(track.id, cover?.blob ?? null);
       player.setTrackColors(track.id, sanitizeTrackColors(colors));
+      const [mode, ...preset] = look.split('|');
+      player.setTrackLook(track.id, sanitizeTrackLook({ mode, preset: preset.join('|') }));
     }
     onclose();
   }
@@ -176,7 +183,7 @@
 >
   <form onsubmit={save}>
     <header>
-      <h2 id={heading}>Title, artist, cover and colours</h2>
+      <h2 id={heading}>Title, artist, cover, colours and look</h2>
       <button type="button" class="close" onclick={onclose} aria-label="Close">
         <Icon name="close" size={18} />
       </button>
@@ -332,6 +339,25 @@
             With <em>The colours of the track playing</em> on (Visuals), live and in videos.
           </p>
         </div>
+        <label class="look">
+          <span class="label">Look</span>
+          <select bind:value={look} data-testid="track-look">
+            <option value="">The visuals as they are</option>
+            <optgroup label="Logo Spectrum">
+              {#each lookNames('logoSpectrum') as name (name)}
+                <option value={`logoSpectrum|${name}`}>{name}</option>
+              {/each}
+            </optgroup>
+            <optgroup label="Kaleidoscope">
+              {#each lookNames('kaleidoscope') as name (name)}
+                <option value={`kaleidoscope|${name}`}>{name}</option>
+              {/each}
+            </optgroup>
+          </select>
+          <span class="muted small">
+            A preset the visuals take when the track starts, live and in a video of several tracks.
+          </span>
+        </label>
       {/if}
     </div>
     <footer>
@@ -433,6 +459,10 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .look {
+    display: grid;
+    gap: 4px;
   }
   .colors {
     display: flex;

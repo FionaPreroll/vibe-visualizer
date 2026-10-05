@@ -53,7 +53,7 @@ export const SHORTCUTS: readonly { title: string; keys: readonly [string[], stri
     keys: [
       [['Enter'], 'Play it'],
       [['Delete'], 'Remove it'],
-      [['F2'], 'Give it a title, artist, cover and colours'],
+      [['F2'], 'Give it a title, artist, cover, colours and look'],
       [['Alt + ↑', 'Alt + ↓'], 'Move it up or down'],
     ],
   },

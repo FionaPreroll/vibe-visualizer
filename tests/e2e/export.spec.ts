@@ -302,7 +302,7 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
   expect(errors).toEqual([]);
 });
 
-test('a video of tracks takes the colours of each: its cover art, or its own (VE-12) @ci-exports-3', async ({
+test('a video of tracks takes the colours of each: its cover art, or its own (VE-12), and its look (PR-06) @ci-exports-3', async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -334,6 +334,8 @@ test('a video of tracks takes the colours of each: its cover art, or its own (VE
   await page.getByTestId('track-colors-pick').first().fill('#fa7814');
   await page.getByRole('button', { name: 'Remove the last colour' }).click();
   await expect(page.getByTestId('track-colors-pick')).toHaveCount(1);
+  // And a look of its own (PR-06): the video takes it as the track starts, in its colours.
+  await page.getByTestId('track-look').selectOption('kaleidoscope|Crystal Mandala');
   await page.getByTestId('track-name-save').click();
 
   await page.getByTestId('export-button').click();

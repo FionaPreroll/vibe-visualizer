@@ -112,6 +112,11 @@ export interface ExportPart {
   loudness?: TrackLoudness | null;
   /** The colours the user gave its track (VE-12); not given: its cover's, as found. */
   colors?: TrackColors | null;
+  /**
+   * The look of its track (PR-06), the settings of the video's visual mode: the scene takes it
+   * when the part starts. Not given: the scene goes on as it is.
+   */
+  look?: unknown;
 }
 
 export interface ExportTiming {

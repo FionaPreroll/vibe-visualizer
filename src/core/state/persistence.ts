@@ -23,6 +23,7 @@ import {
   APP_NAME_LENGTH,
   PANEL_TABS,
   REPEAT_MODES,
+  sanitizeTrackLook,
   SYNC_OFFSET_RANGE,
   TRACK_TEXT_LENGTH,
   VISUAL_MODES,
@@ -107,6 +108,7 @@ export function loadTrackData(fingerprint: string, duration: number): TrackData 
     grid?: unknown;
     edit?: unknown;
     colors?: unknown;
+    look?: unknown;
   } | null;
   if (!stored || typeof stored !== 'object') return null;
   const cues = Array.isArray(stored.cues) ? stored.cues : [];
@@ -120,6 +122,7 @@ export function loadTrackData(fingerprint: string, duration: number): TrackData 
     gridEdit: gridEdit(stored.grid, duration),
     edit: trackEdit(stored.edit),
     colors: sanitizeTrackColors(stored.colors),
+    look: sanitizeTrackLook(stored.look),
   };
 }
 
@@ -137,7 +140,8 @@ export function saveTrackData(fingerprint: string, data: TrackData): void {
     !data.fixedTempo &&
     !isGridEdited(data.gridEdit) &&
     data.edit === null &&
-    data.colors === null;
+    data.colors === null &&
+    data.look === null;
   if (empty) {
     try {
       localStorage.removeItem(TRACK_PREFIX + fingerprint);
@@ -154,6 +158,7 @@ export function saveTrackData(fingerprint: string, data: TrackData): void {
     ...(isGridEdited(data.gridEdit) ? { grid: data.gridEdit } : {}),
     ...(data.edit ? { edit: data.edit } : {}),
     ...(data.colors ? { colors: data.colors } : {}),
+    ...(data.look ? { look: data.look } : {}),
   });
 }
 

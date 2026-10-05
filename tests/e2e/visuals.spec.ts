@@ -758,7 +758,7 @@ test('a track can be given a cover of your own, kept for the file (LS-21)', asyn
   await item.hover();
   await page.getByTestId('queue-rename').click();
   const dialog = page.getByTestId('track-name-dialog');
-  await expect(dialog).toContainText('Title, artist, cover and colours');
+  await expect(dialog).toContainText('Title, artist, cover, colours and look');
   await expect(page.getByTestId('track-cover-remove')).toBeDisabled();
   const input = page.getByTestId('track-cover-input');
   await input.setInputFiles({
@@ -802,5 +802,64 @@ test('a track can be given a cover of your own, kept for the file (LS-21)', asyn
   await page.getByTestId('file-input').setInputFiles(file);
   await expect(item).toHaveAttribute('data-status', 'ready');
   await expect(page.getByTestId('queue-cover')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('a track can have its own look, applied when it plays and kept for the file (PR-06)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await startWithClassicLook(page);
+  await page.goto('/');
+  const stage = page.getByTestId('visual-stage');
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  const files = [
+    { name: 'One.wav', mimeType: 'audio/wav', buffer: createWav(20) },
+    { name: 'Two.wav', mimeType: 'audio/wav', buffer: createWav(21) },
+  ];
+  await page.getByTestId('file-input').setInputFiles(files);
+  const items = page.getByTestId('queue-item');
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(1)).toHaveAttribute('data-status', 'ready');
+  const preset = page.getByTestId('preset-select');
+
+  // The second track gets a look of the Logo Spectrum, the first one of the Kaleidoscope: the
+  // look of the playing track applies at once.
+  const giveLook = async (index: number, look: string) => {
+    await items.nth(index).hover();
+    await items.nth(index).getByTestId('queue-rename').click();
+    const select = page.getByTestId('track-look');
+    await expect(select).toHaveValue('');
+    await select.selectOption(look);
+    await page.getByTestId('track-name-save').click();
+    await expect(page.getByTestId('track-name-dialog')).toBeHidden();
+  };
+  await giveLook(1, 'logoSpectrum|Inferno');
+  await items.nth(0).dblclick();
+  await expect(stage).toHaveAttribute('data-scene', 'logoSpectrum');
+  await giveLook(0, 'kaleidoscope|Crystal Mandala');
+  await expect(stage).toHaveAttribute('data-scene', 'kaleidoscope');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await expect(preset).toHaveValue('Crystal Mandala');
+
+  // The next track brings its own look.
+  await page.getByRole('tab', { name: 'Queue' }).click();
+  await items.nth(1).dblclick();
+  await expect(stage).toHaveAttribute('data-scene', 'logoSpectrum');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await expect(preset).toHaveValue('Inferno');
+
+  // Kept for the file: after a reload, the first track is back with its look.
+  await page.reload();
+  await expect(stage).toHaveAttribute('data-status', 'running', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Queue' }).click();
+  await page.getByTestId('file-input').setInputFiles(files[0]!);
+  await expect(items.first()).toHaveAttribute('data-status', 'ready');
+  await items.first().dblclick();
+  await expect(stage).toHaveAttribute('data-scene', 'kaleidoscope');
+  await items.first().hover();
+  await items.first().getByTestId('queue-rename').click();
+  await expect(page.getByTestId('track-look')).toHaveValue('kaleidoscope|Crystal Mandala');
   expect(errors).toEqual([]);
 });
