@@ -98,6 +98,9 @@ test('a DDJ-FLX2 plays, sets hot cues, filters and changes the tempo (CTL-02, CT
   await dialog.getByTestId('controller-connect').click();
   await expect(dialog.getByTestId('controller-status')).toHaveText('Connected');
   await expect(dialog.getByTestId('controller-devices')).toContainText('Pioneer DJ DDJ-FLX2');
+  // A controller the app supports needs no teaching (CTL-04).
+  await expect(dialog.getByTestId('controller-learn')).toBeVisible();
+  await expect(dialog.getByTestId('learn-start')).toHaveCount(0);
   // The ⋯ menu of the top bar, where the dialog is, shows that a controller is connected.
   await expect(page.getByTestId('more-dot')).toBeVisible();
   // The lights start off.

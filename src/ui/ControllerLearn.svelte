@@ -13,15 +13,19 @@
   const used = LEARN_STEPS.filter((step) => step.used);
   const more = LEARN_STEPS.filter((step) => !step.used);
 
-  /** The device to teach: by default the first the app has no built-in profile for. */
-  let chosen = $state('');
+  /**
+   * The devices that can be taught: those the app has no profile for, or one of the user's (taught
+   * again). A controller the app supports, such as the DDJ-FLX2, needs no teaching.
+   */
   const teachable = $derived(
-    $controllers.devices.find(
+    $controllers.devices.filter(
       (device) => !device.profile || $controllers.profiles.includes(device.profile),
-    ) ?? $controllers.devices[0],
+    ),
   );
+  /** The device to teach: the one chosen, else the first. */
+  let chosen = $state('');
   const deviceId = $derived(
-    $controllers.devices.some((device) => device.id === chosen) ? chosen : (teachable?.id ?? ''),
+    teachable.some((device) => device.id === chosen) ? chosen : (teachable[0]?.id ?? ''),
   );
 
   let name = $state('');
@@ -130,21 +134,21 @@
       A controller the app does not know yet can be taught, control by control. Save a report of it
       too and send it to us, so that it can come with the app.
     </p>
-    {#if $controllers.status === 'on' && $controllers.devices.length > 0}
+    {#if $controllers.status === 'on' && teachable.length > 0}
       <div class="row">
-        {#if $controllers.devices.length > 1}
+        {#if teachable.length > 1}
           <select
             bind:value={chosen}
             aria-label="The controller to teach"
             data-testid="learn-device"
           >
-            {#each $controllers.devices as device (device.id)}
+            {#each teachable as device (device.id)}
               <option value={device.id} selected={device.id === deviceId}>{device.name}</option>
             {/each}
           </select>
         {/if}
         <button onclick={start} data-testid="learn-start">
-          Teach the app {$controllers.devices.length > 1 ? 'this one' : teachable?.name}
+          Teach the app {teachable.length > 1 ? 'this one' : teachable[0]?.name}
         </button>
       </div>
     {/if}
