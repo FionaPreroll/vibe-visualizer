@@ -215,8 +215,9 @@ test('the colours can come from the cover art of the track playing (VE-12)', asy
     const [red, green, blue] = region!.mean;
     return blue - Math.max(red, green);
   };
-  await page.waitForTimeout(1500);
-  expect(await blueness()).toBeLessThan(0);
+  // Once the Vortex shows: a picture still dark when measured is neither (0), as on a slow runner
+  // a second and a half after the start.
+  await expect.poll(blueness, { timeout: 10_000 }).toBeLessThan(0);
 
   // With the colours of the cover: blue, and the look's own again without them.
   await page.getByRole('tab', { name: 'Visuals' }).click();
