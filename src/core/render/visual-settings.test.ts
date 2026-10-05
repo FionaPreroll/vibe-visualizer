@@ -120,13 +120,15 @@ const CLASSIC_RAINBOW = BUILT_IN_PRESETS.find(
 describe('visual settings', () => {
   it('starts with Blue-Pink Vortex, as it was exported from the app', () => {
     expect(BUILT_IN_PRESETS[0]!.name).toBe('Blue-Pink Vortex');
-    // Settings added since then have their defaults: no image under the Kaleidoscope, stars,
-    // no haze, and the Neon Ribbons of today (the look shows the Vortex, its Ribbons were never
-    // seen).
+    // Settings added since then have their defaults: no image under the Kaleidoscope (nor a
+    // tint of its own), stars, no haze, and the Neon Ribbons of today (the look shows the
+    // Vortex, its Ribbons were never seen).
     const look = BLUE_PINK_EXPORT.layerLook;
     expect(DEFAULT_LOGO_SPECTRUM).toEqual({
       ...BLUE_PINK_EXPORT,
       layerImage: 0,
+      layerImageTint: '#8f3dff',
+      layerImageTintAmount: 0,
       particleStyle: 'stars',
       layerLook: {
         ...look,
@@ -138,6 +140,15 @@ describe('visual settings', () => {
     expect(sanitizeSettings(BLUE_PINK_EXPORT)).toEqual(DEFAULT_LOGO_SPECTRUM);
     expect(sanitizeSettings(null)).toEqual(DEFAULT_LOGO_SPECTRUM);
     expect(sanitizeSettings('nonsense')).toEqual(DEFAULT_LOGO_SPECTRUM);
+  });
+
+  it('keeps a tint of its own for the image under the Kaleidoscope, checked', () => {
+    const tinted = sanitizeSettings({ layerImageTint: '#ff2020', layerImageTintAmount: 0.4 });
+    expect(tinted.layerImageTint).toBe('#ff2020');
+    expect(tinted.layerImageTintAmount).toBe(0.4);
+    const broken = sanitizeSettings({ layerImageTint: 'red', layerImageTintAmount: 5 });
+    expect(broken.layerImageTint).toBe(DEFAULT_LOGO_SPECTRUM.layerImageTint);
+    expect(broken.layerImageTintAmount).toBe(1);
   });
 
   it('fills what a stored look lacks or breaks from Classic Rainbow, the default before', () => {
