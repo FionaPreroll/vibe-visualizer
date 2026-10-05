@@ -2,6 +2,15 @@
 
 What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with the day and the time of the build, such as 0.9.20261003.1432 (**About** shows yours), so the changes are listed by the day they came out.
 
+## 5 October 2026
+
+- **Any MIDI controller:** a controller the app does not know can be taught in the DJ controller dialog, control by control (MIDI learn), and kept as yours, exported and imported. A report of it can be saved and sent to us, so that it can come with the app.
+- **A second screen:** **⋯ → Second screen** puts the visuals into a window of their own, for a projector or another monitor, in fullscreen there (**F** or a double-click), while the controls stay in the tab. With two screens, Chrome and Edge can put it on the other one by themselves.
+- **A look per track:** in the dialog of a track (✎ or **F2**), **Look** gives it a preset of its own, of the Logo Spectrum or the Kaleidoscope: when the track plays, the visuals take it, also in videos of several tracks. It is kept for the file.
+- **Only the sound:** the export can save the music with its tempo and effects as a WAV file, without a video (*Only the sound (WAV)* in the export dialog).
+- **A draft first:** the export's format *Draft, quick to check* makes a small video (360 pixels, 30 fps) in a fraction of the time, to check a long video before making it in HD.
+- **Exports in the tab's title:** while a video is made, the title of the tab shows how far it is, and how it ended until you look at the tab. If you like, a notification says when it is done (**Tell me when it is done** in the export dialog).
+
 ## 4 October 2026
 
 - **Neon Ribbons, in a new light:** fine rings of light and soft, out-of-focus lights instead of fractal blossoms and little flowers, a colour that drifts along each tube, cool colours (*Iris*), and a haze instead of plain black (**Haze**, for every Kaleidoscope scene). *Neon Mandala* and *Lava Braid* follow. The look of before stays as the preset *Flower Power*, and looks you saved keep theirs.

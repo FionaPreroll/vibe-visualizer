@@ -45,11 +45,19 @@ export async function openMiniPlayerWindow(aspect: AspectRatio, title: string): 
   const api = pictureInPicture();
   if (!api) throw new Error('This browser has no picture-in-picture windows for pages.');
   const view = await api.requestWindow(miniPlayerSize(aspect));
+  adoptAppStyles(view, title);
+  return view;
+}
+
+/**
+ * Gives a window the app's style sheets, language and title, so that what moves into it looks as
+ * it does in the tab: the mini player's, and the second screen's (DS-03).
+ */
+export function adoptAppStyles(view: Window, title: string): void {
   const doc = view.document;
   for (const node of document.head.querySelectorAll('link[rel="stylesheet"], style')) {
     doc.head.append(node.cloneNode(true));
   }
   doc.documentElement.lang = document.documentElement.lang;
   doc.title = title;
-  return view;
 }

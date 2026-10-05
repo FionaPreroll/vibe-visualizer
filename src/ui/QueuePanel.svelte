@@ -310,8 +310,8 @@
           <button
             class="rename ghost"
             onclick={() => (naming = track)}
-            aria-label="Title, artist, cover and colours of {shownTitle(track)}"
-            title="Title, artist, cover and colours (F2)"
+            aria-label="Title, artist, cover, colours and look of {shownTitle(track)}"
+            title="Title, artist, cover, colours and look (F2)"
             data-testid="queue-rename"
           >
             <Icon name="pencil" size={15} />

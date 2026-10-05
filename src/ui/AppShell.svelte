@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { flushSync, getAllContexts, mount, onDestroy, onMount, unmount } from 'svelte';
+  import { flushSync, getAllContexts, mount, onDestroy, onMount, unmount, untrack } from 'svelte';
   import { isClean } from '../core/audio/dsp/sound-settings';
   import { ControllerService } from '../core/control/controller-service';
   import { REPEAT_MODES } from '../core/state/app-state';
   import { errorMessage } from '../core/util/format';
-  import { Exporter } from '../core/export/exporter';
+  import { isSoundFile } from '../core/export/export-job';
+  import { Exporter, type ExportState } from '../core/export/exporter';
   import { Player } from '../core/player/player';
   import type { SceneKind } from '../core/render/render-protocol';
   import { VisualAssets } from '../core/render/visual-assets';
@@ -20,10 +21,17 @@
   import LivePanel from './LivePanel.svelte';
   import NewVersionNotice from './NewVersionNotice.svelte';
   import { provideExporter } from './exporter-context';
+  import { notifyExportEnd } from './export-notify';
   import Icon from './Icon.svelte';
   import { openMiniPlayerWindow, supportsMiniPlayer } from './mini-player';
   import MiniPlayerControls from './MiniPlayerControls.svelte';
   import { savePicture } from './picture';
+  import {
+    openSecondScreenWindow,
+    placeOnOtherScreen,
+    toggleWindowFullscreen,
+  } from './second-screen';
+  import SecondScreenControls from './SecondScreenControls.svelte';
   import { providePlayer } from './player-context';
   import { portal } from './portal';
   import ProblemNotice from './ProblemNotice.svelte';
@@ -37,6 +45,10 @@
   import VisualsPanel from './VisualsPanel.svelte';
   import VisualStage from './VisualStage.svelte';
   import WelcomeIntro from './WelcomeIntro.svelte';
+  import { windowTitle, type UnseenOutcome } from './window-title';
+  import { lookSettings } from './track-look';
+  import type { KaleidoSettings } from '../core/render/kaleido-settings';
+  import type { LogoSpectrumSettings } from '../core/render/visual-settings';
   import { provideAssets } from './visuals-context';
 
   const player = new Player();
@@ -67,9 +79,64 @@
   // Derived, so that the effects run when the name changes, not with every change of the state
   // (drawing the logo takes a while).
   const appName = $derived($app.settings.appName);
+  /** How an export ended while the tab was in the background, until the tab is seen again. */
+  let unseen = $state<UnseenOutcome>(null);
+  // The title says what an export is doing, so that it shows in the tab while the user works
+  // elsewhere.
+  const title = $derived(windowTitle(appName, $exporter, unseen));
   $effect(() => {
-    document.title = appName;
-    if (miniWindow) miniWindow.document.title = appName;
+    document.title = title;
+    if (outWindow) outWindow.document.title = title;
+  });
+  /** "Your video is ready.", or "Your sounds are ready." and so on. */
+  function readyNote(count: number, fileName: string): string {
+    const [one, many] = isSoundFile(fileName) ? ['sound', 'sounds'] : ['video', 'videos'];
+    return count > 1 ? `Your ${many} are ready.` : `Your ${one} is ready.`;
+  }
+  // A track with a look of its own (PR-06): the visuals take it when it starts, or when the
+  // look is given to the track playing. In the analysis, only the mode's settings change.
+  const currentLook = $derived.by(() => {
+    const track = $app.tracks.find((entry) => entry.id === $app.currentId);
+    return track?.look ? `${track.id}|${track.look.mode}|${track.look.preset}` : null;
+  });
+  $effect(() => {
+    if (!currentLook) return;
+    untrack(() => {
+      const track = $app.tracks.find((entry) => entry.id === $app.currentId);
+      const settings = lookSettings(track?.look ?? null);
+      if (!track?.look || !settings) return;
+      if (track.look.mode === 'logoSpectrum') {
+        player.replaceVisuals(settings as LogoSpectrumSettings);
+      } else {
+        player.replaceKaleido(settings as KaleidoSettings);
+      }
+      const mode = $app.settings.visualMode;
+      if (mode !== 'analysis' && mode !== track.look.mode) {
+        player.updateSettings({ visualMode: track.look.mode });
+      }
+    });
+  });
+  let exportStatus: ExportState['status'] = 'idle';
+  $effect(() => {
+    const state = $exporter;
+    const was = exportStatus;
+    exportStatus = state.status;
+    if (was !== 'running' || document.visibilityState === 'visible') return;
+    if (state.status !== 'done' && state.status !== 'failed') return;
+    unseen = state.status;
+    if (!untrack(() => $app.settings.exportNotify)) return;
+    const name = untrack(() => appName);
+    if (state.status === 'done') {
+      const several = state.videos.length > 1;
+      const [one, many] = isSoundFile(state.fileName) ? ['sound', 'sounds'] : ['video', 'videos'];
+      notifyExportEnd(
+        name,
+        several ? `Your ${many} are ready` : `Your ${one} is ready`,
+        several ? `${state.videos.length} ${many}` : state.fileName,
+      );
+    } else {
+      notifyExportEnd(name, 'The export failed', state.message);
+    }
   });
   $effect(() => {
     let current = true;
@@ -81,15 +148,18 @@
     };
   });
 
-  /** Stops the controllers, the export, the audio and the workers; the mini player goes. */
+  /**
+   * Stops the controllers, the export, the audio and the workers; the mini player or the second
+   * screen goes.
+   */
   function teardown() {
     clearTimeout(idleTimer);
-    if (miniWindow) {
-      miniWindow.removeEventListener('pagehide', bringBack);
-      miniWindow.close();
+    if (outWindow) {
+      outWindow.removeEventListener('pagehide', bringBack);
+      outWindow.close();
     }
-    if (miniControls) void unmount(miniControls);
-    miniControls = null;
+    if (outControls) void unmount(outControls);
+    outControls = null;
     controllers.dispose();
     exporter.dispose();
     player.dispose();
@@ -117,26 +187,38 @@
     idleTimer = setTimeout(() => (idle = document.fullscreenElement === stage), 2500);
   }
 
-  function toggleFullscreen() {
+  /** Fullscreen, by a key or a button in `source`: the tab, or the window the visuals are in. */
+  function toggleFullscreen(source: Window = window) {
+    if (outKind === 'screen' && outWindow) {
+      // The second screen's window goes fullscreen from a key or a click in it; from the tab,
+      // the browser would refuse it: the window comes to the front, saying how.
+      if (source === outWindow) toggleWindowFullscreen(outWindow);
+      else outWindow.focus();
+      return;
+    }
     if (document.fullscreenElement) {
       void document.exitFullscreen();
-    } else if (miniWindow) {
+    } else if (outWindow) {
       // The visuals come back from the mini player for it. From its window, the browser may
       // refuse the tab's fullscreen: the visuals are back in the tab then.
-      closeMiniPlayer();
+      closeOutside();
       stage.requestFullscreen().catch(() => undefined);
     } else {
       void stage.requestFullscreen();
     }
   }
 
-  /** The mini player's window (DS-06) while it is open, and where the stage goes in it. */
-  let miniWindow = $state<Window | null>(null);
-  let miniSlot = $state<HTMLElement | null>(null);
+  /**
+   * The window the visuals are in while it is open, the mini player's (DS-06) or the second
+   * screen's (DS-03), and where the stage goes in it.
+   */
+  let outWindow = $state<Window | null>(null);
+  let outKind = $state<'mini' | 'screen' | null>(null);
+  let outSlot = $state<HTMLElement | null>(null);
   /** Its controls: a Svelte root of their own, which also handles the events in that window. */
-  let miniControls: ReturnType<typeof mount> | null = null;
+  let outControls: ReturnType<typeof mount> | null = null;
   let miniOpening = false;
-  /** The player, the assets and the rest, for the controls in the mini player's window. */
+  /** The player, the assets and the rest, for the controls in the other window. */
   const contexts = getAllContexts();
 
   /**
@@ -155,29 +237,16 @@
    * other tabs and apps, with controls for the music.
    */
   async function openMiniPlayer() {
-    if (miniWindow || miniOpening || !supportsMiniPlayer()) return;
+    if (outKind === 'mini' || miniOpening || !supportsMiniPlayer()) return;
     miniOpening = true;
     let view: Window | null = null;
     try {
-      view = await openMiniPlayerWindow($app.settings.aspect, appName);
-      const slot = view.document.createElement('div');
-      slot.style.cssText = 'position: fixed; inset: 0';
-      view.document.body.append(slot);
-      miniControls = mount(MiniPlayerControls, {
-        target: view.document.body,
-        props: { onback: closeMiniPlayer },
-        context: contexts,
-      });
-      view.addEventListener('keydown', onKey);
-      view.addEventListener('keyup', onKeyUp);
-      view.addEventListener('blur', releaseNudge);
-      // Its own close button, and the browser's "back to tab".
-      view.addEventListener('pagehide', bringBack, { once: true });
-      miniWindow = view;
-      miniSlot = slot;
+      const opening = openMiniPlayerWindow($app.settings.aspect, appName);
+      // The second screen gives the visuals up; the browser asked for the window first.
+      closeOutside();
+      view = await opening;
+      takeOutside(view, 'mini');
     } catch (error) {
-      if (miniControls) void unmount(miniControls);
-      miniControls = null;
       view?.close();
       player.reportError(`The mini player could not open: ${errorMessage(error)}`);
     } finally {
@@ -185,30 +254,89 @@
     }
   }
 
-  /** The stage comes back into the tab, before the mini player's window goes. */
+  /**
+   * Opens the second screen (DS-03): the stage moves into a window of its own, for a projector
+   * or another monitor, while the controls stay in the tab. Where the browser can, the window
+   * moves onto the other screen by itself.
+   */
+  function openSecondScreen() {
+    if (outKind === 'screen') return;
+    let view: Window | null = null;
+    try {
+      view = openSecondScreenWindow(appName);
+      closeOutside();
+      takeOutside(view, 'screen');
+      void placeOnOtherScreen(view);
+    } catch (error) {
+      view?.close();
+      player.reportError(`The second screen could not open: ${errorMessage(error)}`);
+    }
+  }
+
+  /** The stage and the controls move into `view`, whose keys work as the tab's. */
+  function takeOutside(view: Window, kind: 'mini' | 'screen') {
+    const slot = view.document.createElement('div');
+    slot.style.cssText = 'position: fixed; inset: 0';
+    view.document.body.style.cssText = 'margin: 0; background: #000';
+    view.document.body.append(slot);
+    try {
+      outControls =
+        kind === 'mini'
+          ? mount(MiniPlayerControls, {
+              target: view.document.body,
+              props: { onback: closeOutside },
+              context: contexts,
+            })
+          : mount(SecondScreenControls, {
+              target: view.document.body,
+              props: { view, onback: closeOutside },
+              context: contexts,
+            });
+    } catch (error) {
+      outControls = null;
+      throw error;
+    }
+    view.addEventListener('keydown', onKey);
+    view.addEventListener('keyup', onKeyUp);
+    view.addEventListener('blur', releaseNudge);
+    // Its own close button, and the browser's "back to tab" or close.
+    view.addEventListener('pagehide', bringBack, { once: true });
+    outWindow = view;
+    outKind = kind;
+    outSlot = slot;
+  }
+
+  /** The stage comes back into the tab, before the other window goes. */
   function bringBack() {
-    const view = miniWindow;
+    const view = outWindow;
     if (!view) return;
-    miniSlot = null;
-    miniWindow = null;
+    outSlot = null;
+    outWindow = null;
+    outKind = null;
     flushSync();
-    if (miniControls) void unmount(miniControls);
-    miniControls = null;
+    if (outControls) void unmount(outControls);
+    outControls = null;
     view.removeEventListener('keydown', onKey);
     view.removeEventListener('keyup', onKeyUp);
     view.removeEventListener('blur', releaseNudge);
     view.removeEventListener('pagehide', bringBack);
   }
 
-  function closeMiniPlayer() {
-    const view = miniWindow;
+  /** The visuals come back into the tab, and the mini player's or second screen's window goes. */
+  function closeOutside() {
+    const view = outWindow;
     bringBack();
     view?.close();
   }
 
   function toggleMiniPlayer() {
-    if (miniWindow) closeMiniPlayer();
+    if (outKind === 'mini') closeOutside();
     else void openMiniPlayer();
+  }
+
+  function toggleSecondScreen() {
+    if (outKind === 'screen') closeOutside();
+    else openSecondScreen();
   }
 
   /** Saves the picture on the stage as a PNG (EX-10); not while an export renders. */
@@ -266,7 +394,7 @@
     control.blur();
   }
 
-  /** The keyboard shortcuts (UI-04), in the tab and in the mini player's window. */
+  /** The keyboard shortcuts (UI-04), in the tab and in the mini player's or second screen's. */
   function onKey(event: KeyboardEvent) {
     // Ctrl+Z (Cmd+Z) undoes a removal or deletion; text fields keep their own undo.
     const command = event.metaKey || event.ctrlKey;
@@ -312,7 +440,7 @@
         void player.previous();
         break;
       case 'f':
-        toggleFullscreen();
+        toggleFullscreen(event.view ?? window);
         break;
       case 'm':
         toggleMiniPlayer();
@@ -425,16 +553,25 @@
   });
 </script>
 
+<!-- Back in the tab, how an export ended has been seen. -->
+<svelte:document
+  onvisibilitychange={() => {
+    if (document.visibilityState === 'visible') unseen = null;
+  }}
+/>
+
 <div class="shell" class:panel-open={$app.settings.panelOpen}>
   <TopBar
-    onFullscreen={toggleFullscreen}
+    onFullscreen={() => toggleFullscreen()}
     onPicture={takePicture}
     onExport={() => (exportOpen = true)}
     onSettings={() => (settingsOpen = true)}
     onHelp={() => (helpOpen = true)}
     onController={() => (controllerOpen = true)}
-    miniPlayer={miniWindow !== null}
+    miniPlayer={outKind === 'mini'}
     onMiniPlayer={toggleMiniPlayer}
+    secondScreen={outKind === 'screen'}
+    onSecondScreen={toggleSecondScreen}
   />
 
   <main
@@ -448,30 +585,43 @@
       {#if $app.settings.visualMode === 'analysis'}
         <AnalysisView />
       {/if}
-      <!-- The mini player's window takes the stage (DS-06), also while the tab shows the Analysis. -->
-      {#if $app.settings.visualMode !== 'analysis' || miniWindow}
-        <div class="stage-host" use:portal={miniSlot}>
+      <!-- The mini player's (DS-06) or the second screen's window (DS-03) takes the stage, also
+           while the tab shows the Analysis. -->
+      {#if $app.settings.visualMode !== 'analysis' || outWindow}
+        <div class="stage-host" use:portal={outSlot}>
           <VisualStage
             mode={stageMode}
             aspect={$app.settings.aspect}
             safeAreas={$app.settings.safeAreas}
             paused={$exporter.status === 'running' || $app.settings.visualsPaused}
             resting={$app.settings.visualsPaused}
-            view={miniWindow ?? window}
+            view={outWindow ?? window}
           />
         </div>
       {/if}
     </Guard>
-    {#if miniWindow && $app.settings.visualMode !== 'analysis'}
-      <div class="mini-note" data-testid="mini-note">
+    {#if outWindow && $app.settings.visualMode !== 'analysis'}
+      {@const mini = outKind === 'mini'}
+      <div class="mini-note" data-testid={mini ? 'mini-note' : 'screen-note'}>
         <div class="card">
-          <Icon name="miniPlayer" size={28} />
-          <p>The visuals play in the mini player.</p>
-          <button onclick={closeMiniPlayer} data-testid="mini-bring-back">Bring them back</button>
+          <Icon name={mini ? 'miniPlayer' : 'secondScreen'} size={28} />
+          <p>
+            {mini
+              ? 'The visuals play in the mini player.'
+              : 'The visuals play in the window of the second screen.'}
+          </p>
+          {#if !mini}
+            <p class="sub">There, F or a double-click shows them in fullscreen.</p>
+          {/if}
+          <button
+            onclick={closeOutside}
+            data-testid={mini ? 'mini-bring-back' : 'screen-bring-back'}>Bring them back</button
+          >
         </div>
       </div>
     {/if}
-    {#if $app.tracks.length === 0 && $app.live.status === 'off'}
+    <!-- With the visuals in another window, the note says where they are; the queue says the rest. -->
+    {#if $app.tracks.length === 0 && $app.live.status === 'off' && !outWindow}
       <div class="welcome" data-testid="empty-hint">
         <div class="card">
           <h1>Drop your music here</h1>
@@ -497,7 +647,7 @@
           {#if $exporter.status === 'interrupted'}
             An export was interrupted. Resume it…
           {:else if $exporter.status === 'done'}
-            {$exporter.videos.length > 1 ? 'Your videos are ready.' : 'Your video is ready.'}
+            {readyNote($exporter.videos.length, $exporter.fileName)}
           {:else}
             The export stopped. Details…
           {/if}
@@ -661,6 +811,10 @@
   .mini-note p {
     margin: 0;
     color: var(--text);
+  }
+  .mini-note p.sub {
+    font-size: 13px;
+    color: var(--muted);
   }
   .panel {
     min-height: 0;

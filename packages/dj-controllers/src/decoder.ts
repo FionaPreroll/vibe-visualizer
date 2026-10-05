@@ -22,7 +22,8 @@ export function dataBytes(data: DataBytes): { byte: number; index: number | unde
 
 type Change =
   | { binding: AbsoluteBinding; part: 'msb' | 'lsb' }
-  | { binding: RelativeBinding; part: 'relative' };
+  | { binding: RelativeBinding; part: 'relative' }
+  | { binding: ButtonBinding; part: 'button'; index?: number };
 
 /** Turns the MIDI messages of one controller into control events, following its profile. */
 export class Decoder {
@@ -36,9 +37,13 @@ export class Decoder {
   constructor(readonly profile: ControllerProfile) {
     for (const binding of profile.controls) {
       if (binding.kind === 'button') {
-        const status = NOTE_ON | (binding.status & 0x0f);
-        for (const { byte, index } of dataBytes(binding.data)) {
-          this.notes.set(key(status, byte), index === undefined ? { binding } : { binding, index });
+        const control = binding.message === 'control';
+        const status = control ? binding.status : NOTE_ON | (binding.status & 0x0f);
+        for (const { byte, index: inRange } of dataBytes(binding.data)) {
+          const index = inRange ?? binding.index;
+          const hit = index === undefined ? { binding } : { binding, index };
+          if (control) this.changes.set(key(status, byte), { ...hit, part: 'button' });
+          else this.notes.set(key(status, byte), hit);
         }
       } else if (binding.kind === 'absolute') {
         this.changes.set(key(binding.status, binding.msb), { binding, part: 'msb' });
@@ -78,25 +83,12 @@ export class Decoder {
     if (type === NOTE_ON || type === NOTE_OFF) {
       const hit = this.notes.get(key(NOTE_ON | (status & 0x0f), data1));
       if (!hit) return null;
-      const { binding, index } = hit;
-      const deck = binding.deck ?? null;
-      const pressed = type === NOTE_ON && data2 > 0;
-      if (binding.control === 'shift' && deck !== null) this.shifted.set(deck, pressed);
-      return {
-        kind: 'button',
-        control: binding.control,
-        device,
-        deck,
-        pressed,
-        shift: binding.shift ?? this.shift(deck),
-        time,
-        ...(index !== undefined ? { index } : {}),
-        ...(binding.padMode ? { padMode: binding.padMode } : {}),
-      };
+      return this.button(hit.binding, hit.index, type === NOTE_ON && data2 > 0, time);
     }
     if (type !== CONTROL_CHANGE) return null;
     const hit = this.changes.get(key(status, data1));
     if (!hit) return null;
+    if (hit.part === 'button') return this.button(hit.binding, hit.index, data2 > 0, time);
     const deck = hit.binding.deck ?? null;
     const shift = this.shift(deck);
     if (hit.part === 'relative') {
@@ -120,6 +112,27 @@ export class Decoder {
       shift,
       time,
       value: binding.invert ? 1 - value : value,
+    };
+  }
+
+  private button(
+    binding: ButtonBinding,
+    index: number | undefined,
+    pressed: boolean,
+    time: number,
+  ): ControlEvent {
+    const deck = binding.deck ?? null;
+    if (binding.control === 'shift' && deck !== null) this.shifted.set(deck, pressed);
+    return {
+      kind: 'button',
+      control: binding.control,
+      device: this.profile.id,
+      deck,
+      pressed,
+      shift: binding.shift ?? this.shift(deck),
+      time,
+      ...(index !== undefined ? { index } : {}),
+      ...(binding.padMode ? { padMode: binding.padMode } : {}),
     };
   }
 }

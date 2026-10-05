@@ -77,6 +77,23 @@ export interface Track {
   edit: TrackEdit | null;
   /** The colours the user gave the file for the visuals (VE-12); null: its cover's, as found. */
   colors: TrackColors | null;
+  /** The look the visuals take when the track starts (PR-06); null: they stay as they are. */
+  look: TrackLook | null;
+}
+
+/** A preset of one of the visual modes, given to a track (PR-06), by the preset's name. */
+export interface TrackLook {
+  mode: 'logoSpectrum' | 'kaleidoscope';
+  preset: string;
+}
+
+/** A track's look from whatever is stored, or null. */
+export function sanitizeTrackLook(value: unknown): TrackLook | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { mode, preset } = value as Record<string, unknown>;
+  if (mode !== 'logoSpectrum' && mode !== 'kaleidoscope') return null;
+  if (typeof preset !== 'string' || !preset.trim()) return null;
+  return { mode, preset: preset.slice(0, 60) };
 }
 
 /** A title and artist the user gives a file, for the overlay and wherever the track is named. */
@@ -126,6 +143,7 @@ export interface TrackData {
   gridEdit: GridEdit;
   edit: TrackEdit | null;
   colors: TrackColors | null;
+  look: TrackLook | null;
 }
 
 export interface Marks {
@@ -200,6 +218,8 @@ export interface Settings {
   coverColors: boolean;
   /** The visuals rest, to listen to the music only (DS-05): the stage draws nothing. */
   visualsPaused: boolean;
+  /** A notification of the system when an export ends while the tab is in the background. */
+  exportNotify: boolean;
   /** Automatic preset switching (PR-02), for the visual mode shown. */
   autoPresets: AutoPresets;
   /** Favourite presets by name, per visual mode (PR-03). */
@@ -316,6 +336,8 @@ export type AppAction =
   | { type: 'tracks/fixed'; fingerprint: string; fixed: boolean }
   /** The colours the user gave a file (VE-12; null: its cover's), for every entry of it. */
   | { type: 'tracks/colors'; fingerprint: string; colors: TrackColors | null }
+  /** The look the user gave a file (PR-06; null: none), for every entry of it. */
+  | { type: 'tracks/look'; fingerprint: string; look: TrackLook | null }
   /** The correction of a file's beat grid (TR-11), for every entry of that file. */
   | { type: 'tracks/grid'; fingerprint: string; edit: GridEdit }
   /**
@@ -381,6 +403,7 @@ export const DEFAULT_SETTINGS: Settings = {
   coverLogo: false,
   coverColors: false,
   visualsPaused: false,
+  exportNotify: false,
   autoPresets: DEFAULT_AUTO_PRESETS,
   favourites: { logoSpectrum: [], kaleidoscope: [] },
 };
@@ -430,6 +453,7 @@ export function newTrack(id: string, file: { name: string; size: number }): Trac
     gridEdit: NO_GRID_EDIT,
     edit: null,
     colors: null,
+    look: null,
   };
 }
 
@@ -610,6 +634,13 @@ export function reducer(state: AppState, action: AppAction): AppState {
         ...state,
         tracks: state.tracks.map((track) =>
           track.fingerprint === action.fingerprint ? { ...track, fixedTempo: action.fixed } : track,
+        ),
+      };
+    case 'tracks/look':
+      return {
+        ...state,
+        tracks: state.tracks.map((track) =>
+          track.fingerprint === action.fingerprint ? { ...track, look: action.look } : track,
         ),
       };
     case 'tracks/colors':

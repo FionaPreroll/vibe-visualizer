@@ -23,7 +23,7 @@ None of it is sent anywhere. The app needs it for what you use, so it asks for n
 
 - **Music files** are read and analysed in your browser. They are never uploaded.
 - **Live input** (a microphone, an audio interface, another app or a browser tab) is analysed while it plays. It is not recorded, and not sent anywhere.
-- **A DJ controller** (Web MIDI) is used only when you connect it in the app.
+- **A DJ controller** (Web MIDI) is used only when you connect it in the app. A controller report (from teaching the app a controller) is a file on your computer: it holds what the controller sent, the names of your MIDI devices, and the versions of the app and your browser, and goes only where you send it.
 - **Videos** are rendered on your computer and saved where you choose.
 
 The app gets a microphone, the sound of another app, MIDI devices or a folder only when you choose them, and the browser asks you first.

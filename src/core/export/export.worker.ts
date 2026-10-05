@@ -11,6 +11,7 @@ import {
   Output,
   Quality,
   StreamTarget,
+  WavOutputFormat,
   WebMOutputFormat,
   type EncodedPacket,
   type StreamTargetChunk,
@@ -124,6 +125,8 @@ export interface StartArgs {
   output?: string | null;
   /** Shorter segments for tests. */
   segmentSeconds?: number;
+  /** Only the sound, as a WAV file (EX-11). */
+  soundOnly?: boolean;
 }
 
 export interface ResumeArgs {
@@ -311,6 +314,7 @@ async function start(args: StartArgs, progress: (update: ExportProgress) => void
       output: args.destination || args.folder ? null : (args.output ?? null),
       progress: { audioDone: false, segmentsDone: 0, finished: false, bytes: null },
       resumeCount: 0,
+      soundOnly: args.soundOnly === true,
     };
     if (logoSpectrum) {
       for (const kind of JOB_IMAGES) {
@@ -394,6 +398,7 @@ async function run(
     manifest.progress.audioDone = true;
     await store.writeManifest(manifest);
   }
+  if (manifest.soundOnly) return finishSound(store, manifest, target, progress, started);
   // After a reset of the graphics card, the video goes on from its last finished segment, in a
   // new context (NF-09). Reset again and again before the next segment is finished, it stops.
   let losses = 0;
@@ -474,15 +479,20 @@ async function audioPass(
   let output: Output | null = null;
   let decoded: DecodedSource | null = null;
   try {
-    output = new Output({
-      format: new Mp4OutputFormat({ fastStart: false }),
-      target: await store.target('audio.mp4'),
-    });
+    // Only the sound (EX-11): uncompressed, 16 bits, as a WAV file.
+    output = manifest.soundOnly
+      ? new Output({ format: new WavOutputFormat(), target: await store.target(SOUND_FILE) })
+      : new Output({
+          format: new Mp4OutputFormat({ fastStart: false }),
+          target: await store.target('audio.mp4'),
+        });
     const bitrate = codecs.audio === 'opus' ? OPUS_BITRATE : format.audioBitrate;
-    const source = new AudioSampleSource({
-      codec: codecs.audio,
-      quality: new Quality({ bitrate }),
-    });
+    const source = manifest.soundOnly
+      ? new AudioSampleSource({ codec: 'pcm-s16' })
+      : new AudioSampleSource({
+          codec: codecs.audio,
+          quality: new Quality({ bitrate }),
+        });
     output.addAudioTrack(source);
     await output.start();
 
@@ -703,7 +713,13 @@ function createScene(
   gl: WebGL2RenderingContext,
   visuals: ExportVisuals,
   images: ResumeArgs['images'],
-): { scene: Scene; switching: Switching | null; logo: LogoSpectrumScene | null } {
+): {
+  scene: Scene;
+  switching: Switching | null;
+  logo: LogoSpectrumScene | null;
+  /** Gives the scene a part's look (PR-06); the switching counts anew from it. */
+  applyLook: (look: unknown) => void;
+} {
   const config = visuals.auto?.config.on ? sanitizeAutoPresets(visuals.auto.config) : null;
   if (visuals.mode === 'logoSpectrum') {
     const front = new LogoSpectrumScene(gl);
@@ -718,7 +734,10 @@ function createScene(
       layer.setSettings(fallback);
       scene = new LayeredScene(front, layer, fallback);
     }
-    if (!config || !visuals.auto) return { scene, switching: null, logo: front };
+    if (!config || !visuals.auto) {
+      const applyLook = (look: unknown) => front.setSettings(sanitizeSettings(look));
+      return { scene, switching: null, logo: front, applyLook };
+    }
     const automation = new PresetAutomation(
       morphLogoSpectrum,
       settings,
@@ -726,16 +745,27 @@ function createScene(
     );
     automation.setAuto(config, visuals.auto.presets.map(sanitizeSettings));
     const switching = createSwitching(automation, (next) => front.setSettings(next));
-    return { scene, switching, logo: front };
+    const applyLook = (look: unknown) => {
+      automation.setSettings(sanitizeSettings(look));
+      front.setSettings(automation.current);
+    };
+    return { scene, switching, logo: front, applyLook };
   }
   const scene = new KaleidoscopeScene(gl);
   const settings = sanitizeKaleido(visuals.settings);
   scene.setSettings(settings);
-  if (!config || !visuals.auto) return { scene, switching: null, logo: null };
+  if (!config || !visuals.auto) {
+    const applyLook = (look: unknown) => scene.setSettings(sanitizeKaleido(look));
+    return { scene, switching: null, logo: null, applyLook };
+  }
   const automation = new PresetAutomation(morphKaleido, settings, SWITCHING_SEEDS.kaleidoscope);
   automation.setAuto(config, visuals.auto.presets.map(sanitizeKaleido));
   const switching = createSwitching(automation, (next) => scene.setSettings(next));
-  return { scene, switching, logo: null };
+  const applyLook = (look: unknown) => {
+    automation.setSettings(sanitizeKaleido(look));
+    scene.setSettings(automation.current);
+  };
+  return { scene, switching, logo: null, applyLook };
 }
 
 /**
@@ -767,7 +797,7 @@ async function videoPass(
     powerPreference: 'high-performance',
   });
   if (!gl) throw new Error('WebGL2 is not available.');
-  const { scene, switching, logo } = createScene(gl, manifest.visuals, pictures.images);
+  const { scene, switching, logo, applyLook } = createScene(gl, manifest.visuals, pictures.images);
   // Each part's cover art as the logo (LS-15), and the colours of its track (VE-12): its own, or
   // its cover's. The covers go with the job only when they show (a job of before the colours
   // has them only for the logo).
@@ -781,6 +811,8 @@ async function videoPass(
       })
     : null;
   let shownPart = -1;
+  /** The part whose look the scene took last (PR-06). */
+  let lookPart = -1;
   // The track overlay (LS-18, LS-19), over the picture: it has no state of its own, its text
   // follows from the frame's place in its part.
   const overlaySettings = manifest.visuals.overlay
@@ -817,6 +849,8 @@ async function videoPass(
       const snapshot = decodeSnapshot(await state.arrayBuffer());
       // The switching first: the scene continues with the settings it had.
       scene.restoreState(switching ? switching.restore(snapshot) : snapshot);
+      // The look of the part playing is in that state already (PR-06).
+      lookPart = partAt(manifest, fps, n - 1).index;
       const previous = frameTime(timing, fps, n - 1);
       feed.seek(previous);
       sampler.resetTo(previous);
@@ -831,9 +865,15 @@ async function videoPass(
       const at = frameTime(timing, fps, frame);
       await feed.ensure(at);
       sampler.sample(at, features);
+      const heard = partAt(manifest, fps, frame);
+      // A part with a look of its own (PR-06): the scene takes it as the part starts.
+      if (heard.index !== lookPart) {
+        lookPart = heard.index;
+        const look = manifest.parts[heard.index]?.look;
+        if (look) applyLook(look);
+      }
       // The switching counts from the first frame of the video, not in the pre-roll.
       if (frame >= 0) switching?.frame(1 / fps, features);
-      const heard = partAt(manifest, fps, frame);
       if (heard.index !== shownPart) {
         shownPart = heard.index;
         logo?.setCover(covers[heard.index] ?? null);
@@ -1052,6 +1092,59 @@ async function join(
     ? await destination.getFile()
     : await (shelf ?? store).file(shelf ? manifest.output! : OUTPUT_FILE);
   return written.size;
+}
+
+/** The WAV of an export of only the sound (EX-11), while it is made. */
+const SOUND_FILE = 'sound.wav';
+
+/**
+ * Finishes an export of only the sound (EX-11): no video, the WAV goes where the video would,
+ * into the picked file, or into browser storage for a download.
+ */
+async function finishSound(
+  store: JobWriter,
+  manifest: ExportManifest,
+  target: { file: FileSystemFileHandle | null; folder: FileSystemDirectoryHandle | null },
+  progress: (update: ExportProgress) => void,
+  started: number,
+): Promise<ExportResult> {
+  const sound = await store.file(SOUND_FILE);
+  const destination =
+    target.file ??
+    (await target.folder?.getFileHandle(manifest.fileName, { create: true })) ??
+    null;
+  if (destination) {
+    const file = await destination.createWritable();
+    try {
+      await file.write(sound);
+      await file.close();
+    } catch (error) {
+      await file.abort().catch(() => undefined);
+      throw error;
+    }
+  } else if (manifest.output) {
+    await (await JobWriter.shelf()).copy(manifest.output, sound);
+  } else {
+    await store.copy(OUTPUT_FILE, sound);
+  }
+  progress({ phase: 'join', done: 1, total: 1 });
+  const jobFiles = manifest.parts.flatMap((_, index) => [coverFile(index), gridFile(index)]);
+  for (const name of [SOUND_FILE, 'features.bin', ...jobFiles]) await store.remove(name);
+  if (destination) {
+    await clearJob();
+  } else {
+    manifest.progress.finished = true;
+    manifest.progress.bytes = sound.size;
+    await store.writeManifest(manifest);
+  }
+  return {
+    fileName: manifest.fileName,
+    bytes: sound.size,
+    destination: manifest.destination,
+    seconds: (performance.now() - started) / 1000,
+    chapters: partChapters(manifest.parts, manifest.timing, manifest.sound),
+    output: destination ? null : (manifest.output ?? null),
+  };
 }
 
 /** Deletes the job (after cancelling, or when you discard an unfinished export). */

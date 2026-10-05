@@ -69,6 +69,22 @@ const profile: ControllerProfile = {
 
 Profiles are written from the manufacturers' MIDI message lists. Mappings of other programs (such as Mixxx, which is GPL-licensed) can serve as a check, but are not copied.
 
+A button that sends a control change instead of a note (127 pressed, 0 released, as many plain MIDI controllers do) has `message: 'control'`. A pad bound alone (one data byte, not a range) gives its number with `index`.
+
+### MIDI learn
+
+For a controller without a profile, `learnBinding(target, messages)` turns what one control sent while the user moved it into a binding: a button from its first note on (or a control change above 0); a knob or fader from its most frequent control change, with the fine part of a 14-bit value 32 above the coarse one, and `invert` when it was moved from its lowest to its highest end and the values fell; a jog wheel or encoder from its control change and how it writes its steps, for a turn to the right first (`offset64` for 65 and up, `signBit` when the left turn gives 65 and up, else `twosComplement`). `learnedProfile(port, name, bindings, lights)` makes a profile of them, and `guessLights` lights the buttons with their own notes, as most controllers expect.
+
+`sanitizeProfile(value)` checks a profile from a file: only bindings of known controls with MIDI bytes in range are kept. `ControllerHub.setProfiles` gives the connected devices the profile that fits them now, e.g. after MIDI learn.
+
+### A profile from a report
+
+The app's DJ controller dialog saves a *controller report* (JSON, `format: "fibestation-controller-report"`): for each control it asks for (`steps`), the messages the controller sent as hex (`"90 30 7F"`), what was learned, and the profile learned (`profile`), with the names of the MIDI ports (`ports`) and the browser. To build a controller in:
+
+1. Check `profile` against the messages of each step, and against the manufacturer's MIDI message list where there is one (14-bit values, SHIFT on another channel, pad modes, the second deck).
+2. Write it as `src/profiles/<maker>-<model>.ts` with `ports.input` a part of the port name that every operating system reports (`ports.inputs` in the report), and add it to `PROFILES` in `src/index.ts` and to the table below.
+3. Add a test in the style of `decoder.test.ts` with messages from the report.
+
 ## Controllers
 
 | Controller | Profile | Notes |

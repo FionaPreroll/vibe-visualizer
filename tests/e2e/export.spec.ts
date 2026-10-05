@@ -39,13 +39,16 @@ async function elapsed(page: Page): Promise<number> {
   return Number(await page.getByTestId('elapsed').getAttribute('data-seconds'));
 }
 
-/** The smallest custom format keeps the software-rendered test short. */
-async function chooseSmallFormat(page: Page) {
+/**
+ * A small custom format keeps the software-rendered test short: 360 pixels, the draft's size, or
+ * 720 where the test reads text in the picture.
+ */
+async function chooseSmallFormat(page: Page, size: 360 | 720 = 360) {
   await page.getByText('Custom', { exact: true }).click();
   await page.getByRole('radio', { name: '1:1' }).click();
-  await page.getByTestId('export-resolution').selectOption('720');
+  await page.getByTestId('export-resolution').selectOption(String(size));
   await page.getByTestId('export-fps').selectOption('24');
-  await expect(page.getByTestId('export-dialog')).toContainText('720×720 · 24 fps · ');
+  await expect(page.getByTestId('export-dialog')).toContainText(`${size}×${size} · 24 fps · `);
   await expect(page.getByTestId('export-start')).toBeEnabled();
 }
 
@@ -122,7 +125,7 @@ test('exports the range between the markers as a video file @firefox @ci-exports
   expect(file.name).toMatch(/^Clicks \(0m05s-0m09s\)\.(mp4|webm)$/);
   const video = await inspect(file.data);
   // 5 → 9.95 s at 24 fps: 119 frames; the audio is exactly as long.
-  expect(video).toMatchObject({ width: 720, height: 720, frames: 119 });
+  expect(video).toMatchObject({ width: 360, height: 360, frames: 119 });
   expect(video.duration).toBeCloseTo(119 / 24, 1);
   expect(video.audioDuration).toBeCloseTo(119 / 24, 1);
   expect(errors).toEqual([]);
@@ -146,7 +149,8 @@ test('the video shows the track overlay and the cover art (LS-15, LS-18, LS-19) 
   });
   await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
   await page.getByTestId('export-button').click();
-  await chooseSmallFormat(page);
+  // The title is read in the picture: at 720 pixels, as it is crisp enough there.
+  await chooseSmallFormat(page, 720);
   await expect(page.getByTestId('export-overlay')).toHaveText("(with the track's title)");
   await expect(page.getByTestId('export-cover')).toHaveText('(its cover art as the logo)');
   await page.getByTestId('export-start').click();
@@ -255,7 +259,7 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
   const file = await download(page);
   expect(file.name).toMatch(/^Alpha - One and 2 more\.(mp4|webm)$/);
   const video = await inspect(file.data);
-  expect(video).toMatchObject({ width: 720, height: 720, frames: 216 });
+  expect(video).toMatchObject({ width: 360, height: 360, frames: 216 });
   expect(video.audioDuration).toBeCloseTo(9, 1);
 
   // Black at the start and the end; in between, each track with its cover (the second has
@@ -272,7 +276,7 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
     const [all, overlay, ...quarters] = await measure(page, frame, [
       whole,
       title,
-      ...logoQuarters({ width: 720, height: 720 }),
+      ...logoQuarters({ width: 360, height: 360 }),
     ]);
     const brightness = all!.mean.reduce((sum, value) => sum + value, 0) / 3;
     return { brightness, text: overlay!.bright, quarters };
@@ -298,7 +302,7 @@ test('tracks of the queue become one video with chapters and fades (EX-05, EX-14
   expect(errors).toEqual([]);
 });
 
-test('a video of tracks takes the colours of each: its cover art, or its own (VE-12) @ci-exports-3', async ({
+test('a video of tracks takes the colours of each: its cover art, or its own (VE-12), and its look (PR-06) @ci-exports-3', async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -330,6 +334,8 @@ test('a video of tracks takes the colours of each: its cover art, or its own (VE
   await page.getByTestId('track-colors-pick').first().fill('#fa7814');
   await page.getByRole('button', { name: 'Remove the last colour' }).click();
   await expect(page.getByTestId('track-colors-pick')).toHaveCount(1);
+  // And a look of its own (PR-06): the video takes it as the track starts, in its colours.
+  await page.getByTestId('track-look').selectOption('kaleidoscope|Crystal Mandala');
   await page.getByTestId('track-name-save').click();
 
   await page.getByTestId('export-button').click();
@@ -404,7 +410,7 @@ test('a video of each track, waiting in browser storage (EX-09) @ci-exports-3', 
     const [file] = await Promise.all([page.waitForEvent('download'), link.click()]);
     names.push(file.suggestedFilename());
     const video = await inspect(await readFile(await file.path()));
-    expect(video).toMatchObject({ width: 720, height: 720, frames: 72 });
+    expect(video).toMatchObject({ width: 360, height: 360, frames: 72 });
     expect(video.audioDuration).toBeCloseTo(3, 1);
   }
   expect(names).toEqual([
@@ -534,7 +540,7 @@ test('the picture on the stage is saved as a PNG thumbnail (EX-10)', async ({ pa
 
 test('an interrupted export resumes after a reload @ci-exports-1', async ({ page }) => {
   // Two scenes per frame in software rendering, and the frames after the last whole segment
-  // twice: about 2¼ min here and 3½ min on CI, the slowest test there. A runner may be slower.
+  // twice: about 1 min here at 360 pixels, the slowest test on CI. A runner may be much slower.
   test.setTimeout(420_000);
   const errors = collectErrors(page);
   await page.goto('/');
@@ -591,13 +597,13 @@ test('an interrupted export resumes after a reload @ci-exports-1', async ({ page
   const file = await download(page);
   expect(file.name).toMatch(/^The Testers - Sunrise\.(mp4|webm)$/);
   const video = await inspect(file.data);
-  expect(video).toMatchObject({ width: 720, height: 720, frames: 192 });
+  expect(video).toMatchObject({ width: 360, height: 360, frames: 192 });
   expect(video.duration).toBeCloseTo(8, 1);
   expect(video.audioDuration).toBeCloseTo(8, 1);
   // The resumed part still shows the cover art in the logo.
   const frame = await videoFrame(page, file.data, 7);
   if (frame) {
-    const quarters = await measure(page, frame, logoQuarters({ width: 720, height: 720 }));
+    const quarters = await measure(page, frame, logoQuarters({ width: 360, height: 360 }));
     expect(showsCover(quarters)).toBe(true);
   }
   expect(errors).toEqual([]);
@@ -629,7 +635,7 @@ test('an export goes on by itself after the graphics card was reset (NF-09)', as
   // The video pass starts again from that segment, in a new context: the video is whole.
   await expect(page.getByTestId('export-done')).toBeVisible({ timeout: 180_000 });
   const video = await inspect((await download(page)).data);
-  expect(video).toMatchObject({ width: 720, height: 720, frames: 192 });
+  expect(video).toMatchObject({ width: 360, height: 360, frames: 192 });
   expect(video.duration).toBeCloseTo(8, 1);
   expect(errors).toEqual([]);
 });
@@ -643,20 +649,64 @@ test('an export can be paused, continued and cancelled', async ({ page }) => {
   await page.getByTestId('export-start').click();
   const progress = page.getByTestId('export-progress');
   await expect(progress).toHaveAttribute('data-phase', 'video', { timeout: 30_000 });
+  // The tab's title shows the progress, for while the user works elsewhere.
+  await expect(page).toHaveTitle(/^\d+ % · /);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect(page.getByTestId('export-button')).toContainText('Paused');
+  await expect(page).toHaveTitle(/^Paused \d+ % · /);
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByTestId('export-button')).toContainText('Exporting');
   await page.getByTestId('export-cancel').click();
   // Back to the settings, with nothing left to resume after a reload.
   await expect(page.getByTestId('export-start')).toBeVisible();
   await expect(page.getByTestId('export-button')).toHaveText('Export');
+  await expect(page).not.toHaveTitle(/%/);
   await page.reload();
   await expect(page.getByTestId('visual-stage')).toHaveAttribute('data-status', 'running', {
     timeout: 15_000,
   });
   await expect(page.getByTestId('export-note')).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test("a draft is small, in the stage's aspect ratio", async ({ page }) => {
+  await page.goto('/');
+  await addTrack(page, 2);
+  await page.getByTestId('export-button').click();
+  const dialog = page.getByTestId('export-dialog');
+  await dialog.getByText('Draft, quick to check').click();
+  await expect(dialog).toContainText('640×360 · 30 fps · ');
+  // On a stage of another aspect ratio, the draft takes it; the other presets do not fit it.
+  await page.keyboard.press('Escape');
+  await page.getByTestId('aspect-select').selectOption('9:16');
+  await page.getByTestId('export-button').click();
+  await expect(dialog.getByRole('radio', { name: /Draft/ })).toBeChecked();
+  await expect(dialog).toContainText('360×640 · 30 fps · ');
+});
+
+test('the export can tell when it is done, if the browser allows it', async ({ page, context }) => {
+  await page.goto('/');
+  await addTrack(page, 2);
+  await page.getByTestId('export-button').click();
+  const notify = page.getByTestId('export-notify');
+  // Refused by the browser: the box stays off, and the dialog says where to allow it.
+  await context.clearPermissions();
+  await notify.check({ force: true }).catch(() => undefined);
+  await expect(page.getByTestId('export-notify-refused')).toBeVisible();
+  await expect(notify).not.toBeChecked();
+  // Allowed: the box stays on, and is kept.
+  await context.grantPermissions(['notifications']);
+  await notify.check();
+  await expect(notify).toBeChecked();
+  await expect(page.getByTestId('export-notify-refused')).toHaveCount(0);
+  const stored = () =>
+    page.evaluate(
+      () => JSON.parse(localStorage.getItem('vibe-visualizer:settings:v1') ?? '{}').exportNotify,
+    );
+  await expect.poll(stored).toBe(true);
+  await page.reload();
+  await page.getByTestId('export-button').click();
+  await expect(page.getByTestId('export-notify')).toBeChecked();
 });
 
 test('the stage follows the aspect ratio and shows safe areas', async ({ page }) => {

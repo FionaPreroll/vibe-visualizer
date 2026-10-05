@@ -47,6 +47,7 @@ import {
   newTrack,
   reducer,
   restoredTrack,
+  sanitizeTrackLook,
   shownTitle,
   trackEdit,
   type AppAction,
@@ -54,6 +55,7 @@ import {
   type Marks,
   type Settings,
   type Track,
+  type TrackLook,
 } from '../state/app-state';
 import type { KaleidoSceneId, KaleidoSettings, ParamValue } from '../render/kaleido-settings';
 import type { LogoSpectrumSettings } from '../render/visual-settings';
@@ -767,6 +769,16 @@ export class Player {
    * Gives the file of track `id` colours for the visuals (VE-12), for every entry of that file:
    * its cover's, colours of the user's own, or the look's; null: its cover's, as found.
    */
+  /** The look the visuals take when the track starts (PR-06); null: none. */
+  setTrackLook(id: string, look: TrackLook | null): void {
+    const track = this.state.tracks.find((entry) => entry.id === id);
+    const fingerprint = track?.fingerprint;
+    if (!track || !fingerprint) return;
+    const next = sanitizeTrackLook(look);
+    if (JSON.stringify(next) === JSON.stringify(track.look)) return;
+    this.dispatch({ type: 'tracks/look', fingerprint, look: next });
+  }
+
   setTrackColors(id: string, colors: TrackColors | null): void {
     const track = this.state.tracks.find((entry) => entry.id === id);
     const fingerprint = track?.fingerprint;
@@ -1456,9 +1468,10 @@ export class Player {
         old.fixedTempo === track.fixedTempo &&
         old.gridEdit === track.gridEdit &&
         old.edit === track.edit &&
-        old.colors === track.colors;
+        old.colors === track.colors &&
+        old.look === track.look;
       if (!unchanged) {
-        const { cues, marks, tempo, fixedTempo, gridEdit, edit, colors } = track;
+        const { cues, marks, tempo, fixedTempo, gridEdit, edit, colors, look } = track;
         saveTrackData(track.fingerprint, {
           cues,
           marks,
@@ -1467,6 +1480,7 @@ export class Player {
           gridEdit,
           edit,
           colors,
+          look,
         });
       }
     }

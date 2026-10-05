@@ -110,7 +110,7 @@ test('an export plays at the tempo of the sound', async ({ page }) => {
   await page.getByTestId('export-button').click();
   await page.getByText('Custom', { exact: true }).click();
   await page.getByRole('radio', { name: '1:1' }).click();
-  await page.getByTestId('export-resolution').selectOption('720');
+  await page.getByTestId('export-resolution').selectOption('360');
   await page.getByTestId('export-fps').selectOption('24');
   // 4 s at 120 %: 3.3 s of video.
   await expect(page.getByTestId('export-sound')).toContainText('120 % speed, vinyl');
@@ -132,5 +132,47 @@ test('an export plays at the tempo of the sound', async ({ page }) => {
   const audio = (await input.getPrimaryAudioTrack())!;
   expect(await input.computeDuration([video])).toBeCloseTo(80 / 24, 1);
   expect(await input.computeDuration([audio])).toBeCloseTo(80 / 24, 1);
+  expect(errors).toEqual([]);
+});
+
+test('only the sound is saved as a WAV, at the tempo of the sound (EX-11)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await addTrack(page, 4);
+  await page.getByRole('tab', { name: /Sound/ }).click();
+  await page.getByTestId('sound-preset').filter({ hasText: 'Sped up' }).click();
+  // No visuals are needed: it works from the analysis too.
+  await page.getByRole('button', { name: 'Analysis' }).click();
+
+  await page.getByTestId('export-button').click();
+  await page.getByTestId('export-content-sound').check();
+  await expect(page.getByTestId('export-sound')).toContainText('WAV, 48 kHz, 16 bit');
+  // 4 s at 120 %: 3.3 s, at 192,000 bytes a second.
+  await expect(page.getByTestId('export-length')).toContainText('0:03 · about 625.0 KB');
+  await page.getByTestId('export-start').click();
+  await expect(page.getByTestId('export-done')).toContainText('Your sound is ready.', {
+    timeout: 60_000,
+  });
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('export-download').click(),
+  ]);
+  expect(download.suggestedFilename()).toBe('Clicks (Sped up).wav');
+  const input = new Input({
+    source: new BufferSource(await readFile(await download.path())),
+    formats: ALL_FORMATS,
+  });
+  expect(await input.getPrimaryVideoTrack()).toBeNull();
+  const audio = (await input.getPrimaryAudioTrack())!;
+  expect(audio.codec).toBe('pcm-s16');
+  expect(audio.sampleRate).toBe(48000);
+  expect(audio.numberOfChannels).toBe(2);
+  expect(await input.computeDuration([audio])).toBeCloseTo(4 / 1.2, 1);
+  // The choice is kept for the next export.
+  const stored = await page.evaluate(
+    () => JSON.parse(localStorage.getItem('vibe-visualizer:export:v1') ?? '{}').content,
+  );
+  expect(stored).toBe('sound');
   expect(errors).toEqual([]);
 });

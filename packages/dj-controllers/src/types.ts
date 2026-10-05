@@ -73,9 +73,19 @@ export interface ButtonBinding {
   kind: 'button';
   control: ButtonControl;
   deck?: number;
-  /** The status byte of the note, e.g. 0x90 for channel 1; its note off (0x80) counts too. */
+  /**
+   * What the button sends: a note (the default), or a control change, pressed above 0 and
+   * released at 0, as many plain MIDI controllers do.
+   */
+  message?: 'note' | 'control';
+  /**
+   * The status byte of the note, e.g. 0x90 for channel 1; its note off (0x80) counts too. For a
+   * control change, e.g. 0xb0.
+   */
   status: number;
   data: DataBytes;
+  /** Pads: the number of a pad bound alone (one data byte); a range numbers its pads itself. */
+  index?: number;
   padMode?: PadMode;
   /** The controller sends these notes while SHIFT is held (on another channel or note). */
   shift?: boolean;
@@ -127,6 +137,8 @@ export type LightState = 'off' | 'on' | 'dim' | 'blink';
 export interface LightBinding {
   control: ButtonControl;
   deck?: number;
+  /** Pads: the number of a pad's light bound alone (one data byte). */
+  index?: number;
   padMode?: PadMode;
   shift?: boolean;
   /** The note that sets the light, e.g. 0x90 (note on, channel 1). */

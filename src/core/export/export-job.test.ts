@@ -13,6 +13,7 @@ import {
   fadeAt,
   FEATURE_FIELDS,
   frameTime,
+  isSoundFile,
   partAt,
   partChapters,
   partLayout,
@@ -284,6 +285,8 @@ describe('videos of several tracks (EX-05, EX-14, EX-16)', () => {
   });
 
   it('gives the videos of a batch names of their own (EX-09)', () => {
+    expect(isSoundFile('Clicks (Sped up).wav')).toBe(true);
+    expect(isSoundFile('Clicks.mp4')).toBe(false);
     expect(uniqueName('A.mp4', new Set())).toBe('A.mp4');
     expect(uniqueName('A.mp4', new Set(['A.mp4']))).toBe('A (2).mp4');
     expect(uniqueName('A.mp4', new Set(['A.mp4', 'A (2).mp4']))).toBe('A (3).mp4');

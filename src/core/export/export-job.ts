@@ -112,6 +112,11 @@ export interface ExportPart {
   loudness?: TrackLoudness | null;
   /** The colours the user gave its track (VE-12); not given: its cover's, as found. */
   colors?: TrackColors | null;
+  /**
+   * The look of its track (PR-06), the settings of the video's visual mode: the scene takes it
+   * when the part starts. Not given: the scene goes on as it is.
+   */
+  look?: unknown;
 }
 
 export interface ExportTiming {
@@ -175,6 +180,8 @@ export interface ExportManifest {
     bytes: number | null;
   };
   resumeCount: number;
+  /** Only the sound, as a WAV file (EX-11): no video pass. */
+  soundOnly?: boolean;
 }
 
 /** The image files an export job keeps for the Logo Spectrum: its background and logo. */
@@ -479,6 +486,11 @@ export function videoFileName(
   }
   const title = `${first.source.title} and ${parts.length - 1} more`;
   return exportFileName({ title, artist: first.source.artist }, null, extension, sound);
+}
+
+/** Whether an export's file is only the sound (EX-11), a WAV. */
+export function isSoundFile(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith('.wav');
 }
 
 /** `name`, or "name (2).ext" and so on, whichever is not in `taken` yet (EX-09). */
