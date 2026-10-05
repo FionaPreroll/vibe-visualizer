@@ -110,7 +110,7 @@ test('an export plays at the tempo of the sound', async ({ page }) => {
   await page.getByTestId('export-button').click();
   await page.getByText('Custom', { exact: true }).click();
   await page.getByRole('radio', { name: '1:1' }).click();
-  await page.getByTestId('export-resolution').selectOption('720');
+  await page.getByTestId('export-resolution').selectOption('360');
   await page.getByTestId('export-fps').selectOption('24');
   // 4 s at 120 %: 3.3 s of video.
   await expect(page.getByTestId('export-sound')).toContainText('120 % speed, vinyl');
