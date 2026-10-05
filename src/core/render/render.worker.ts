@@ -14,6 +14,7 @@ import {
   type Tone,
   type TrackColors,
 } from './cover-palette';
+import { HeardHold } from './heard-hold';
 import { DEFAULT_KALEIDO } from './kaleido-settings';
 import { KaleidoscopeScene } from './kaleidoscope';
 import { LogoSpectrumScene } from './logo-spectrum';
@@ -78,6 +79,8 @@ let layerLook: unknown = null;
 const features = new Float32Array(F.size);
 /** The file heard now (by its token; 0: none) and the position in it. */
 const heard: HeardPosition = { seconds: 0, token: 0 };
+/** The file the frame shows (its cover, overlay and colours), held over gaps in the analysis. */
+const heardHold = new HeardHold();
 let overlay: TrackOverlay | null = null;
 let overlaySettings: OverlaySettings = DEFAULT_OVERLAY;
 /** Whether the overlay's settings came yet: the first ones are no change. */
@@ -177,10 +180,11 @@ function frame(now: number, backup = false): void {
   // Hits between the last frame shown and this one are collected, so none is missed.
   const sampled = sampler ? sampler.sample(audibleFrame(now), features, heard) : false;
   if (!sampler) features.fill(0);
-  // Live input comes from no file.
-  const token = sampled && !clock?.live ? heard.token : 0;
+  // Live input comes from no file; a file is held over a few frames without analysis.
+  const live = clock?.live === true;
+  const token = heardHold.next(sampled || live, live ? 0 : heard.token, dt);
   applySettings(dt);
-  const played = playedSince(dt, sampled, clock?.live === true);
+  const played = playedSince(dt, sampled, live);
   // Calm at once for a file whose loudness is not known yet; moving again eases in.
   const calm = token !== 0 && calmTokens.has(token);
   motion = calm ? 0 : motion + (1 - motion) * (1 - Math.exp(-dt / MOTION_SECONDS));
