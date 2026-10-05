@@ -2,7 +2,7 @@
 
 [![Coverage](https://codecov.io/gh/FionaPreroll/vibe-visualizer/graph/badge.svg)](https://codecov.io/gh/FionaPreroll/vibe-visualizer)
 
-The app calls itself **FibeStation**; give it another name in **Settings** (the gear in the top bar), or double-click the name there.
+The app calls itself **FibeStation**, and so does the lettering of its logo: change the lettering in **Settings** (the gear in the top bar), or double-click it there.
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 

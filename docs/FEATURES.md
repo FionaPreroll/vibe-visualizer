@@ -195,7 +195,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 
 | ID | Prio | Feature |
 |---|---|---|
-| LS-12 | M | Logo upload (PNG/SVG/JPG/WebP) with a circular crop: pan and zoom inside the circle. The default logo shows the app's name in a script font, drawn anew when the app is renamed |
+| LS-12 | M | Logo upload (PNG/SVG/JPG/WebP) with a circular crop: pan and zoom inside the circle. The default logo shows its lettering (the app's name unless changed) in a script font, drawn anew when the lettering changes |
 | LS-13 | M | Size, position, rim (width, colour), shadow/glow |
 | LS-14* | M | Bass pulse: the logo scales with the bass (amount, attack/release) |
 | LS-15* | S | Use the track's cover art as the logo (switches automatically per track) |
