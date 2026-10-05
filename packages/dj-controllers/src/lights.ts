@@ -27,7 +27,8 @@ export class Lights {
     private readonly send: (message: number[]) => void,
   ) {
     for (const binding of profile.lights ?? []) {
-      for (const { byte, index } of dataBytes(binding.data)) {
+      for (const { byte, index: inRange } of dataBytes(binding.data)) {
+        const index = inRange ?? binding.index;
         const target: LightTarget = {
           control: binding.control,
           deck: binding.deck ?? null,

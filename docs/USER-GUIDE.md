@@ -118,7 +118,7 @@ Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K
 
 ## DJ controller
 
-Play the app from a Pioneer DJ DDJ-FLX2 over USB. Click **⋯ → DJ controller** in the top bar, then **Connect**; the browser asks once for access to MIDI devices. While a controller is connected, a green dot shows on **⋯**. This works in Chrome and Edge, and in Firefox after it installs a small add-on for the permission; Safari has no MIDI. Next time the app connects by itself.
+Play the app from a Pioneer DJ DDJ-FLX2 over USB, or from another MIDI controller that you teach it (see *Another controller*). Click **⋯ → DJ controller** in the top bar, then **Connect**; the browser asks once for access to MIDI devices. While a controller is connected, a green dot shows on **⋯**. This works in Chrome and Edge, and in Firefox after it installs a small add-on for the permission; Safari has no MIDI. Next time the app connects by itself.
 
 - **PLAY/PAUSE:** play and pause. It lights while the music plays and blinks while paused.
 - **CUE:** as on a CDJ, with the in marker as the cue point. Paused, it sets the in marker at the playhead (on the beat when snapping is on). Held at the cue point, the music plays until you let go, then goes back to it; press **PLAY** while holding **CUE** to play on. While playing, **CUE** goes back to the cue point and pauses. It lights at the cue point and blinks while paused elsewhere. So a clip starts where you want: pause, turn the jog wheel to the spot, press **CUE**.
@@ -131,6 +131,14 @@ Play the app from a Pioneer DJ DDJ-FLX2 over USB. Click **⋯ → DJ controller*
 These are the controls of deck 1. Knobs and faders take over once they reach the value in the app, so nothing jumps. Deck 2, the EQ knobs and the crossfader do nothing yet.
 
 If a control does not do what it should, open **MIDI monitor** in the dialog, copy the messages and send them with a bug report. On Windows, close other DJ software first: only one program can use a MIDI device there.
+
+### Another controller
+
+A controller the app does not know yet (the dialog says *not supported yet*) can be taught. Connect it, then click **Teach the app …** under *Another controller*. For each control, click **Learn** and use it on the controller: press a button, turn a knob from fully left to fully right, move a fader from its lowest to its highest end, turn the jog wheel to the right first. The app listens until the control rests and shows what it learned; **Again** teaches it anew. While you teach it, the controller's controls do nothing in the app.
+
+- **Save** keeps it as your controller, under the name you give it: it works at once, and connects with it next time. **Light its buttons** lights PLAY, CUE and the pads the way most controllers expect (their own note sent back); leave it off if the lights go wrong. The app uses the controls of deck 1 as with the DDJ-FLX2: PLAY/PAUSE, CUE, pads 1–8 as hot cues (with **SHIFT** to delete; teach *SHIFT + pad 1* if your controller sends other notes then), the filter knob, the tempo slider, the channel fader and the jog wheel.
+- **Save a report…** saves a file with everything the controller sent for each control, what the app learned, the names of your MIDI devices, and the versions of the app and the browser. Send it to us, and the controller can come with the app. Teach it the controls under *More controls, for the report* too, for a full profile. The file stays on your computer until you send it.
+- **Your controllers** lists what you saved: **Export** saves a profile as a file, to use in another browser or to share; **Import a profile…** adds one (a report works too); **Remove** forgets it. They go into backups too.
 
 ## Backup
 

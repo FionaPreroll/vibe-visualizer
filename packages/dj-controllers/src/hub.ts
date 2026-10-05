@@ -49,8 +49,11 @@ export class ControllerHub {
   private readonly deviceListeners = new Set<(devices: readonly ConnectedController[]) => void>();
   /** The lights as the app wants them, for controllers that connect later. */
   private readonly lightStates = new Map<string, { target: LightTarget; state: LightState }>();
+  private profiles: readonly ControllerProfile[];
 
-  constructor(private readonly options: ControllerHubOptions) {}
+  constructor(private readonly options: ControllerHubOptions) {
+    this.profiles = options.profiles;
+  }
 
   /** Whether this browser has Web MIDI (Safari has not). */
   static get supported(): boolean {
@@ -63,6 +66,16 @@ export class ControllerHub {
 
   get devices(): readonly ConnectedController[] {
     return [...this.connections.values()].map((connection) => connection.device);
+  }
+
+  /** The names of all MIDI ports the browser reports, also of devices without a profile. */
+  get ports(): { inputs: string[]; outputs: string[] } {
+    const names = (ports: Iterable<MIDIPort> | undefined) =>
+      [...(ports ?? [])].map((port) => port.name ?? '');
+    return {
+      inputs: names(this.access?.inputs.values()),
+      outputs: names(this.access?.outputs.values()),
+    };
   }
 
   /** Asks for MIDI access (the browser asks the user the first time) and listens to it. */
@@ -104,6 +117,25 @@ export class ControllerHub {
     return () => this.deviceListeners.delete(listener);
   }
 
+  /**
+   * Changes the profiles, e.g. after MIDI learn: the devices connected take the profile that fits
+   * them now (the first that fits), with its controls and lights.
+   */
+  setProfiles(profiles: readonly ControllerProfile[]): void {
+    this.profiles = profiles;
+    for (const connection of this.connections.values()) {
+      const profile = this.match(connection.device.name);
+      if (profile === connection.device.profile) continue;
+      this.letGo(connection);
+      connection.output = null;
+      connection.lights = null;
+      connection.decoder = profile ? new Decoder(profile) : null;
+      connection.device = { ...connection.device, profile, lights: false };
+      this.attachOutput(connection);
+    }
+    this.emitDevices();
+  }
+
   /** Sets a light on every connected controller that has it, and on those that connect later. */
   setLight(target: LightTarget, state: LightState): void {
     this.lightStates.set(lightKey(target), { target, state });
@@ -133,8 +165,7 @@ export class ControllerHub {
   private connect(input: MIDIInput): void {
     if (this.connections.has(input.id) || input.state === 'disconnected') return;
     const name = input.name ?? 'MIDI device';
-    const profile =
-      this.options.profiles.find((candidate) => matches(name, candidate.ports.input)) ?? null;
+    const profile = this.match(name);
     const connection: Connection = {
       device: { id: input.id, name, profile, lights: false },
       input,
@@ -182,7 +213,14 @@ export class ControllerHub {
     const connection = this.connections.get(id);
     if (!connection) return;
     connection.input.onmidimessage = null;
-    if (letGo && connection.output && connection.lights) {
+    if (letGo) this.letGo(connection);
+    connection.lights?.dispose();
+    this.connections.delete(id);
+  }
+
+  /** Its lights off, and what its profile sends before the controller is let go. */
+  private letGo(connection: Connection): void {
+    if (connection.output && connection.lights) {
       connection.lights.clear();
       for (const message of connection.device.profile?.onDisconnect ?? []) {
         try {
@@ -193,7 +231,11 @@ export class ControllerHub {
       }
     }
     connection.lights?.dispose();
-    this.connections.delete(id);
+  }
+
+  /** The first profile whose port name the device's name contains. */
+  private match(name: string): ControllerProfile | null {
+    return this.profiles.find((candidate) => matches(name, candidate.ports.input)) ?? null;
   }
 
   private onMidiMessage(connection: Connection, event: MIDIMessageEvent): void {

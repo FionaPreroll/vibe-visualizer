@@ -21,7 +21,7 @@ Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and 
 - **Live input:** visualises music from a DJ mixer, an audio interface, another app or a browser tab.
 - **Mini player:** the visuals in a small window that stays on top while you work in other tabs and apps, with play, pause and skip (Chrome, Edge and Firefox; Safari has none).
 - **Second screen:** the visuals in a window of their own for a projector, in fullscreen there, while you play from the tab.
-- **DJ controller:** play, cue, set hot cues, filter and change the tempo from a Pioneer DJ DDJ-FLX2 (Web MIDI), with its lights.
+- **DJ controller:** play, cue, set hot cues, filter and change the tempo from a Pioneer DJ DDJ-FLX2 (Web MIDI), with its lights; other MIDI controllers can be taught (MIDI learn), and a report of one sent to us so it can come with the app.
 - **Private:** everything runs in the browser; no server, no uploads. A backup file takes your settings, presets, cues and images to another browser.
 
 **How to use it:** see the [user guide](docs/USER-GUIDE.md). The same guide opens in the app: click **?** in the top bar (or press ? for the keyboard shortcuts).

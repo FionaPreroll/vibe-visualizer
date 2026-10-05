@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FakeAccess } from './fake-midi';
 import { ControllerHub } from './hub';
+import { learnedProfile } from './learn';
 import { PIONEER_DDJ_FLX2 } from './profiles/pioneer-ddj-flx2';
 import type { ControlEvent } from './types';
 
@@ -72,5 +73,32 @@ describe('ControllerHub', () => {
     expect(controllers.devices).toEqual([]);
     second.input.receive([0x90, 0x0b, 0x7f]);
     expect(events).toEqual([]);
+  });
+
+  it('gives a device a profile learned while it is connected, with its lights', async () => {
+    const access = new FakeAccess();
+    const { input, output } = access.device('Generic MIDI');
+    const controllers = hub(access);
+    const events: ControlEvent[] = [];
+    controllers.onControl((event) => events.push(event));
+    await controllers.start();
+    expect(controllers.devices[0]?.profile).toBeNull();
+    input.receive([0x90, 0x30, 0x7f]);
+    expect(events).toEqual([]);
+
+    const play = { kind: 'button', control: 'play', deck: 1, status: 0x90, data: 0x30 } as const;
+    controllers.setProfiles([learnedProfile('Generic MIDI', 'Mine', [play], true)]);
+    expect(controllers.devices[0]?.profile?.name).toBe('Mine');
+    controllers.setLight({ control: 'play', deck: 1 }, 'on');
+    expect(output.sent.at(-1)).toEqual([0x90, 0x30, 0x7f]);
+    input.receive([0x90, 0x30, 0x7f]);
+    expect(events).toEqual([expect.objectContaining({ control: 'play', pressed: true })]);
+
+    // Forgotten again: its light goes off, and it does nothing.
+    controllers.setProfiles([PIONEER_DDJ_FLX2]);
+    expect(output.sent.at(-1)).toEqual([0x90, 0x30, 0x00]);
+    expect(controllers.devices[0]?.profile).toBeNull();
+    input.receive([0x90, 0x30, 0x7f]);
+    expect(events).toHaveLength(1);
   });
 });

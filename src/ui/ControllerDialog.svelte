@@ -2,6 +2,7 @@
   import type { MonitorEntry } from '../core/control/controller-service';
   import { backdropClose } from './backdrop';
   import { useControllers } from './controller-context';
+  import ControllerLearn from './ControllerLearn.svelte';
   import Icon from './Icon.svelte';
 
   /**
@@ -69,7 +70,8 @@
   </header>
   <div class="body">
     <p class="muted">
-      Play the app from a DJ controller over USB. Supported so far: the Pioneer DJ DDJ-FLX2.
+      Play the app from a DJ controller over USB. Supported so far: the Pioneer DJ DDJ-FLX2; another
+      one can be taught below.
     </p>
 
     <div class="status">
@@ -116,7 +118,8 @@
           {#each $controllers.devices as device (device.id)}
             <li>
               <strong>{device.name}</strong>
-              <span class="muted">{device.profile ? device.profile.name : 'not supported yet'}</span
+              <span class="muted"
+                >{device.profile ? device.profile.name : 'not supported yet: teach it below'}</span
               >
             </li>
           {/each}
@@ -128,6 +131,10 @@
       What each control does is in the help.
       <button onclick={onhelp} data-testid="controller-help">The controls of the DDJ-FLX2</button>
     </p>
+
+    {#if $controllers.status !== 'unsupported'}
+      <ControllerLearn />
+    {/if}
 
     <details data-testid="controller-monitor">
       <summary>MIDI monitor</summary>
