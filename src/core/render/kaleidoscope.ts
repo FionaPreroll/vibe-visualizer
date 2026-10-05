@@ -792,9 +792,8 @@ export class KaleidoscopeScene implements Scene {
   /** The simulation steps and the composite into the scene target (null: no size yet). */
   private draw(input: SceneInput): Target | null {
     const gl = this.gl;
-    const states = this.states;
     const scene = this.scene;
-    if (!states || !scene) return null;
+    if (!this.states || !scene) return null;
     this.frameCount++;
     const { features } = input;
     const common = this.settings.common;
@@ -816,7 +815,9 @@ export class KaleidoscopeScene implements Scene {
     const count = this.stepper.advance(dt);
     for (let i = 0; i < count; i++) this.simulate(features);
 
-    // Display: fold, colour and interpolate between the last two steps.
+    // Display: fold, colour and interpolate between the last two steps. The buffers are taken
+    // only now: each step swaps them, and a new reach replaces them.
+    const [previous, latest] = this.states;
     this.angle += ((common['spin'] as number) / 60) * Math.PI * 2 * dt;
     this.hue = nextHue(this.hue, common['hueCycle'] as number, dt);
     const coreScene = this.settings.scene === 'vortex';
@@ -829,8 +830,8 @@ export class KaleidoscopeScene implements Scene {
     bindTarget(gl, scene, this.width, this.height);
     this.composite
       .use()
-      .texture('previousState', states[0].texture, 0)
-      .texture('latestState', states[1].texture, 1)
+      .texture('previousState', previous.texture, 0)
+      .texture('latestState', latest.texture, 1)
       .texture('palette', this.paletteTexture, 2)
       .float('blend', this.stepper.blend)
       .vec2('resolution', this.width, this.height)
