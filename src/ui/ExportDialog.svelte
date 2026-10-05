@@ -170,7 +170,8 @@
     problem = null;
     const preset = EXPORT_PRESETS.find((entry) => entry.id === id);
     // The stage shows what will be exported.
-    if (preset && preset.aspect !== aspect) player.updateSettings({ aspect: preset.aspect });
+    if (preset?.aspect && preset.aspect !== aspect)
+      player.updateSettings({ aspect: preset.aspect });
   }
 
   function chooseAspect(value: AspectRatio) {
@@ -643,7 +644,7 @@
               />
               <span class="name">{preset.label}</span>
               <span class="detail">
-                {frameSize(preset.aspect, preset.resolution).join('×')} · {preset.fps} fps
+                {frameSize(preset.aspect ?? aspect, preset.resolution).join('×')} · {preset.fps} fps
               </span>
             </label>
           {/each}

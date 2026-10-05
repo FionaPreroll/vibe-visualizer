@@ -87,4 +87,17 @@ describe('video formats', () => {
       DEFAULT_EXPORT_OPTIONS,
     );
   });
+
+  it("makes a draft in the stage's aspect ratio, at 360 pixels", () => {
+    const draft = { ...DEFAULT_EXPORT_OPTIONS, preset: 'draft' as const };
+    expect(resolveFormat(draft, '9:16')).toMatchObject({ width: 360, height: 640, fps: 30 });
+    expect(resolveFormat(draft, '16:9')).toMatchObject({ width: 640, height: 360 });
+    // It fits every stage, and it is small: 1 Mbps at 30 fps and 16:9.
+    expect(fitOptions(draft, '1:1').preset).toBe('draft');
+    expect(resolveFormat(draft, '16:9').videoBitrate).toBe(1_000_000);
+    expect(sanitizeExportOptions({ preset: 'draft', resolution: 360 })).toMatchObject({
+      preset: 'draft',
+      resolution: 360,
+    });
+  });
 });

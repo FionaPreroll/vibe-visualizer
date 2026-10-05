@@ -22,8 +22,8 @@ export const ASPECT_RATIOS: readonly {
 export const FRAME_RATES = [24, 25, 30, 50, 60] as const;
 export type FrameRate = (typeof FRAME_RATES)[number];
 
-/** Resolutions by their shorter side. */
-export const RESOLUTIONS = [720, 1080, 1440, 2160] as const;
+/** Resolutions by their shorter side; 360 for a quick draft. */
+export const RESOLUTIONS = [360, 720, 1080, 1440, 2160] as const;
 export type Resolution = (typeof RESOLUTIONS)[number];
 
 export type Quality = 'standard' | 'high' | 'maximum';
@@ -33,18 +33,21 @@ export const QUALITIES: readonly { id: Quality; label: string; factor: number }[
   { id: 'maximum', label: 'Maximum', factor: 2.5 },
 ];
 
-export type PresetId = 'youtube-1080p60' | 'youtube-4k30' | 'tiktok';
+export type PresetId = 'youtube-1080p60' | 'youtube-4k30' | 'tiktok' | 'draft';
 
 export const EXPORT_PRESETS: readonly {
   id: PresetId;
   label: string;
-  aspect: AspectRatio;
+  /** The preset's aspect ratio; null: the stage's (a draft of any video). */
+  aspect: AspectRatio | null;
   resolution: Resolution;
   fps: FrameRate;
 }[] = [
   { id: 'youtube-1080p60', label: 'YouTube 1080p60', aspect: '16:9', resolution: 1080, fps: 60 },
   { id: 'youtube-4k30', label: 'YouTube 4K30', aspect: '16:9', resolution: 2160, fps: 30 },
   { id: 'tiktok', label: 'TikTok / Shorts 1080×1920', aspect: '9:16', resolution: 1080, fps: 30 },
+  // A quick look at a video before the real one: about a tenth of the pixels of 1080p.
+  { id: 'draft', label: 'Draft, quick to check', aspect: null, resolution: 360, fps: 30 },
 ];
 
 /** Seconds a video can fade in at the start and out at the end (EX-16); 0: no fades. */
@@ -109,6 +112,7 @@ export function frameSize(aspect: AspectRatio, resolution: number): [number, num
  * 30 and for 50/60 frames per second.
  */
 const RECOMMENDED_MBPS: Record<Resolution, [number, number]> = {
+  360: [1, 1.5],
   720: [5, 7.5],
   1080: [8, 12],
   1440: [16, 24],
@@ -156,7 +160,7 @@ export function resolveFormat(options: ExportOptions, aspect: AspectRatio): Vide
  */
 export function fitOptions(options: ExportOptions, aspect: AspectRatio): ExportOptions {
   const preset = EXPORT_PRESETS.find((entry) => entry.id === options.preset);
-  if (!preset || preset.aspect === aspect) return options;
+  if (!preset || preset.aspect === null || preset.aspect === aspect) return options;
   const fitting = EXPORT_PRESETS.find((entry) => entry.aspect === aspect);
   return { ...options, preset: fitting?.id ?? 'custom' };
 }

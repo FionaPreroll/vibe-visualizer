@@ -663,6 +663,21 @@ test('an export can be paused, continued and cancelled', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("a draft is small, in the stage's aspect ratio", async ({ page }) => {
+  await page.goto('/');
+  await addTrack(page, 2);
+  await page.getByTestId('export-button').click();
+  const dialog = page.getByTestId('export-dialog');
+  await dialog.getByText('Draft, quick to check').click();
+  await expect(dialog).toContainText('640×360 · 30 fps · ');
+  // On a stage of another aspect ratio, the draft takes it; the other presets do not fit it.
+  await page.keyboard.press('Escape');
+  await page.getByTestId('aspect-select').selectOption('9:16');
+  await page.getByTestId('export-button').click();
+  await expect(dialog.getByRole('radio', { name: /Draft/ })).toBeChecked();
+  await expect(dialog).toContainText('360×640 · 30 fps · ');
+});
+
 test('the export can tell when it is done, if the browser allows it', async ({ page, context }) => {
   await page.goto('/');
   await addTrack(page, 2);
