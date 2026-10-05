@@ -53,6 +53,16 @@ uniform float time;
 uniform vec2 resolution;
 uniform vec3 tint;
 uniform float tintAmount;
+/** The image under the layer, tinted on its own (VE-08). */
+uniform vec3 imageTint;
+uniform float imageTintAmount;
+
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+/** A colour tinted towards another, keeping its brightness (LS-02). */
+vec3 tinted(vec3 c, vec3 towards) {
+  return dot(c, LUMA) * towards / max(dot(towards, LUMA), 0.2);
+}
 
 void main() {
   vec3 col;
@@ -64,7 +74,8 @@ void main() {
       vec2 ci = (uv - 0.5) * imageScale + 0.5 + pan * 0.5 * max(1.0 - imageScale, 0.0);
       bool outside = any(lessThan(ci, vec2(0.0))) || any(greaterThan(ci, vec2(1.0)));
       vec4 t = texture(image, vec2(ci.x, 1.0 - ci.y));
-      vec3 under = outside ? vec3(0.0) : t.rgb * t.a * imageUnder;
+      vec3 under = outside ? vec3(0.0) : t.rgb * t.a;
+      under = mix(under, tinted(under, imageTint), imageTintAmount) * imageUnder;
       col = 1.0 - (1.0 - col) * (1.0 - under);
     }
   } else if (hasImage == 1) {
@@ -84,9 +95,7 @@ void main() {
     col += vec3(0.0, 0.03, 0.05) * (0.5 + 0.5 * sin(time * 0.11 - q.y * 3.0));
   }
   // Tinted towards a colour, keeping the brightness of each part (LS-02).
-  const vec3 luma = vec3(0.2126, 0.7152, 0.0722);
-  vec3 tinted = dot(col, luma) * tint / max(dot(tint, luma), 0.2);
-  col = mix(col, tinted, tintAmount);
+  col = mix(col, tinted(col, tint), tintAmount);
   color = vec4(col * (1.0 - dim), 1.0);
 }`;
 
@@ -576,6 +585,7 @@ export class LogoSpectrumScene implements Scene {
     const [bx, by] = this.backgroundScale();
     const [sx, sy] = layered ? [1, 1] : [bx, by];
     const [tintR, tintG, tintB] = parseColor(s.backgroundTint);
+    const [imageR, imageG, imageB] = parseColor(s.layerImageTint);
     this.programs.background
       .use()
       .texture('image', this.backgroundTexture(), 0)
@@ -594,7 +604,9 @@ export class LogoSpectrumScene implements Scene {
       .float('time', input.time)
       .vec2('resolution', this.width, this.height)
       .vec3('tint', tintR, tintG, tintB)
-      .float('tintAmount', s.backgroundTintAmount);
+      .float('tintAmount', s.backgroundTintAmount)
+      .vec3('imageTint', imageR, imageG, imageB)
+      .float('imageTintAmount', layered ? s.layerImageTintAmount : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     // Particles (additive).

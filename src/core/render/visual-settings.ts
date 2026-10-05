@@ -56,6 +56,12 @@ export interface LogoSpectrumSettings {
    * 0: none, as before.
    */
   layerImage: number;
+  /**
+   * Colour the image under the Kaleidoscope is tinted towards, and how much (0…1): that image
+   * alone, before the Kaleidoscope comes over it. The background's tint takes both.
+   */
+  layerImageTint: string;
+  layerImageTintAmount: number;
   backgroundFit: 'cover' | 'contain';
   /** 0…1 */
   backgroundBlur: number;
@@ -174,6 +180,8 @@ const CLASSIC: LogoSpectrumSettings = {
   backgroundSource: 'image',
   layerLook: null,
   layerImage: 0,
+  layerImageTint: '#8f3dff',
+  layerImageTintAmount: 0,
   backgroundFit: 'cover',
   backgroundBlur: 0.15,
   backgroundDim: 0.35,
@@ -472,6 +480,7 @@ type NumericKey = {
 /** Allowed ranges of the numeric settings (also used by the UI sliders). */
 export const RANGES: Record<NumericKey, readonly [number, number]> = {
   layerImage: [0, 1],
+  layerImageTintAmount: [0, 1],
   backgroundBlur: [0, 1],
   backgroundDim: [0, 1],
   backgroundPulse: [0, 1],
@@ -552,7 +561,10 @@ export function sanitizeSettings(value: unknown): LogoSpectrumSettings {
       if (key === 'ringDirection' && !(RING_DIRECTIONS as string[]).includes(stored)) continue;
       if (key === 'particleStyle' && !(PARTICLE_STYLES as string[]).includes(stored)) continue;
       if (
-        (key === 'topColor' || key === 'rimColor' || key === 'backgroundTint') &&
+        (key === 'topColor' ||
+          key === 'rimColor' ||
+          key === 'backgroundTint' ||
+          key === 'layerImageTint') &&
         !COLOR.test(stored)
       ) {
         continue;

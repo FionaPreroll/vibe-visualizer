@@ -2,7 +2,7 @@
 
 [![Coverage](https://codecov.io/gh/FionaPreroll/vibe-visualizer/graph/badge.svg)](https://codecov.io/gh/FionaPreroll/vibe-visualizer)
 
-The app calls itself **FibeStation**; give it another name in **Settings** (the gear in the top bar), or double-click the name there.
+The app calls itself **FibeStation**, and so does the lettering of its logo: change the lettering in **Settings** (the gear in the top bar), or double-click it there.
 
 Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and logo-centred spectrum visuals, watched live or rendered offline into HD videos for YouTube and TikTok. Everything runs locally: no server, no uploads.
 
@@ -41,7 +41,7 @@ Audio-reactive music visualizer in the browser: kaleidoscopic shader scenes and 
 | ![The mini player: the visuals in a small window of their own, with its controls](docs/screenshots/mini-player.jpg) *Mini player:* on top of other tabs and apps | ![The ⋯ menu of the top bar, open](docs/screenshots/menu.jpg) *⋯ in the top bar:* the mini player, the second screen, safe areas, only the music, a PNG, the DJ controller |
 | ![The welcome at the first start](docs/screenshots/welcome.jpg) *The welcome* at the first start | |
 
-**The top bar** fits narrower windows: below 1360 pixels the aspect ratio leaves out its platforms and a running export shows only its progress, below 1120 the modes show only their icons, and below 820 the logo shows without the app's name.
+**The top bar** fits narrower windows: below 1360 pixels the aspect ratio leaves out its platforms and a running export shows only its progress, below 1120 the modes show only their icons, and below 820 the logo shows without its lettering.
 
 ![The top bar at 1440, 1280, 1100 and 800 pixels wide, and the same while an export runs](docs/screenshots/top-bar.png)
 

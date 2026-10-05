@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { APP_NAME } from '../core/state/app-state';
   import { onMount } from 'svelte';
-  import { usePlayer } from './player-context';
 
   /**
    * The parts of others in the app, with their licences (About → Licences): the list the build
@@ -16,7 +16,6 @@
     texts: { file: string; text: string }[];
   }
 
-  const app = usePlayer().store;
   let notices: Notice[] | null = $state(null);
   let failed = $state(false);
 
@@ -43,8 +42,8 @@
 
 <div class="licences" data-testid="licences">
   <p>
-    {$app.settings.appName} contains these parts of others. Each keeps its own licence: its text opens
-    below it, and all of them are in <a href="/licenses.txt" target="_blank">licenses.txt</a>.
+    {APP_NAME} contains these parts of others. Each keeps its own licence: its text opens below it, and
+    all of them are in <a href="/licenses.txt" target="_blank">licenses.txt</a>.
   </p>
   {#if failed}
     <p class="muted">The list comes with the built app; it is not there in development.</p>

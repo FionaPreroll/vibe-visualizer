@@ -484,6 +484,23 @@ test('the Kaleidoscope can run behind the Logo Spectrum (VE-08)', async ({ page 
   await expect.poll(async () => (await stored()).layerImage).toBe(0.5);
   await expect.poll(green, { timeout: 10_000 }).toBeGreaterThan(without + 20);
 
+  // The image under it has a tint of its own: towards red, the green corner turns red.
+  await page.getByTestId('layer-image-tint').fill('#ff2020');
+  await page.getByRole('slider', { name: 'Image tint amount', exact: true }).focus();
+  await page.keyboard.press('End');
+  await expect.poll(async () => (await stored()).layerImageTintAmount).toBe(1);
+  expect((await stored()).layerImageTint).toBe('#ff2020');
+  const colour = async () => (await measure(page, await stage.screenshot(), corner))[0]!.mean;
+  await expect
+    .poll(
+      async () => {
+        const [red, greenLevel] = await colour();
+        return red - greenLevel;
+      },
+      { timeout: 10_000 },
+    )
+    .toBeGreaterThan(40);
+
   // To the Kaleidoscope and back: the layer goes on.
   await page.getByRole('button', { name: 'Kaleidoscope', exact: true }).click();
   await expect(stage).toHaveAttribute('data-scene', 'kaleidoscope');

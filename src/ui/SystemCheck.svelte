@@ -1,14 +1,13 @@
 <script lang="ts">
+  import { APP_NAME } from '../core/state/app-state';
   import { onMount } from 'svelte';
   import { probeCapabilities, type CapabilityReport } from '../core/env/capabilities';
   import { capabilityRows, capabilityText } from '../core/env/capability-report';
-  import { usePlayer } from './player-context';
 
   /**
    * The system check in the help (NF-10): what this browser offers the app (graphics, the
    * encoders, storage), to copy into a bug report. It looks when it is shown.
    */
-  const app = usePlayer().store;
   let report = $state.raw<CapabilityReport | null>(null);
   let copied = $state(false);
 
@@ -19,7 +18,7 @@
   async function copy() {
     if (!report) return;
     try {
-      await navigator.clipboard.writeText(capabilityText(report, $app.settings.appName));
+      await navigator.clipboard.writeText(capabilityText(report, APP_NAME));
       copied = true;
       setTimeout(() => (copied = false), 2000);
     } catch {

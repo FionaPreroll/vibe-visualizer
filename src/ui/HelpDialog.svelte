@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { APP_NAME } from '../core/state/app-state';
   import changelog from '../../CHANGELOG.md?raw';
   import guide from '../../docs/USER-GUIDE.md?raw';
   import privacy from '../../PRIVACY.md?raw';
@@ -8,7 +9,6 @@
   import Icon from './Icon.svelte';
   import LicencesList from './LicencesList.svelte';
   import { guideSections, renderDocument, renderMarkdown } from './markdown';
-  import { usePlayer } from './player-context';
   import ShortcutList from './ShortcutList.svelte';
   import SystemCheck from './SystemCheck.svelte';
 
@@ -32,8 +32,6 @@
   }
   let { open, section = $bindable(), onclose, onwelcome, onsettings }: Props = $props();
 
-  const player = usePlayer();
-  const app = player.store;
   const START_ID = 'getting-started';
   const SHORTCUTS_ID = 'keyboard-shortcuts';
   const ABOUT_ID = 'about';
@@ -144,7 +142,7 @@
       {/if}
       {#if current.id === ABOUT_ID}
         <div class="actions">
-          <a class="button" href={bugReportLink($app.settings.appName)} data-testid="help-bug"
+          <a class="button" href={bugReportLink(APP_NAME)} data-testid="help-bug"
             >Report a bug to {BUG_EMAIL}</a
           >
           <button onclick={() => (section = NEW_ID)} data-testid="help-whats-new">What's new</button

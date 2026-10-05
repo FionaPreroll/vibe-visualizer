@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+  import { APP_NAME } from '../core/state/app-state';
   import { onMount } from 'svelte';
   import { bugReportLink, BUG_EMAIL } from './app-info';
   import { LOGO_FONT, loadLogoFont } from './default-logo';
@@ -80,7 +81,7 @@
           class:script={fontReady}
           style:font-family={fontReady ? `"${LOGO_FONT}", cursive` : null}
         >
-          {$app.settings.appName}
+          {APP_NAME}
         </h2>
         <p class="tagline">Music visuals for your videos and DJ sets, right in the browser.</p>
       </div>
@@ -122,9 +123,7 @@
     <ul class="notes">
       <li>
         <strong>Work in progress.</strong> Expect rough edges. Bugs and ideas are very welcome:
-        <a href={bugReportLink($app.settings.appName)} data-testid="welcome-bug-email"
-          >{BUG_EMAIL}</a
-        >
+        <a href={bugReportLink(APP_NAME)} data-testid="welcome-bug-email">{BUG_EMAIL}</a>
       </li>
       <li>
         <strong>Works best in Chrome</strong> on a computer with a good graphics card, above all for the

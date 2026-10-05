@@ -79,17 +79,17 @@ test('the help only explains: the name and the backup are in the settings', asyn
   await expect(settings).toBeVisible();
   await expect(settings.getByTestId('backup-save')).toBeVisible();
 
-  // The name of the app, in the top bar and the window's title.
-  const name = settings.getByTestId('settings-app-name');
-  await expect(name).toHaveValue('FibeStation');
-  await name.fill('Night Visuals');
-  await name.press('Enter');
-  await expect(page.getByTestId('app-name')).toHaveText('Night Visuals');
-  await expect(page).toHaveTitle('Night Visuals');
-  // Nothing typed: the name it has by default.
-  await name.fill('  ');
-  await name.press('Enter');
-  await expect(page.getByTestId('app-name')).toHaveText('FibeStation');
+  // The lettering in the ring, also in the top bar; the window's title keeps the app's name.
+  const lettering = settings.getByTestId('settings-logo-text');
+  await expect(lettering).toHaveValue('FibeStation');
+  await lettering.fill('Night Visuals');
+  await lettering.press('Enter');
+  await expect(page.getByTestId('logo-text')).toHaveText('Night Visuals');
+  await expect(page).toHaveTitle('FibeStation');
+  // Nothing typed: the app's name.
+  await lettering.fill('  ');
+  await lettering.press('Enter');
+  await expect(page.getByTestId('logo-text')).toHaveText('FibeStation');
 
   // What is in a backup: the help, at its page on it.
   await settings.getByTestId('settings-backup-help').click();

@@ -337,43 +337,50 @@
       </div>
     </div>
     {#if v.backgroundSource === 'kaleidoscope'}
+      <h4 class="group">Kaleidoscope behind</h4>
       <p class="hint" data-testid="background-layer-hint">
         The Kaleidoscope, live behind the ring, with a look of its own that belongs to this one:
-        presets and the preset switching carry it. Darken and tint apply to it; it costs about as
-        much as the Kaleidoscope itself. An image can show under it.
+        presets and the preset switching carry it. It costs about as much as the Kaleidoscope
+        itself. An image can show under it.
       </p>
       {#if oneditbehind}
         <button class="edit-behind" onclick={oneditbehind} data-testid="background-layer-edit">
           Set up the Kaleidoscope behind…
         </button>
       {/if}
-    {/if}
-    <ImagePicker
-      label={v.backgroundSource === 'kaleidoscope' ? 'Image under it' : 'Background image'}
-      image={$assets.background}
-      testid="background"
-      onpick={(file) => pickImageUnder(file)}
-    />
-    {#if v.backgroundSource === 'kaleidoscope'}
+      <h4 class="group">Image under it</h4>
+      <ImagePicker
+        label="Image"
+        image={$assets.background}
+        testid="background"
+        onpick={(file) => pickImageUnder(file)}
+      />
       <Slider {...slider('layerImage', 'Image under it', percent)} />
-    {/if}
-    {#if v.backgroundSource === 'image' || v.layerImage > 0}
-      <div class="color-row">
-        <span class="label">Fit</span>
-        <div class="quick" role="radiogroup" aria-label="Background fit">
-          {#each ['cover', 'contain'] as const as fit (fit)}
-            <button
-              role="radio"
-              aria-checked={v.backgroundFit === fit}
-              class:on={v.backgroundFit === fit}
-              onclick={() => set({ backgroundFit: fit })}
-            >
-              {fit === 'cover' ? 'Fill' : 'Fit inside'}
-            </button>
-          {/each}
+      {#if v.layerImage > 0}
+        {@render imageControls()}
+        <div class="color-row">
+          <label for="layer-image-tint">Image tint</label>
+          <input
+            id="layer-image-tint"
+            type="color"
+            value={v.layerImageTint}
+            oninput={(event) => set({ layerImageTint: event.currentTarget.value })}
+            data-testid="layer-image-tint"
+          />
         </div>
-      </div>
-      <Slider {...slider('backgroundBlur', 'Blur', percent)} />
+        <Slider {...slider('layerImageTintAmount', 'Image tint amount', percent)} />
+      {/if}
+      <h4 class="group">The whole background</h4>
+      <p class="hint">Darken and tint take the Kaleidoscope and the image under it together.</p>
+    {:else}
+      <ImagePicker
+        label="Background image"
+        image={$assets.background}
+        testid="background"
+        onpick={(file) => pickImageUnder(file)}
+      />
+      {@render imageControls()}
+      <h4 class="group">Darken and tint</h4>
     {/if}
     <Slider {...slider('backgroundDim', 'Darken', percent)} />
     <div class="color-row">
@@ -386,9 +393,28 @@
       />
     </div>
     <Slider {...slider('backgroundTintAmount', 'Tint amount', percent)} />
+  </Section>
+
+  {#snippet imageControls()}
+    <div class="color-row">
+      <span class="label">Fit</span>
+      <div class="quick" role="radiogroup" aria-label="Background fit">
+        {#each ['cover', 'contain'] as const as fit (fit)}
+          <button
+            role="radio"
+            aria-checked={v.backgroundFit === fit}
+            class:on={v.backgroundFit === fit}
+            onclick={() => set({ backgroundFit: fit })}
+          >
+            {fit === 'cover' ? 'Fill' : 'Fit inside'}
+          </button>
+        {/each}
+      </div>
+    </div>
+    <Slider {...slider('backgroundBlur', 'Blur', percent)} />
     <Slider {...slider('backgroundX', 'Position X')} />
     <Slider {...slider('backgroundY', 'Position Y')} />
-  </Section>
+  {/snippet}
 
   <Section title="Motion">
     <Slider {...slider('backgroundPulse', 'Bass zoom', percent)} />
@@ -541,6 +567,14 @@
     align-items: flex-start;
     gap: 6px;
     padding: 14px 16px 20px;
+  }
+  .group {
+    margin: 10px 0 2px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
   .hint {
     font-size: 12px;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { MediaQuery } from 'svelte/reactivity';
   import { ASPECT_RATIOS, isAspectRatio } from '../core/export/video-format';
-  import { APP_NAME_LENGTH, DEFAULT_APP_NAME, type VisualMode } from '../core/state/app-state';
+  import { APP_NAME, LOGO_TEXT_LENGTH, type VisualMode } from '../core/state/app-state';
   import { useControllers } from './controller-context';
   import { useExporter } from './exporter-context';
   import Icon, { type IconName } from './Icon.svelte';
@@ -47,7 +47,10 @@
     $controllers.status === 'on' && $controllers.devices.some((device) => device.profile),
   );
 
-  /** Renaming the app (a double-click on its name): the name being typed. */
+  /**
+   * Changing the lettering in the ring (a double-click on it): the text being typed. The bar
+   * shows the lettering; the app keeps its name (APP_NAME) in the title and the notices.
+   */
   let renaming = $state(false);
   let draft = $state('');
   let nameInput: HTMLInputElement | undefined = $state();
@@ -57,7 +60,7 @@
   });
 
   function startRenaming() {
-    draft = $app.settings.appName;
+    draft = $app.settings.logoText;
     renaming = true;
   }
 
@@ -65,8 +68,8 @@
     if (!renaming) return;
     renaming = false;
     if (!save) return;
-    const name = draft.trim().slice(0, APP_NAME_LENGTH);
-    player.updateSettings({ appName: name || DEFAULT_APP_NAME });
+    const text = draft.trim().slice(0, LOGO_TEXT_LENGTH);
+    player.updateSettings({ logoText: text || APP_NAME });
   }
 
   /**
@@ -164,23 +167,23 @@
         class="name"
         bind:this={nameInput}
         bind:value={draft}
-        maxlength={APP_NAME_LENGTH}
-        aria-label="Name of the app"
+        maxlength={LOGO_TEXT_LENGTH}
+        aria-label="Lettering in the ring"
         onkeydown={(event) => {
           if (event.key === 'Enter') finishRenaming(true);
           else if (event.key === 'Escape') finishRenaming(false);
         }}
         onblur={() => finishRenaming(true)}
-        data-testid="app-name-input"
+        data-testid="logo-text-input"
       />
     {:else}
       <button
         class="name"
         ondblclick={startRenaming}
-        title="Double-click to rename the app"
-        data-testid="app-name"
+        title="The lettering in the ring: double-click to change it"
+        data-testid="logo-text"
       >
-        {$app.settings.appName}
+        {$app.settings.logoText}
       </button>
     {/if}
   </div>

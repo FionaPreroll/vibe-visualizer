@@ -109,6 +109,50 @@ test('the spin turns a round picture: no edge of a frame-shaped buffer turns int
   expect(errors).toEqual([]);
 });
 
+test('zoomed out, the Kaleidoscope fills the frame instead of a disc (KA-05)', async ({ page }) => {
+  const errors = collectErrors(page);
+  const stage = await openKaleidoscope(page);
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'Clicks.wav',
+    mimeType: 'audio/wav',
+    buffer: createWav(30, 44100),
+  });
+  await expect(page.getByTestId('queue-item')).toHaveAttribute('data-status', 'ready');
+  // The Vortex pushed outward as fast as it goes, zoomed out to half.
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  await page.getByRole('slider', { name: 'Tunnel flow', exact: true }).focus();
+  await page.keyboard.press('End');
+  const zoom = page.getByRole('slider', { name: 'Zoom', exact: true });
+  await zoom.focus();
+  await page.keyboard.press('Home');
+  await expect(zoom).toHaveValue('0.5');
+  await page.getByTestId('play-button').click();
+
+  // A ring of spots at 1.25 times half the frame's height from the centre: beyond where the state
+  // reached at zoom 1 (1.07 at half the zoom), it stayed black there. The light flows out to it.
+  const box = (await stage.boundingBox())!;
+  const half = box.height / 2;
+  const spot = 20;
+  const ring = Array.from({ length: 12 }, (_, k) => {
+    const angle = (k / 12) * Math.PI * 2;
+    const x = box.width / 2 + Math.cos(angle) * 1.25 * half - spot / 2;
+    const y = box.height / 2 + Math.sin(angle) * 1.25 * half - spot / 2;
+    return {
+      x: x / box.width,
+      y: y / box.height,
+      width: spot / box.width,
+      height: spot / box.height,
+    };
+  }).filter((r) => r.x > 0 && r.y > 0 && r.x + r.width < 1 && r.y + r.height < 1);
+  expect(ring.length).toBeGreaterThan(3);
+  const brightest = async () => {
+    const stats = await measure(page, await stage.screenshot(), ring);
+    return Math.max(...stats.map(({ mean }) => (mean[0] + mean[1] + mean[2]) / 3));
+  };
+  await expect.poll(brightest, { timeout: 20_000, intervals: [300] }).toBeGreaterThan(10);
+  expect(errors).toEqual([]);
+});
+
 test('Kaleidoscope controls come from the scene specs and survive a reload', async ({ page }) => {
   const errors = collectErrors(page);
   await openKaleidoscope(page);
@@ -171,8 +215,9 @@ test('the colours can come from the cover art of the track playing (VE-12)', asy
     const [red, green, blue] = region!.mean;
     return blue - Math.max(red, green);
   };
-  await page.waitForTimeout(1500);
-  expect(await blueness()).toBeLessThan(0);
+  // Once the Vortex shows: a picture still dark when measured is neither (0), as on a slow runner
+  // a second and a half after the start.
+  await expect.poll(blueness, { timeout: 10_000 }).toBeLessThan(0);
 
   // With the colours of the cover: blue, and the look's own again without them.
   await page.getByRole('tab', { name: 'Visuals' }).click();

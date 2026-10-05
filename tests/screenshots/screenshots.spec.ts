@@ -294,7 +294,7 @@ test('screenshots of the top bar and its ⋯ menu', async ({ page, context }) =>
     [1440, '1440 px'],
     [1280, '1280 px: the aspect ratio without its platforms'],
     [1100, '1100 px: the modes as icons'],
-    [800, '800 px: the logo without the name'],
+    [800, '800 px: the logo without its lettering'],
   ] as const;
   const bars: { label: string; png: Buffer }[] = [];
   const takeBars = async (note: string) => {

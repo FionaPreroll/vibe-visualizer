@@ -1,8 +1,8 @@
 <script lang="ts">
+  import { APP_NAME } from '../core/state/app-state';
   import { onMount } from 'svelte';
   import { APP_VERSION, newerBuild, type DeployedBuild } from '../core/env/version';
   import Icon from './Icon.svelte';
-  import { usePlayer } from './player-context';
 
   /**
    * Says when a newer build of the app is out (NF-09), from which version to which. It looks
@@ -12,7 +12,6 @@
   const CHECK_MS = 30 * 60_000;
   /** Not more often than this, however often the tab is shown. */
   const QUIET_MS = 5 * 60_000;
-  const app = usePlayer().store;
   let newer: DeployedBuild | null = $state(null);
   let dismissed = $state(false);
   let checked = -Infinity;
@@ -39,7 +38,7 @@
 {#if newer && !dismissed}
   <div class="update" role="status" data-testid="new-version">
     <span>
-      A new version of {$app.settings.appName} is out{#if newer.version}:
+      A new version of {APP_NAME} is out{#if newer.version}:
         <span class="versions" data-testid="new-version-versions"
           >v{APP_VERSION} → v{newer.version}</span
         >{:else}.{/if}
