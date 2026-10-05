@@ -99,6 +99,21 @@ export function nextReach(base: number, needed: number, current: number): number
   return base * 2 ** (next / REACH_STEPS);
 }
 
+/** How long the colours take to come back when the hue cycle stops (s). */
+const HUE_RETURN = 0.5;
+
+/**
+ * The hue after `dt` seconds at `cycle` turns a minute (radians). At 0 it goes back to the look's
+ * own colours, the short way round, instead of staying where the cycle left it.
+ */
+export function nextHue(hue: number, cycle: number, dt: number): number {
+  const turn = Math.PI * 2;
+  if (cycle !== 0) return (hue + (cycle / 60) * turn * dt) % turn;
+  const back = hue - turn * Math.round(hue / turn);
+  const next = back * Math.exp(-dt / HUE_RETURN);
+  return Math.abs(next) < 1e-3 ? 0 : next;
+}
+
 /** Noise and helpers shared by the step shaders. */
 const NOISE = `
 float hash(vec2 p) {
@@ -803,7 +818,7 @@ export class KaleidoscopeScene implements Scene {
 
     // Display: fold, colour and interpolate between the last two steps.
     this.angle += ((common['spin'] as number) / 60) * Math.PI * 2 * dt;
-    this.hue += ((common['hueCycle'] as number) / 60) * Math.PI * 2 * dt;
+    this.hue = nextHue(this.hue, common['hueCycle'] as number, dt);
     const coreScene = this.settings.scene === 'vortex';
     const params = this.settings.scenes.vortex;
     const [cr, cg, cb] = parseColor(params['coreColor'] as string);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextReach, stateSquare, viewReach } from './kaleidoscope';
+import { nextHue, nextReach, stateSquare, viewReach } from './kaleidoscope';
 
 describe('the Kaleidoscope state', () => {
   it('holds the circle the corners of the frame turn on, at its pixel density', () => {
@@ -52,5 +52,23 @@ describe('the Kaleidoscope state', () => {
     expect(nextReach(base, half / 2 ** (1 / 8), half)).toBe(half);
     expect(nextReach(base, half / 2 ** (2 / 8), half)).toBeCloseTo(half / 2 ** (2 / 8));
     expect(nextReach(base, base, half)).toBe(base);
+  });
+
+  it('takes its colours back when the hue cycle stops', () => {
+    const turn = Math.PI * 2;
+    // One turn a minute: a quarter turn in 15 s, and it wraps instead of growing.
+    let hue = 0;
+    for (let i = 0; i < 15 * 60; i++) hue = nextHue(hue, 1, 1 / 60);
+    expect(hue).toBeCloseTo(turn / 4, 3);
+    for (let i = 0; i < 60 * 60; i++) hue = nextHue(hue, 1, 1 / 60);
+    expect(hue).toBeGreaterThanOrEqual(0);
+    expect(hue).toBeLessThan(turn);
+    // At 0 it goes back to the look's own colours within a few seconds, the short way round.
+    hue = turn * 0.9;
+    const first = nextHue(hue, 0, 1 / 60);
+    expect(first).toBeLessThan(0);
+    expect(first).toBeGreaterThan(-turn * 0.1);
+    for (let i = 0; i < 4 * 60; i++) hue = nextHue(hue, 0, 1 / 60);
+    expect(hue).toBe(0);
   });
 });
