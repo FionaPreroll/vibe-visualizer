@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { flushSync, getAllContexts, mount, onDestroy, onMount, unmount } from 'svelte';
+  import { flushSync, getAllContexts, mount, onDestroy, onMount, unmount, untrack } from 'svelte';
   import { isClean } from '../core/audio/dsp/sound-settings';
   import { ControllerService } from '../core/control/controller-service';
   import { REPEAT_MODES } from '../core/state/app-state';
   import { errorMessage } from '../core/util/format';
-  import { Exporter } from '../core/export/exporter';
+  import { Exporter, type ExportState } from '../core/export/exporter';
   import { Player } from '../core/player/player';
   import type { SceneKind } from '../core/render/render-protocol';
   import { VisualAssets } from '../core/render/visual-assets';
@@ -20,6 +20,7 @@
   import LivePanel from './LivePanel.svelte';
   import NewVersionNotice from './NewVersionNotice.svelte';
   import { provideExporter } from './exporter-context';
+  import { notifyExportEnd } from './export-notify';
   import Icon from './Icon.svelte';
   import { openMiniPlayerWindow, supportsMiniPlayer } from './mini-player';
   import MiniPlayerControls from './MiniPlayerControls.svelte';
@@ -37,6 +38,7 @@
   import VisualsPanel from './VisualsPanel.svelte';
   import VisualStage from './VisualStage.svelte';
   import WelcomeIntro from './WelcomeIntro.svelte';
+  import { windowTitle, type UnseenOutcome } from './window-title';
   import { provideAssets } from './visuals-context';
 
   const player = new Player();
@@ -67,9 +69,35 @@
   // Derived, so that the effects run when the name changes, not with every change of the state
   // (drawing the logo takes a while).
   const appName = $derived($app.settings.appName);
+  /** How an export ended while the tab was in the background, until the tab is seen again. */
+  let unseen = $state<UnseenOutcome>(null);
+  // The title says what an export is doing, so that it shows in the tab while the user works
+  // elsewhere.
+  const title = $derived(windowTitle(appName, $exporter, unseen));
   $effect(() => {
-    document.title = appName;
-    if (miniWindow) miniWindow.document.title = appName;
+    document.title = title;
+    if (miniWindow) miniWindow.document.title = title;
+  });
+  let exportStatus: ExportState['status'] = 'idle';
+  $effect(() => {
+    const state = $exporter;
+    const was = exportStatus;
+    exportStatus = state.status;
+    if (was !== 'running' || document.visibilityState === 'visible') return;
+    if (state.status !== 'done' && state.status !== 'failed') return;
+    unseen = state.status;
+    if (!untrack(() => $app.settings.exportNotify)) return;
+    const name = untrack(() => appName);
+    if (state.status === 'done') {
+      const several = state.videos.length > 1;
+      notifyExportEnd(
+        name,
+        several ? 'Your videos are ready' : 'Your video is ready',
+        several ? `${state.videos.length} videos` : state.fileName,
+      );
+    } else {
+      notifyExportEnd(name, 'The export failed', state.message);
+    }
   });
   $effect(() => {
     let current = true;
@@ -424,6 +452,13 @@
     };
   });
 </script>
+
+<!-- Back in the tab, how an export ended has been seen. -->
+<svelte:document
+  onvisibilitychange={() => {
+    if (document.visibilityState === 'visible') unseen = null;
+  }}
+/>
 
 <div class="shell" class:panel-open={$app.settings.panelOpen}>
   <TopBar

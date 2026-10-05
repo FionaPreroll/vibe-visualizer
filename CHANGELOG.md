@@ -2,6 +2,10 @@
 
 What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with the day and the time of the build, such as 0.9.20261003.1432 (**About** shows yours), so the changes are listed by the day they came out.
 
+## 5 October 2026
+
+- **Exports in the tab's title:** while a video is made, the title of the tab shows how far it is, and how it ended until you look at the tab. If you like, a notification says when it is done (**Tell me when it is done** in the export dialog).
+
 ## 4 October 2026
 
 - **Neon Ribbons, in a new light:** fine rings of light and soft, out-of-focus lights instead of fractal blossoms and little flowers, a colour that drifts along each tube, cool colours (*Iris*), and a haze instead of plain black (**Haze**, for every Kaleidoscope scene). *Neon Mandala* and *Lava Braid* follow. The look of before stays as the preset *Flower Power*, and looks you saved keep theirs.

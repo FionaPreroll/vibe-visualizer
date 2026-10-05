@@ -200,6 +200,8 @@ export interface Settings {
   coverColors: boolean;
   /** The visuals rest, to listen to the music only (DS-05): the stage draws nothing. */
   visualsPaused: boolean;
+  /** A notification of the system when an export ends while the tab is in the background. */
+  exportNotify: boolean;
   /** Automatic preset switching (PR-02), for the visual mode shown. */
   autoPresets: AutoPresets;
   /** Favourite presets by name, per visual mode (PR-03). */
@@ -381,6 +383,7 @@ export const DEFAULT_SETTINGS: Settings = {
   coverLogo: false,
   coverColors: false,
   visualsPaused: false,
+  exportNotify: false,
   autoPresets: DEFAULT_AUTO_PRESETS,
   favourites: { logoSpectrum: [], kaleidoscope: [] },
 };

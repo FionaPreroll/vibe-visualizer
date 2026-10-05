@@ -49,6 +49,7 @@
   } from '../core/state/app-state';
   import { loadExportOptions, saveExportOptions } from '../core/state/persistence';
   import { errorMessage, formatBytes, formatDuration } from '../core/util/format';
+  import { askForNotifications, notificationsAvailable } from './export-notify';
   import { useExporter } from './exporter-context';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
@@ -201,6 +202,23 @@
       cut: range.end < duration,
       colors: entry.colors,
     };
+  }
+
+  /** The browser refused notifications when they were asked for. */
+  let notifyRefused = $state(false);
+
+  /** A notification when the export ends in the background: asked of the browser when turned on. */
+  async function setNotify(event: Event & { currentTarget: HTMLInputElement }) {
+    const box = event.currentTarget;
+    notifyRefused = false;
+    if (!box.checked) {
+      player.updateSettings({ exportNotify: false });
+      return;
+    }
+    const allowed = await askForNotifications();
+    box.checked = allowed;
+    notifyRefused = !allowed;
+    player.updateSettings({ exportNotify: allowed });
   }
 
   async function start() {
@@ -922,6 +940,23 @@
       {#if codecs?.video === 'vp9'}
         <p class="hint">This browser cannot encode H.264, so the video is a WebM file (VP9).</p>
       {/if}
+      {#if notificationsAvailable()}
+        <label class="notify">
+          <input
+            type="checkbox"
+            checked={$app.settings.exportNotify}
+            onchange={setNotify}
+            data-testid="export-notify"
+          />
+          Tell me when it is done, while I work in another tab
+        </label>
+        {#if notifyRefused}
+          <p class="hint" data-testid="export-notify-refused">
+            The browser does not allow notifications for this site; its site settings can allow
+            them. The tab's title shows the progress all the same.
+          </p>
+        {/if}
+      {/if}
       {#if problem}
         <p class="problem" role="alert">{problem}</p>
       {/if}
@@ -1179,6 +1214,13 @@
     color: #120a1f;
     font-weight: 600;
     text-decoration: none;
+  }
+  .notify {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 14px;
   }
   .hint {
     margin: 8px 0 0;

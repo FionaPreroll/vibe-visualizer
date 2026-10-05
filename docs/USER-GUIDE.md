@@ -108,6 +108,7 @@ Click **Export** in the top bar. Choose a format (*YouTube 1080p60*, *YouTube 4K
 - In Chrome and Edge you pick the file first, and the video is written straight into it. Other browsers download it at the end.
 - The format is MP4 (H.264 and AAC); a browser without H.264 encoding writes WebM instead.
 - The track overlay and the cover art go into the video as set up for the preview; the dialog says when they do.
+- While an export runs, the tab's title shows how far it is (*42 % · FibeStation*), and how it ended until you look at the tab again. Tick **Tell me when it is done** in the dialog, and a notification of the system says so too, while you work in another tab or app; the browser asks once whether the app may.
 - You can pause or cancel the export, and close the dialog while it runs. Long exports are written in segments; if the tab crashes or you reload, the app offers to resume where it stopped. If the sound was not finished yet, it asks you to add the tracks to the queue again first. After a reload, a video of each track resumes only the video it was making.
 - **A picture for a thumbnail:** **⋯ → Save the picture as a PNG** in the top bar (or **C**) saves the picture on the stage as a PNG, named after the track playing: 1280×720 for 16:9, the size YouTube recommends for thumbnails, and 720 pixels on the shorter side for the other aspect ratios. It shows what the stage shows at that moment, the track overlay included; pause where you like the picture.
 

@@ -643,20 +643,49 @@ test('an export can be paused, continued and cancelled', async ({ page }) => {
   await page.getByTestId('export-start').click();
   const progress = page.getByTestId('export-progress');
   await expect(progress).toHaveAttribute('data-phase', 'video', { timeout: 30_000 });
+  // The tab's title shows the progress, for while the user works elsewhere.
+  await expect(page).toHaveTitle(/^\d+ % · /);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect(page.getByTestId('export-button')).toContainText('Paused');
+  await expect(page).toHaveTitle(/^Paused \d+ % · /);
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByTestId('export-button')).toContainText('Exporting');
   await page.getByTestId('export-cancel').click();
   // Back to the settings, with nothing left to resume after a reload.
   await expect(page.getByTestId('export-start')).toBeVisible();
   await expect(page.getByTestId('export-button')).toHaveText('Export');
+  await expect(page).not.toHaveTitle(/%/);
   await page.reload();
   await expect(page.getByTestId('visual-stage')).toHaveAttribute('data-status', 'running', {
     timeout: 15_000,
   });
   await expect(page.getByTestId('export-note')).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('the export can tell when it is done, if the browser allows it', async ({ page, context }) => {
+  await page.goto('/');
+  await addTrack(page, 2);
+  await page.getByTestId('export-button').click();
+  const notify = page.getByTestId('export-notify');
+  // Refused by the browser: the box stays off, and the dialog says where to allow it.
+  await context.clearPermissions();
+  await notify.check({ force: true }).catch(() => undefined);
+  await expect(page.getByTestId('export-notify-refused')).toBeVisible();
+  await expect(notify).not.toBeChecked();
+  // Allowed: the box stays on, and is kept.
+  await context.grantPermissions(['notifications']);
+  await notify.check();
+  await expect(notify).toBeChecked();
+  await expect(page.getByTestId('export-notify-refused')).toHaveCount(0);
+  const stored = () =>
+    page.evaluate(
+      () => JSON.parse(localStorage.getItem('vibe-visualizer:settings:v1') ?? '{}').exportNotify,
+    );
+  await expect.poll(stored).toBe(true);
+  await page.reload();
+  await page.getByTestId('export-button').click();
+  await expect(page.getByTestId('export-notify')).toBeChecked();
 });
 
 test('the stage follows the aspect ratio and shows safe areas', async ({ page }) => {
