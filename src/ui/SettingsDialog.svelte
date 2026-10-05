@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { APP_NAME_LENGTH, DEFAULT_APP_NAME } from '../core/state/app-state';
+  import { APP_NAME, LOGO_TEXT_LENGTH } from '../core/state/app-state';
   import { backdropClose } from './backdrop';
   import BackupSection from './BackupSection.svelte';
   import Icon from './Icon.svelte';
@@ -29,9 +29,9 @@
     else if (!open && dialog.open) dialog.close();
   });
 
-  function rename(value: string) {
-    const name = value.trim().slice(0, APP_NAME_LENGTH);
-    player.updateSettings({ appName: name || DEFAULT_APP_NAME });
+  function setLettering(value: string) {
+    const text = value.trim().slice(0, LOGO_TEXT_LENGTH);
+    player.updateSettings({ logoText: text || APP_NAME });
   }
 </script>
 
@@ -53,20 +53,21 @@
       The app as a whole, and what it keeps. The music and the visuals are set up in the side panel.
     </p>
 
-    <section aria-labelledby="settings-app">
-      <h3 id="settings-app">App</h3>
+    <section aria-labelledby="settings-logo">
+      <h3 id="settings-logo">Default logo</h3>
       <label class="field">
-        <span>Name of the app</span>
+        <span>Lettering in the ring</span>
         <input
-          value={$app.settings.appName}
-          maxlength={APP_NAME_LENGTH}
-          onchange={(event) => rename(event.currentTarget.value)}
-          data-testid="settings-app-name"
+          value={$app.settings.logoText}
+          maxlength={LOGO_TEXT_LENGTH}
+          onchange={(event) => setLettering(event.currentTarget.value)}
+          data-testid="settings-logo-text"
         />
       </label>
       <p class="muted small">
-        In the top bar and the window's title, in the default logo, and in the names of backups. A
-        double-click on the name in the top bar renames it too.
+        The text of the default logo in the middle of the ring (when no logo image of your own is
+        set), and in the top bar; a double-click on it there changes it too. Nothing typed: {APP_NAME},
+        the name of the app, which the window's title, About and the notices always show.
       </p>
     </section>
 

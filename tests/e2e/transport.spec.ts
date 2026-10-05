@@ -156,27 +156,32 @@ test('removing a track and clearing the queue can be undone', async ({ page }) =
   expect(errors).toEqual([]);
 });
 
-test('the app can be renamed, and keeps its name', async ({ page }) => {
+test('the lettering in the ring is changed in the top bar; the app keeps its name', async ({
+  page,
+}) => {
   const errors = collectErrors(page);
   await page.goto('/');
   await expect(page).toHaveTitle('FibeStation');
-  await expect(page.getByTestId('app-name')).toHaveText('FibeStation');
-  await page.getByTestId('app-name').dblclick();
-  await page.getByTestId('app-name-input').fill('Night Shift Visuals');
+  const lettering = page.getByTestId('logo-text');
+  await expect(lettering).toHaveText('FibeStation');
+  await lettering.dblclick();
+  await page.getByTestId('logo-text-input').fill('Night Shift Visuals');
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('app-name')).toHaveText('Night Shift Visuals');
-  await expect(page).toHaveTitle('Night Shift Visuals');
+  await expect(lettering).toHaveText('Night Shift Visuals');
+  // The window's title keeps the app's name.
+  await expect(page).toHaveTitle('FibeStation');
   await page.reload();
-  await expect(page.getByTestId('app-name')).toHaveText('Night Shift Visuals');
-  // Escape keeps the name; an empty one goes back to the default.
-  await page.getByTestId('app-name').dblclick();
-  await page.getByTestId('app-name-input').fill('Something else');
+  await expect(lettering).toHaveText('Night Shift Visuals');
+  await expect(page).toHaveTitle('FibeStation');
+  // Escape keeps the lettering; an empty one goes back to the app's name.
+  await lettering.dblclick();
+  await page.getByTestId('logo-text-input').fill('Something else');
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('app-name')).toHaveText('Night Shift Visuals');
-  await page.getByTestId('app-name').dblclick();
-  await page.getByTestId('app-name-input').fill(' ');
+  await expect(lettering).toHaveText('Night Shift Visuals');
+  await lettering.dblclick();
+  await page.getByTestId('logo-text-input').fill(' ');
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('app-name')).toHaveText('FibeStation');
+  await expect(lettering).toHaveText('FibeStation');
   expect(errors).toEqual([]);
 });
 

@@ -196,8 +196,11 @@ export interface Settings {
   syncOffset: number;
   /** Markers and cues snap to the nearest beat when they are set (TR-06). */
   quantize: boolean;
-  /** The name the app shows (top bar, window title); the user can change it. */
-  appName: string;
+  /**
+   * The lettering of the default logo, in the middle of the ring; the top bar shows it, and a
+   * double-click there changes it. The app's own name stays {@link APP_NAME}.
+   */
+  logoText: string;
   /** How the waveforms are drawn (TR-10). */
   waveformStyle: WaveformStyle;
   /** The tempo range the beat grids are found in, for tracks without a tempo given (AN-12). */
@@ -239,10 +242,10 @@ export interface Favourites {
 export type WaveformStyle = 'bands' | 'rgb';
 export const WAVEFORM_STYLES: readonly WaveformStyle[] = ['bands', 'rgb'];
 
-/** The app's name until the user gives it another one. */
-export const DEFAULT_APP_NAME = 'FibeStation';
-/** Longest name the app takes. */
-export const APP_NAME_LENGTH = 40;
+/** The app's name: in the window's title, About, the notices and wherever the app names itself. */
+export const APP_NAME = 'FibeStation';
+/** Longest lettering the default logo takes. */
+export const LOGO_TEXT_LENGTH = 40;
 
 export type RepeatMode = 'off' | 'all' | 'one';
 export const REPEAT_MODES: readonly RepeatMode[] = ['off', 'all', 'one'];
@@ -392,7 +395,7 @@ export const DEFAULT_SETTINGS: Settings = {
   repeat: 'off',
   syncOffset: 0,
   quantize: true,
-  appName: DEFAULT_APP_NAME,
+  logoText: APP_NAME,
   waveformStyle: 'bands',
   bpmRange: 'auto',
   controller: false,

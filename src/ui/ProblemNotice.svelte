@@ -1,14 +1,13 @@
 <script lang="ts">
+  import { APP_NAME } from '../core/state/app-state';
   import { bugReportLink } from './app-info';
   import Icon from './Icon.svelte';
-  import { usePlayer } from './player-context';
   import { problem } from './problems';
 
   /**
    * An error nobody handled (NF-10): what it says, its details to copy, and a bug report
    * with them.
    */
-  const app = usePlayer().store;
   let copied = $state(false);
 
   async function copy(details: string) {
@@ -31,9 +30,7 @@
     <button onclick={() => copy($problem.details)} data-testid="problem-copy">
       {copied ? 'Copied' : 'Copy details'}
     </button>
-    <a href={bugReportLink($app.settings.appName, $problem.details)} data-testid="problem-report"
-      >Report…</a
-    >
+    <a href={bugReportLink(APP_NAME, $problem.details)} data-testid="problem-report">Report…</a>
     <button class="close" onclick={() => problem.set(null)} aria-label="Dismiss">
       <Icon name="close" size={16} />
     </button>

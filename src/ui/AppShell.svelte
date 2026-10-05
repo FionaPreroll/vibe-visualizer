@@ -2,7 +2,7 @@
   import { flushSync, getAllContexts, mount, onDestroy, onMount, unmount, untrack } from 'svelte';
   import { isClean } from '../core/audio/dsp/sound-settings';
   import { ControllerService } from '../core/control/controller-service';
-  import { REPEAT_MODES } from '../core/state/app-state';
+  import { APP_NAME, REPEAT_MODES } from '../core/state/app-state';
   import { errorMessage } from '../core/util/format';
   import { isSoundFile } from '../core/export/export-job';
   import { Exporter, type ExportState } from '../core/export/exporter';
@@ -75,15 +75,15 @@
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // The name the user gave the app shows in the window title too, and in the default logo.
-  // Derived, so that the effects run when the name changes, not with every change of the state
-  // (drawing the logo takes a while).
-  const appName = $derived($app.settings.appName);
+  // The lettering of the default logo in the ring, which the user can change; the app's own
+  // name, in the title and the notices, is always APP_NAME. Derived, so that the logo is drawn
+  // again when the lettering changes, not with every change of the state (that takes a while).
+  const logoText = $derived($app.settings.logoText);
   /** How an export ended while the tab was in the background, until the tab is seen again. */
   let unseen = $state<UnseenOutcome>(null);
   // The title says what an export is doing, so that it shows in the tab while the user works
   // elsewhere.
-  const title = $derived(windowTitle(appName, $exporter, unseen));
+  const title = $derived(windowTitle(APP_NAME, $exporter, unseen));
   $effect(() => {
     document.title = title;
     if (outWindow) outWindow.document.title = title;
@@ -125,7 +125,7 @@
     if (state.status !== 'done' && state.status !== 'failed') return;
     unseen = state.status;
     if (!untrack(() => $app.settings.exportNotify)) return;
-    const name = untrack(() => appName);
+    const name = APP_NAME;
     if (state.status === 'done') {
       const several = state.videos.length > 1;
       const [one, many] = isSoundFile(state.fileName) ? ['sound', 'sounds'] : ['video', 'videos'];
@@ -140,7 +140,7 @@
   });
   $effect(() => {
     let current = true;
-    void renderDefaultLogo(appName).then((blob) => {
+    void renderDefaultLogo(logoText).then((blob) => {
       if (current) assets.setDefaultLogo(blob);
     });
     return () => {
@@ -241,7 +241,7 @@
     miniOpening = true;
     let view: Window | null = null;
     try {
-      const opening = openMiniPlayerWindow($app.settings.aspect, appName);
+      const opening = openMiniPlayerWindow($app.settings.aspect, title);
       // The second screen gives the visuals up; the browser asked for the window first.
       closeOutside();
       view = await opening;
@@ -263,7 +263,7 @@
     if (outKind === 'screen') return;
     let view: Window | null = null;
     try {
-      view = openSecondScreenWindow(appName);
+      view = openSecondScreenWindow(title);
       closeOutside();
       takeOutside(view, 'screen');
       void placeOnOtherScreen(view);

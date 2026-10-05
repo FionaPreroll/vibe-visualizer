@@ -12,9 +12,9 @@ FibeStation turns music into visuals: a logo with a spectrum ring, or kaleidosco
 
 To visualise music from somewhere else (a DJ mixer, another app or a browser tab), use the **Live** tab instead of the queue.
 
-The top bar, after the app's name: the modes, the aspect ratio, fullscreen, the side panel, **⋯**, **Export**, **Settings** and **?** for this help. **⋯** holds what is used now and then: the mini player, the second screen, the safe areas, *Only the music*, the picture as a PNG and the DJ controller. In a narrower window the modes show only their icons (hover for the name), and below about 820 pixels only the logo shows, without the name.
+The top bar, after the lettering of the logo: the modes, the aspect ratio, fullscreen, the side panel, **⋯**, **Export**, **Settings** and **?** for this help. **⋯** holds what is used now and then: the mini player, the second screen, the safe areas, *Only the music*, the picture as a PNG and the DJ controller. In a narrower window the modes show only their icons (hover for the name), and below about 820 pixels only the logo shows, without the lettering.
 
-The app is called *FibeStation* until you rename it: in **Settings** (the gear in the top bar), or with a double-click on the name in the top bar. The default logo shows the name too. **Settings** also makes and restores backups; this help only explains.
+The default logo in the middle of the ring says *FibeStation*, and so does the top bar. To make it say something else, such as your name or that of your night, double-click it in the top bar, or change *Lettering in the ring* in **Settings** (the gear in the top bar); nothing typed brings *FibeStation* back. The app itself keeps its name: in the window's title, in About and in its notices. **Settings** also makes and restores backups; this help only explains.
 
 It works best in Chrome or Edge on a computer with a good graphics card, above all for the Kaleidoscope. Firefox works too; in Firefox the queue's files have to be added again after a reload.
 

@@ -1,7 +1,7 @@
 import { exportFileName } from '../core/export/export-job';
 import { frameSize } from '../core/export/video-format';
 import type { Player } from '../core/player/player';
-import { shownArtist, shownTitle } from '../core/state/app-state';
+import { APP_NAME, shownArtist, shownTitle } from '../core/state/app-state';
 import type { StageCapture } from './stage-capture';
 
 /** The shorter side of a picture of the stage (EX-10): YouTube's thumbnails are 1280×720. */
@@ -18,7 +18,7 @@ export async function savePicture(player: Player, capture: StageCapture): Promis
   const track = live.status === 'off' ? tracks.find((entry) => entry.id === currentId) : undefined;
   const source = track
     ? { title: shownTitle(track), artist: shownArtist(track) }
-    : { title: settings.appName, artist: null };
+    : { title: APP_NAME, artist: null };
   const url = URL.createObjectURL(png);
   const link = document.createElement('a');
   link.href = url;

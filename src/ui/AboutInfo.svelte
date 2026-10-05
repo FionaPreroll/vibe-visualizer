@@ -1,14 +1,13 @@
 <script lang="ts">
+  import { APP_NAME } from '../core/state/app-state';
   import { APP_VERSION, builtAtText } from '../core/env/version';
-  import { usePlayer } from './player-context';
 
   /** The version of the app on the About page: what is running, and when it was built. */
-  const app = usePlayer().store;
 </script>
 
 <dl class="about" data-testid="about-info">
   <dt>Version</dt>
-  <dd data-testid="about-version">{$app.settings.appName} v{APP_VERSION}</dd>
+  <dd data-testid="about-version">{APP_NAME} v{APP_VERSION}</dd>
   <dt>Built</dt>
   <dd>{builtAtText()}</dd>
 </dl>

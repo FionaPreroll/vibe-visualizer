@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { APP_NAME } from '../core/state/app-state';
   import {
     backupFileName,
     createBackup,
@@ -17,7 +18,6 @@
    * settings. A backup restored replaces it all; the app reloads then.
    */
   const player = usePlayer();
-  const app = player.store;
   let analysis = $state(false);
   let busy = $state(false);
   let message = $state<{ text: string; error: boolean } | null>(null);
@@ -37,7 +37,7 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = backupFileName($app.settings.appName, new Date());
+      link.download = backupFileName(APP_NAME, new Date());
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       message = { text: `Saved ${describeBackup(summarizeBackup(backup))}.`, error: false };

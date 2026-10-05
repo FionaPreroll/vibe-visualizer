@@ -20,7 +20,7 @@ import {
   CUE_COUNT,
   DEFAULT_SETTINGS,
   INPUT_GAIN_RANGE,
-  APP_NAME_LENGTH,
+  LOGO_TEXT_LENGTH,
   PANEL_TABS,
   REPEAT_MODES,
   sanitizeTrackLook,
@@ -220,8 +220,12 @@ export function loadSettings(): Settings {
     settings.inputGain = Number.isFinite(settings.inputGain)
       ? Math.max(INPUT_GAIN_RANGE.min, Math.min(INPUT_GAIN_RANGE.max, settings.inputGain))
       : DEFAULT_SETTINGS.inputGain;
-    settings.appName =
-      settings.appName.trim().slice(0, APP_NAME_LENGTH) || DEFAULT_SETTINGS.appName;
+    // The lettering in the ring was the app's name, which the user could change, before.
+    if (typeof stored['logoText'] !== 'string' && typeof stored['appName'] === 'string') {
+      settings.logoText = stored['appName'];
+    }
+    settings.logoText =
+      settings.logoText.trim().slice(0, LOGO_TEXT_LENGTH) || DEFAULT_SETTINGS.logoText;
     settings.syncOffset = Number.isFinite(settings.syncOffset)
       ? Math.max(SYNC_OFFSET_RANGE.min, Math.min(SYNC_OFFSET_RANGE.max, settings.syncOffset))
       : DEFAULT_SETTINGS.syncOffset;
