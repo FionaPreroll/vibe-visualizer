@@ -70,6 +70,35 @@ export function stateSquare(
   return { side, reach };
 }
 
+/**
+ * How far the state must reach (units of half the frame's height) for the frame to show only
+ * light that was simulated, at a zoom and a centre moved by `centerX`, `centerY` (KA-05): the
+ * farthest corner from the centre, through the zoom. Zoomed out, the composite looks further out
+ * than the frame's corners, and found nothing there but a dark edge, a circle around the picture.
+ */
+export function viewReach(aspect: number, zoom: number, centerX: number, centerY: number): number {
+  const corner = Math.hypot(aspect * (1 + 2 * Math.abs(centerX)), 1 + 2 * Math.abs(centerY));
+  return (corner * STATE_MARGIN) / zoom;
+}
+
+/** The reach grows and shrinks in steps of an eighth of an octave: a few redraws per zoom. */
+const REACH_STEPS = 8;
+
+/**
+ * The reach the state takes, from `base` (zoom 1, in the middle) for a view that needs `needed`,
+ * having `current`: the step that holds it, never less than `base` (zoomed in, the light still
+ * comes from as far out as before). It grows at once and shrinks once the view needs two steps
+ * less, so a slider moved to and fro over a step does not redraw the state each time.
+ */
+export function nextReach(base: number, needed: number, current: number): number {
+  const step = (reach: number) =>
+    Math.max(0, Math.ceil(Math.log2(reach / base) * REACH_STEPS - 1e-6));
+  const want = step(needed);
+  const have = step(current);
+  const next = want > have || want < have - 1 ? want : have;
+  return base * 2 ** (next / REACH_STEPS);
+}
+
 /** Noise and helpers shared by the step shaders. */
 const NOISE = `
 float hash(vec2 p) {
@@ -518,6 +547,22 @@ void main() {
   color = inside ? texture(framed, source) : vec4(0.0);
 }`;
 
+/**
+ * The state at a new reach: what it held where it reached before, and dark beyond (the flow
+ * fills that in), so a new zoom keeps the picture.
+ */
+const RESCALE = `${FRAGMENT_HEADER}
+uniform sampler2D state;
+uniform float reach;
+uniform float before;
+
+void main() {
+  vec2 p = (uv - 0.5) * 2.0 * reach;
+  vec2 source = p / before * 0.5 + 0.5;
+  bool inside = all(greaterThanEqual(source, vec2(0.0))) && all(lessThanEqual(source, vec2(1.0)));
+  color = inside ? texture(state, source) : vec4(0.0);
+}`;
+
 const COMPOSITE = `${FRAGMENT_HEADER}
 uniform sampler2D previousState;
 uniform sampler2D latestState;
@@ -599,6 +644,7 @@ export class KaleidoscopeScene implements Scene {
   private readonly steps: Record<KaleidoSceneId, Program>;
   private readonly composite: Program;
   private readonly reframe: Program;
+  private readonly rescaleProgram: Program;
   private readonly post: PostProcessing;
   private readonly paletteTexture: WebGLTexture;
   private readonly stepper = new FixedStepper(STEPS_PER_SECOND);
@@ -610,7 +656,9 @@ export class KaleidoscopeScene implements Scene {
   private height = 1;
   /** The side of the feedback buffers (pixels): a square around the frame. */
   private stateSize = 1;
-  /** Half that side, in units of half the frame's height. */
+  /** Half that side at zoom 1 in the middle of the frame, in units of half its height. */
+  private baseReach = 1;
+  /** Half that side now: further out when zoomed out or off centre (see viewReach). */
   private reach = 1;
   /** Feedback buffers: [previous step, latest step]. */
   private states: [Target, Target] | null = null;
@@ -648,6 +696,7 @@ export class KaleidoscopeScene implements Scene {
     ) as Record<KaleidoSceneId, Program>;
     this.composite = new Program(gl, FULLSCREEN_VERTEX, COMPOSITE);
     this.reframe = new Program(gl, FULLSCREEN_VERTEX, REFRAME);
+    this.rescaleProgram = new Program(gl, FULLSCREEN_VERTEX, RESCALE);
     this.post = new PostProcessing(gl, this.floatTargets);
     this.paletteTexture = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, this.paletteTexture);
@@ -687,7 +736,9 @@ export class KaleidoscopeScene implements Scene {
       gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
     );
     this.stateSize = square.side;
-    this.reach = square.reach;
+    this.baseReach = square.reach;
+    // New buffers start dark: they take the reach of the view at once.
+    this.reach = nextReach(this.baseReach, this.neededReach(), this.baseReach);
     deleteTarget(gl, this.scene);
     if (this.states) for (const target of this.states) deleteTarget(gl, target);
     this.scene = createTarget(gl, this.width, this.height, this.floatTargets);
@@ -746,6 +797,7 @@ export class KaleidoscopeScene implements Scene {
     this.updatePalette();
     gl.bindVertexArray(this.triangle);
     gl.disable(gl.BLEND);
+    this.fitView();
     const count = this.stepper.advance(dt);
     for (let i = 0; i < count; i++) this.simulate(features);
 
@@ -784,6 +836,7 @@ export class KaleidoscopeScene implements Scene {
       simulationTime: this.simulationTime,
       angle: this.angle,
       hue: this.hue,
+      reach: this.reach,
       beats: this.beats,
       paletteTarget: this.paletteTarget,
       paletteOffset: this.paletteOffset,
@@ -808,6 +861,9 @@ export class KaleidoscopeScene implements Scene {
     if (!this.states || buffers.length !== (calm ? 3 : 2)) {
       throw new Error('Snapshot does not match the Kaleidoscope scene');
     }
+    // The reach the buffers were simulated at; a snapshot from before views had one at zoom 1.
+    const reach = values['reach'];
+    this.reach = typeof reach === 'number' ? reach : this.baseReach;
     for (const [k, target] of this.states.entries()) {
       const buffer = buffers[k]!;
       if (
@@ -891,6 +947,40 @@ export class KaleidoscopeScene implements Scene {
     this.setParams(program, scene.params, this.settings.scenes[scene.id]);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.states = [latest, previous];
+  }
+
+  /** How far the state must reach for the zoom and the centre of the look. */
+  private neededReach(): number {
+    const common = this.settings.common;
+    return Math.max(
+      this.baseReach,
+      viewReach(
+        this.width / this.height,
+        common['zoom'] as number,
+        common['centerX'] as number,
+        common['centerY'] as number,
+      ),
+    );
+  }
+
+  /** Redraws the state at the reach the view needs, when that changed. */
+  private fitView(): void {
+    const reach = nextReach(this.baseReach, this.neededReach(), this.reach);
+    if (Math.abs(reach - this.reach) < 1e-9 || !this.states) return;
+    const gl = this.gl;
+    this.states = this.states.map((target) => {
+      const fresh = createTarget(gl, this.stateSize, this.stateSize, this.floatTargets);
+      bindTarget(gl, fresh, this.stateSize, this.stateSize);
+      this.rescaleProgram
+        .use()
+        .texture('state', target.texture, 0)
+        .float('reach', reach)
+        .float('before', this.reach);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      deleteTarget(gl, target);
+      return fresh;
+    }) as [Target, Target];
+    this.reach = reach;
   }
 
   /** Passes numbers and switches as uniforms named p_<key> (KA-01). */
