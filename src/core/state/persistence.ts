@@ -52,6 +52,11 @@ let saving = true;
 /** Stops (or resumes) storing: the running app must not write its state over a backup. */
 export function setSaving(on: boolean): void {
   saving = on;
+  // Values still waiting would be written over what replaces them.
+  if (!on) {
+    for (const { timer } of throttled.values()) clearTimeout(timer);
+    throttled.clear();
+  }
 }
 
 /** A time within the track, or null. */
@@ -181,6 +186,55 @@ export function whenStorageFails(handler: ((error: unknown) => void) | null): vo
   onWriteFailed = handler;
 }
 
+/**
+ * Shortest time between two writes of the same value that changes in bursts (a slider dragged,
+ * a fader of a DJ controller moved): each write is a synchronous JSON.stringify and setItem on
+ * the main thread.
+ */
+export const WRITE_INTERVAL_MS = 250;
+
+/** Per key written with {@link writeSoon}: the timer of its interval, and the value waiting. */
+const throttled = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; value: unknown; waiting: boolean }
+>();
+
+/**
+ * Stores `value` under `key` at once, and the changes that follow within
+ * {@link WRITE_INTERVAL_MS} together at its end: a burst writes the first value and the last.
+ */
+function writeSoon(key: string, value: unknown): void {
+  if (!saving) return;
+  const entry = throttled.get(key);
+  if (entry) {
+    entry.value = value;
+    entry.waiting = true;
+    return;
+  }
+  write(key, value);
+  const tick = () => {
+    const current = throttled.get(key);
+    if (!current?.waiting) {
+      throttled.delete(key);
+      return;
+    }
+    current.waiting = false;
+    write(key, current.value);
+    current.timer = setTimeout(tick, WRITE_INTERVAL_MS);
+  };
+  throttled.set(key, { timer: setTimeout(tick, WRITE_INTERVAL_MS), value, waiting: false });
+}
+
+/** Stores the values still waiting at once: before the page goes, or a backup reads them. */
+export function flushWrites(): void {
+  const entries = [...throttled];
+  throttled.clear();
+  for (const [key, { timer, value, waiting }] of entries) {
+    clearTimeout(timer);
+    if (waiting) write(key, value);
+  }
+}
+
 function write(key: string, value: unknown): void {
   if (!saving) return;
   try {
@@ -255,7 +309,7 @@ function sanitizeFavourites(value: unknown): Favourites {
 }
 
 export function saveSettings(settings: Settings): void {
-  write(SETTINGS_KEY, settings);
+  writeSoon(SETTINGS_KEY, settings);
 }
 
 /** The Logo Spectrum parameters, validated (defaults for anything missing or invalid). */
@@ -264,7 +318,7 @@ export function loadVisuals(): LogoSpectrumSettings {
 }
 
 export function saveVisuals(visuals: LogoSpectrumSettings): void {
-  write(VISUALS_KEY, visuals);
+  writeSoon(VISUALS_KEY, visuals);
 }
 
 /** Tempo and effects, validated. */
@@ -273,7 +327,7 @@ export function loadSound(): SoundSettings {
 }
 
 export function saveSound(sound: SoundSettings): void {
-  write(SOUND_KEY, sound);
+  writeSoon(SOUND_KEY, sound);
 }
 
 /** The user's own presets (PR-01). */
@@ -305,7 +359,7 @@ export function loadKaleido(): KaleidoSettings {
 }
 
 export function saveKaleido(kaleido: KaleidoSettings): void {
-  write(KALEIDO_KEY, kaleido);
+  writeSoon(KALEIDO_KEY, kaleido);
 }
 
 /** The user's own Kaleidoscope presets. */
