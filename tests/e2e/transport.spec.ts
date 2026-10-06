@@ -240,3 +240,32 @@ test('Space plays and pauses also after a click on a button, a slider or a track
   await expect(shuffle).toHaveAttribute('aria-pressed', 'false');
   expect(errors).toEqual([]);
 });
+
+test('the buttons stay put whether the track playing has markers or not', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await markedQueue(page);
+  const play = page.getByTestId('play-button');
+  const where = async () => {
+    const box = (await play.boundingBox())!;
+    return Math.round(box.x);
+  };
+  const marked = await where();
+  // The markers sit to the right of the buttons, not over them, and above the volume.
+  const marks = (await page.getByTestId('marks').boundingBox())!;
+  const last = (await page.getByTestId('detail-toggle').boundingBox())!;
+  const volume = (await page.getByTestId('volume').boundingBox())!;
+  expect(marks.x).toBeGreaterThanOrEqual(last.x + last.width);
+  expect(marks.y + marks.height).toBeLessThanOrEqual(volume.y);
+
+  // B has no markers: the chip goes, the buttons stay.
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByTestId('now-title')).toHaveText('B');
+  await expect(page.getByTestId('marks')).toHaveCount(0);
+  expect(await where()).toBe(marked);
+  await page.getByRole('button', { name: 'Previous', exact: true }).click();
+  await expect(page.getByTestId('now-title')).toHaveText('A');
+  await expect(page.getByTestId('marks')).toBeVisible();
+  expect(await where()).toBe(marked);
+  expect(errors).toEqual([]);
+});

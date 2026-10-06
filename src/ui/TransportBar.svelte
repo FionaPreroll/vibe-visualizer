@@ -208,102 +208,108 @@
     </div>
   {:else}
     <div class="center">
+      <!-- The buttons sit in the middle column, the markers in the right one: they stay put
+           whether a track has markers or not. -->
       <div class="buttons">
-        <button
-          class="icon"
-          onclick={() => player.previous()}
-          aria-label="Previous"
-          disabled={!current}
-        >
-          <Icon name="previous" />
-        </button>
-        <button
-          class="icon play"
-          onclick={() => player.toggle()}
-          aria-label={$app.playing ? 'Pause' : 'Play'}
-          disabled={$app.tracks.length === 0}
-          data-testid="play-button"
-        >
-          <Icon name={$app.playing ? 'pause' : 'play'} size={24} />
-        </button>
-        <button class="icon" onclick={() => player.next()} aria-label="Next" disabled={!current}>
-          <Icon name="next" />
-        </button>
-        <button class="icon" onclick={() => player.stop()} aria-label="Stop" disabled={!current}>
-          <Icon name="stop" />
-        </button>
-        <button
-          class="icon"
-          class:on={$app.settings.shuffle}
-          onclick={() => player.updateSettings({ shuffle: !$app.settings.shuffle })}
-          aria-label="Shuffle"
-          aria-pressed={$app.settings.shuffle}
-          title="Shuffle: play the queue in random order"
-          data-testid="shuffle"
-        >
-          <Icon name="shuffle" />
-        </button>
-        <button
-          class="icon repeat"
-          class:on={$app.settings.repeat !== 'off'}
-          onclick={() =>
-            player.updateSettings({
-              repeat: REPEAT_MODES[(REPEAT_MODES.indexOf($app.settings.repeat) + 1) % 3]!,
-            })}
-          aria-label={REPEAT_LABELS[$app.settings.repeat]}
-          title={`${REPEAT_LABELS[$app.settings.repeat]} (click to change)`}
-          data-testid="repeat"
-          data-mode={$app.settings.repeat}
-        >
-          <Icon name="repeat" />
-          {#if $app.settings.repeat === 'one'}<span class="one">1</span>{/if}
-        </button>
-        <span class="divider"></span>
-        <button
-          class="icon"
-          onclick={() => player.mark('in')}
-          aria-label="Mark in"
-          title="Mark in (I): the track starts here, and so does the export"
-          disabled={!current}
-        >
-          <Icon name="markIn" />
-        </button>
-        <button
-          class="icon"
-          onclick={() => player.mark('out')}
-          aria-label="Mark out"
-          title="Mark out (O): the queue moves on here, and the export ends"
-          disabled={!current}
-        >
-          <Icon name="markOut" />
-        </button>
-        <button
-          class="icon"
-          class:on={$app.settings.quantize}
-          onclick={() => player.updateSettings({ quantize: !$app.settings.quantize })}
-          aria-label="Snap to the beat"
-          aria-pressed={$app.settings.quantize}
-          title="Snap markers and cues to the beat (Q)"
-          data-testid="quantize"
-        >
-          <Icon name="magnet" />
-        </button>
-        <button
-          class="icon"
-          class:on={$app.settings.detailWaveform}
-          onclick={() => player.updateSettings({ detailWaveform: !$app.settings.detailWaveform })}
-          aria-label="Detail waveform and hot cues"
-          aria-pressed={$app.settings.detailWaveform}
-          title="Detail waveform and hot cues (W)"
-          data-testid="detail-toggle"
-        >
-          <Icon name="wave" />
-        </button>
+        <div class="controls">
+          <button
+            class="icon"
+            onclick={() => player.previous()}
+            aria-label="Previous"
+            disabled={!current}
+          >
+            <Icon name="previous" />
+          </button>
+          <button
+            class="icon play"
+            onclick={() => player.toggle()}
+            aria-label={$app.playing ? 'Pause' : 'Play'}
+            disabled={$app.tracks.length === 0}
+            data-testid="play-button"
+          >
+            <Icon name={$app.playing ? 'pause' : 'play'} size={24} />
+          </button>
+          <button class="icon" onclick={() => player.next()} aria-label="Next" disabled={!current}>
+            <Icon name="next" />
+          </button>
+          <button class="icon" onclick={() => player.stop()} aria-label="Stop" disabled={!current}>
+            <Icon name="stop" />
+          </button>
+          <button
+            class="icon"
+            class:on={$app.settings.shuffle}
+            onclick={() => player.updateSettings({ shuffle: !$app.settings.shuffle })}
+            aria-label="Shuffle"
+            aria-pressed={$app.settings.shuffle}
+            title="Shuffle: play the queue in random order"
+            data-testid="shuffle"
+          >
+            <Icon name="shuffle" />
+          </button>
+          <button
+            class="icon repeat"
+            class:on={$app.settings.repeat !== 'off'}
+            onclick={() =>
+              player.updateSettings({
+                repeat: REPEAT_MODES[(REPEAT_MODES.indexOf($app.settings.repeat) + 1) % 3]!,
+              })}
+            aria-label={REPEAT_LABELS[$app.settings.repeat]}
+            title={`${REPEAT_LABELS[$app.settings.repeat]} (click to change)`}
+            data-testid="repeat"
+            data-mode={$app.settings.repeat}
+          >
+            <Icon name="repeat" />
+            {#if $app.settings.repeat === 'one'}<span class="one">1</span>{/if}
+          </button>
+          <span class="divider"></span>
+          <button
+            class="icon"
+            onclick={() => player.mark('in')}
+            aria-label="Mark in"
+            title="Mark in (I): the track starts here, and so does the export"
+            disabled={!current}
+          >
+            <Icon name="markIn" />
+          </button>
+          <button
+            class="icon"
+            onclick={() => player.mark('out')}
+            aria-label="Mark out"
+            title="Mark out (O): the queue moves on here, and the export ends"
+            disabled={!current}
+          >
+            <Icon name="markOut" />
+          </button>
+          <button
+            class="icon"
+            class:on={$app.settings.quantize}
+            onclick={() => player.updateSettings({ quantize: !$app.settings.quantize })}
+            aria-label="Snap to the beat"
+            aria-pressed={$app.settings.quantize}
+            title="Snap markers and cues to the beat (Q)"
+            data-testid="quantize"
+          >
+            <Icon name="magnet" />
+          </button>
+          <button
+            class="icon"
+            class:on={$app.settings.detailWaveform}
+            onclick={() => player.updateSettings({ detailWaveform: !$app.settings.detailWaveform })}
+            aria-label="Detail waveform and hot cues"
+            aria-pressed={$app.settings.detailWaveform}
+            title="Detail waveform and hot cues (W)"
+            data-testid="detail-toggle"
+          >
+            <Icon name="wave" />
+          </button>
+        </div>
         {#if marked}
           <button
             class="marks"
             onclick={() => player.clearMarks()}
-            title="The part that plays and exports; click to clear the markers"
+            title="The part that plays and exports, {formatDuration(
+              (marks.out ?? duration) - (marks.in ?? 0),
+            )} long; click to clear the markers"
             data-testid="marks"
           >
             {formatDuration(marks.in ?? 0)}–{formatDuration(marks.out ?? duration)}
@@ -409,7 +415,8 @@
     </div>
   {/if}
 
-  <label class="volume">
+  <!-- On the line of the timeline, below the markers: they never meet. -->
+  <label class="volume" class:wave={!live && waveform !== null} data-testid="volume">
     <Icon name="volume" />
     <input
       type="range"
@@ -473,6 +480,7 @@
     flex-direction: column;
     align-items: center;
     gap: 4px;
+    min-width: 0;
   }
   .live-center {
     flex-direction: row;
@@ -507,6 +515,14 @@
     color: var(--fail);
   }
   .buttons {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+  .controls {
+    grid-column: 2;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -698,13 +714,17 @@
     margin: 0 4px;
     background: var(--border);
   }
+  /* Beyond its column if need be, above the volume. */
   .marks {
+    grid-column: 3;
+    justify-self: start;
     display: flex;
     align-items: center;
     gap: 4px;
     padding: 2px 8px;
     font-family: var(--mono);
     font-size: 12px;
+    white-space: nowrap;
     color: var(--accent-2);
   }
   .marks .length {
@@ -726,11 +746,16 @@
     opacity: 1;
   }
   .volume {
+    align-self: end;
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
+    height: 20px;
     color: var(--muted);
+  }
+  .volume.wave {
+    height: 32px;
   }
   .volume input {
     width: 110px;

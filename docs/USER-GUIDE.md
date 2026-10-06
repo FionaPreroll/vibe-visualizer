@@ -146,6 +146,15 @@ In **Settings** (the gear in the top bar), **Save a backup** puts everything the
 
 **Restore a backup** replaces everything the app keeps in this browser with what is in the file; it says what that is first. Then the app reloads. The queue stays as it is, and so does the analysis of the tracks if the backup has none.
 
+## Stored in this browser
+
+**Settings** also show what the app keeps in this browser, how much, and delete it by kind; each asks first, and offers to save a backup before:
+
+- **Track analysis:** the waveforms and beat grids of the tracks played. *Not in the queue* deletes those of tracks played long ago; such a track is analysed again (a few seconds) if you add it once more. *All* deletes it for every track.
+- **Track details:** the cues, markers, tempos, names, colours, looks and covers of tracks no longer in the queue. Only a backup brings them back. Those of the tracks in the queue stay: change them in the queue and the transport.
+- **Exports:** an unfinished export, and videos waiting to be saved (not while an export runs).
+- **Delete everything…** deletes all the app keeps here: the settings, presets, images, controllers, the details and analysis of all tracks, the queue and exports. The app reloads then, as at its first start. Your music files stay where they are.
+
 ## Keyboard shortcuts
 
 Press **?** for the full list. The main ones: Space play and pause, ← and → seek 5 s (30 s with Shift), N next, P previous, 1–8 hot cues, I and O the in and out markers, Q snap to the beat, W the detail waveform, − and + the tempo, V the next view, [ and ] the presets, F fullscreen, Ctrl+Z undo.

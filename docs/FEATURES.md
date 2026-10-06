@@ -270,6 +270,7 @@ Common traits: radial symmetry, endless zoom/tunnel motion, saturated neon colou
 | UI-09* | S | The app's displayed name can be changed in the app (default "FibeStation") |
 | UI-10* | S | Welcome at the first start: what the app does in three steps, that it is a work in progress (with the address for bug reports), the advice for browser and graphics card, and the warning about flashing visuals; the help shows it again |
 | UI-11* | S | In-app help: the user guide by section (the same text as [USER-GUIDE.md](USER-GUIDE.md)), the keyboard shortcuts and a bug report; the ? in the top bar opens it, the ? key on the shortcuts |
+| UI-12* | S | What the app keeps in the browser, by kind and size, in the settings, and deleting it: the analysis of tracks not in the queue or of all, the details of tracks not in the queue, exports, or everything (then the app reloads); each asks first and offers a backup |
 
 ### 3.15 Non-functional requirements (NF)
 

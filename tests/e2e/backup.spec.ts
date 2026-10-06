@@ -174,3 +174,81 @@ test('a backup holds everything the app keeps, and brings it back (UI-06)', asyn
   await expect(cover).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('what the app keeps can be deleted by kind, or all of it after a backup (UI-12)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page
+    .getByTestId('file-input')
+    .setInputFiles({ name: 'Beat.wav', mimeType: 'audio/wav', buffer: createWav(8) });
+  await expect.poll(() => analysed(page)).toHaveLength(1);
+  // A track from long ago, no longer in the queue: its analysis, a cue and a cover.
+  await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const write = async (dirName: string, name: string, size: number) => {
+      const dir = await root.getDirectoryHandle(dirName, { create: true });
+      const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
+      await writable.write(new Uint8Array(size));
+      await writable.close();
+    };
+    await write('track-analysis', 'old-track.bin', 40_000);
+    await write('track-covers', 'old-track', 20_000);
+    localStorage.setItem(
+      'vibe-visualizer:track:v1:old-track',
+      JSON.stringify({ cues: [12], marks: { in: null, out: null }, tempo: null }),
+    );
+  });
+
+  await page.getByTestId('settings-button').click();
+  await expect(page.getByTestId('settings-storage-help')).toBeVisible();
+  const analysis = page.getByTestId('storage-analysis');
+  await expect(analysis).toContainText('2 tracks');
+  await expect(page.getByTestId('storage-tracks')).toContainText('1 track');
+
+  // The analysis of the old track: asked first, with a backup to hand.
+  await page.getByTestId('storage-delete-analysis-unused').click();
+  const confirm = page.getByTestId('storage-confirm');
+  await expect(confirm).toContainText('not in the queue');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('storage-backup').click(),
+  ]);
+  const backup = JSON.parse(await readFile(await download.path(), 'utf8')) as {
+    analysis: Record<string, string>;
+  };
+  expect(Object.keys(backup.analysis)).toContain('old-track.bin');
+  await page.getByTestId('storage-confirm-delete').click();
+  await expect(page.getByTestId('storage-message')).toHaveText(
+    'Deleted the analysis of 1 track, 40 KB.',
+  );
+  expect(await analysed(page)).toHaveLength(1);
+  await expect(analysis).toContainText('1 track');
+  await expect(page.getByTestId('storage-delete-analysis-unused')).toBeDisabled();
+
+  // Its details and cover; those of the track in the queue stay.
+  await page.getByTestId('storage-delete-tracks').click();
+  await page.getByTestId('storage-confirm-delete').click();
+  await expect(page.getByTestId('storage-message')).toContainText('Deleted the details of 1 track');
+  expect(await entries(page)).not.toHaveProperty('vibe-visualizer:track:v1:old-track');
+  await expect(page.getByTestId('storage-tracks')).toContainText('0 tracks');
+
+  // Everything: a warning, which Cancel leaves; then all goes and the app starts afresh.
+  await page.getByTestId('storage-delete-everything').click();
+  await expect(confirm).toContainText('cannot be undone');
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirm).toHaveCount(0);
+  expect(await analysed(page)).toHaveLength(1);
+  await page.getByTestId('storage-delete-everything').click();
+  await Promise.all([
+    page.waitForEvent('load'),
+    page.getByTestId('storage-confirm-delete').click(),
+  ]);
+  await expect(page.getByTestId('play-button')).toBeVisible();
+  await expect(page.getByTestId('queue-item')).toHaveCount(0);
+  expect(await analysed(page)).toEqual([]);
+  const left = Object.keys(await entries(page)).filter((key) => key.includes(':track:'));
+  expect(left).toEqual([]);
+  expect(errors).toEqual([]);
+});

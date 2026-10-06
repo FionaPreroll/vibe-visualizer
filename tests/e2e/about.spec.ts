@@ -95,5 +95,14 @@ test('the help only explains: the name and the backup are in the settings', asyn
   await settings.getByTestId('settings-backup-help').click();
   await expect(settings).toBeHidden();
   await expect(page.getByTestId('help-content')).toHaveAttribute('data-section', 'backup');
+  // And what can be deleted (UI-12).
+  await page.keyboard.press('Escape');
+  await page.getByTestId('settings-button').click();
+  await settings.getByTestId('settings-storage-help').click();
+  await expect(settings).toBeHidden();
+  await expect(page.getByTestId('help-content')).toHaveAttribute(
+    'data-section',
+    'stored-in-this-browser',
+  );
   expect(errors).toEqual([]);
 });
