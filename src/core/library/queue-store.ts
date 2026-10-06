@@ -50,6 +50,8 @@ interface PermissionHandle {
 }
 
 let database: Promise<IDBDatabase> | null = null;
+/** Deleted: from then on nothing is stored (the app reloads next). */
+let forgotten = false;
 
 function openDatabase(): Promise<IDBDatabase> {
   database ??= new Promise<IDBDatabase>((resolve, reject) => {
@@ -89,6 +91,7 @@ export async function loadQueue(): Promise<StoredQueue | null> {
 
 /** Stores the queue; fails quietly (storage blocked or full). */
 export async function saveQueue(queue: StoredQueue): Promise<void> {
+  if (forgotten) return;
   try {
     await run('readwrite', (store) => store.put(queue, KEY));
   } catch (error) {
@@ -97,6 +100,25 @@ export async function saveQueue(queue: StoredQueue): Promise<void> {
     const entries = queue.entries.map((entry) => ({ ...entry, handle: null }));
     await run('readwrite', (store) => store.put({ ...queue, entries }, KEY)).catch(() => undefined);
   }
+}
+
+/**
+ * Deletes the stored queue (UI-12), database and all; from then on nothing is stored. Fails
+ * quietly: a database another tab keeps open goes once that closes.
+ */
+export async function forgetQueue(): Promise<void> {
+  forgotten = true;
+  const open = database;
+  database = null;
+  (await open?.catch(() => null))?.close();
+  await new Promise<void>((resolve) => {
+    try {
+      const request = indexedDB.deleteDatabase(DB_NAME);
+      request.onsuccess = request.onerror = request.onblocked = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
 }
 
 /** The stored queue checked field by field: it may come from an older version. */

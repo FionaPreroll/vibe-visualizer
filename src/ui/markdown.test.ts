@@ -18,6 +18,7 @@ describe('user guide', () => {
       'exporting-videos',
       'dj-controller',
       'backup',
+      'stored-in-this-browser',
       'keyboard-shortcuts',
       'when-something-goes-wrong',
       'about',

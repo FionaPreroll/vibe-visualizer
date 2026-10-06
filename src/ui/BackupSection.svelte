@@ -1,8 +1,5 @@
 <script lang="ts">
-  import { APP_NAME } from '../core/state/app-state';
   import {
-    backupFileName,
-    createBackup,
     describeBackup,
     parseBackup,
     restoreBackup,
@@ -12,6 +9,7 @@
   } from '../core/state/backup';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
+  import { saveBackup } from './save-backup';
 
   /**
    * Saving and restoring a backup of everything the app keeps in this browser (UI-06), in the
@@ -32,15 +30,7 @@
     message = null;
     picked = null;
     try {
-      const backup = await createBackup({ analysis });
-      const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = backupFileName(APP_NAME, new Date());
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      message = { text: `Saved ${describeBackup(summarizeBackup(backup))}.`, error: false };
+      message = { text: `Saved ${await saveBackup(analysis)}.`, error: false };
     } catch (error) {
       message = { text: `The backup could not be made: ${reason(error)}`, error: true };
     } finally {

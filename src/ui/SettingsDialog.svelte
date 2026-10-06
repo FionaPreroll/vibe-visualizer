@@ -4,11 +4,12 @@
   import BackupSection from './BackupSection.svelte';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
+  import StorageSection from './StorageSection.svelte';
 
   /**
-   * The settings of the app as a whole, and what it keeps: its name, and the backup (UI-06). The
-   * settings of the music and the visuals are in the side panel; how all of it works is in the
-   * help, which the dialog opens.
+   * The settings of the app as a whole, and what it keeps: the lettering of the default logo, the
+   * backup (UI-06) and what is stored in the browser (UI-12). The settings of the music and the
+   * visuals are in the side panel; how all of it works is in the help, which the dialog opens.
    */
   interface Props {
     open: boolean;
@@ -81,6 +82,20 @@
         >
       </p>
       <BackupSection />
+    </section>
+
+    <section aria-labelledby="settings-storage">
+      <h3 id="settings-storage">Stored in this browser</h3>
+      <p class="muted small">
+        What the app keeps here, and deleting it: the analysis of tracks played long ago, the
+        details of tracks no longer in the queue, or everything.
+        <button
+          class="link"
+          onclick={() => onhelp('stored-in-this-browser')}
+          data-testid="settings-storage-help">What goes?</button
+        >
+      </p>
+      <StorageSection {open} />
     </section>
   </div>
 </dialog>
