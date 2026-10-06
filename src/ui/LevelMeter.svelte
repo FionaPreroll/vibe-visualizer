@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { F } from '../core/analysis/features';
+  import { onFrame } from './frame-clock';
   import { usePlayer } from './player-context';
 
   /**
@@ -24,8 +25,7 @@
     const frame = new Float32Array(F.size);
     let holdUntil = 0;
     let clipUntil = 0;
-    let request = 0;
-    const tick = (now: number) => {
+    return onFrame((now) => {
       const timeline = player.engine.timeline;
       const at = timeline.latestEngineFrame();
       if (at < 0 || timeline.sample(at, frame) === null) frame.fill(0);
@@ -37,10 +37,7 @@
       }
       if (frame[F.peak]! >= 0.99) clipUntil = now + HOLD_MS;
       clipped = now < clipUntil;
-      request = requestAnimationFrame(tick);
-    };
-    request = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(request);
+    });
   });
 </script>
 

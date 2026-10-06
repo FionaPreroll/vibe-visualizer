@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { BAND_NAMES, F, SPECTRUM_BANDS, WAVEFORM_POINTS } from '../core/analysis/features';
+  import { onFrame } from './frame-clock';
   import { usePlayer } from './player-context';
 
   /**
@@ -26,9 +27,8 @@
   onMount(() => {
     const context = canvas.getContext('2d')!;
     const frame = new Float32Array(F.size);
-    let request = 0;
 
-    const draw = () => {
+    return onFrame(() => {
       const ratio = window.devicePixelRatio || 1;
       const width = Math.round(canvas.clientWidth * ratio);
       const height = Math.round(canvas.clientHeight * ratio);
@@ -145,11 +145,7 @@
         context.lineWidth = 2 * ratio;
         context.stroke();
       }
-
-      request = requestAnimationFrame(draw);
-    };
-    request = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(request);
+    });
   });
 </script>
 

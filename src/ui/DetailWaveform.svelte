@@ -5,6 +5,7 @@
   import { CUE_COUNT } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import { usePlayer } from './player-context';
+  import { onFrame } from './frame-clock';
   import { CUE_COLOURS, drawWaveform } from './waveform-draw';
 
   /**
@@ -52,15 +53,7 @@
   /** The grid's shift as shown: as dragged, or as corrected. */
   const gridShift = $derived(gridDrag?.shift ?? current?.gridEdit.shift ?? 0);
 
-  onMount(() => {
-    let frame = 0;
-    const tick = () => {
-      render();
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  });
+  onMount(() => onFrame(render));
 
   /** Seconds at the middle of the view (the playhead, moved by a drag). */
   function centre(): number {
