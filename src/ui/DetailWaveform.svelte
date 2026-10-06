@@ -6,7 +6,7 @@
   import { formatDuration } from '../core/util/format';
   import { usePlayer } from './player-context';
   import { onFrame } from './frame-clock';
-  import { CUE_COLOURS, drawWaveform } from './waveform-draw';
+  import { CUE_COLOURS, WaveformTiles } from './waveform-draw';
 
   /**
    * The detail view around the playhead (TR-08): the waveform of the seconds before and after,
@@ -64,6 +64,9 @@
     return ZOOMS[zoom]!;
   }
 
+  /** The waveform drawn once in tiles, which each frame copies as the view moves. */
+  const tiles = new WaveformTiles();
+
   /** What the last frame was drawn from: an unchanged view (paused, say) is not drawn again. */
   let drawn: readonly unknown[] = [];
 
@@ -99,7 +102,7 @@
     const from = at - span() / 2;
     const to = at + span() / 2;
     const x = (time: number) => ((time - from) / (to - from)) * width;
-    drawWaveform(
+    tiles.draw(
       context,
       analysis?.waveform ?? null,
       { from, to, played: at, available: analysis?.seconds ?? 0 },

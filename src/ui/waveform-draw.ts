@@ -75,8 +75,11 @@ function loudLevels(waveform: Waveform): Float32Array {
   return levels;
 }
 
+/** A 2D context, of a canvas on the page or of an OffscreenCanvas. */
+type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
 export function drawWaveform(
-  context: CanvasRenderingContext2D,
+  context: Context2D,
   waveform: Waveform | null,
   view: WaveformView,
   width: number,
@@ -107,7 +110,7 @@ export function drawWaveform(
 
 /** The "bands" style: each band a layer, drawn as one path per colour and brightness. */
 function drawBands(
-  context: CanvasRenderingContext2D,
+  context: Context2D,
   waveform: Waveform,
   view: WaveformView,
   width: number,
@@ -135,5 +138,162 @@ function drawBands(
     context.fill(paths[band]!);
     context.fillStyle = LAYERS[band]!.ahead;
     context.fill(paths[band + 3]!);
+  }
+}
+
+/** Pixel columns per tile of {@link WaveformTiles}. */
+export const TILE_COLUMNS = 256;
+
+/** A canvas for a tile, and its context. */
+export interface TileCanvas {
+  canvas: CanvasImageSource;
+  context: Context2D;
+}
+
+/** Makes the canvas of a tile (an OffscreenCanvas; tests give their own). */
+export type TileFactory = (width: number, height: number) => TileCanvas | null;
+
+const offscreenTile: TileFactory = (width, height) => {
+  const canvas = new OffscreenCanvas(width, height);
+  const context = canvas.getContext('2d');
+  return context ? { canvas, context } : null;
+};
+
+/**
+ * Draws a waveform as {@link drawWaveform} does, for a view that moves with the music (the
+ * detail waveform, TR-08). The waveform is drawn once into tiles of {@link TILE_COLUMNS} pixel
+ * columns, brighter (played) and darker (ahead), and each frame copies the parts of the tiles
+ * in view. Column `c` of the waveform always covers the seconds from `c` to `c + 1` times the
+ * seconds per column, so the view moves in whole pixels, and a tile is drawn only when it comes
+ * into view (and again, played, when the playhead reaches it). The tiles are drawn anew when the
+ * waveform (while analysed), the zoom, the height or the style changes.
+ */
+export class WaveformTiles {
+  /** By tile index and version, oldest use first. */
+  private readonly tiles = new Map<string, TileCanvas>();
+  private waveform: Waveform | null = null;
+  private available = 0;
+  private secondsPerColumn = 0;
+  private height = 0;
+  private style: WaveformStyle = 'bands';
+
+  constructor(private readonly createTile: TileFactory = offscreenTile) {}
+
+  draw(
+    context: Context2D,
+    waveform: Waveform | null,
+    view: WaveformView,
+    width: number,
+    height: number,
+    style: WaveformStyle,
+  ): void {
+    context.clearRect(0, 0, width, height);
+    if (!waveform || width <= 0 || height <= 0 || view.to <= view.from) return;
+    let secondsPerColumn = (view.to - view.from) / width;
+    // The view's ends move with the playhead, and their difference by a rounding error: within
+    // that, the zoom is the same, and so are the tiles.
+    if (Math.abs(secondsPerColumn - this.secondsPerColumn) <= this.secondsPerColumn * 1e-9) {
+      secondsPerColumn = this.secondsPerColumn;
+    }
+    if (
+      waveform !== this.waveform ||
+      view.available !== this.available ||
+      secondsPerColumn !== this.secondsPerColumn ||
+      height !== this.height ||
+      style !== this.style
+    ) {
+      this.tiles.clear();
+      this.waveform = waveform;
+      this.available = view.available;
+      this.secondsPerColumn = secondsPerColumn;
+      this.height = height;
+      this.style = style;
+    }
+    // Column `base + x` of the waveform shows at x; those that start before `played` as played.
+    const base = Math.round(view.from / secondsPerColumn);
+    const split = Math.max(0, Math.min(width, Math.ceil(view.played / secondsPerColumn) - base));
+    const columns = Math.ceil(view.available / secondsPerColumn);
+    const first = Math.max(0, Math.floor(base / TILE_COLUMNS));
+    const last = Math.min(
+      Math.floor((base + width - 1) / TILE_COLUMNS),
+      Math.floor((columns - 1) / TILE_COLUMNS),
+    );
+    // Room for the tiles of two views, played and ahead.
+    const limit = 4 * (Math.ceil(width / TILE_COLUMNS) + 2);
+    for (let tile = first; tile <= last; tile++) {
+      const left = tile * TILE_COLUMNS - base;
+      this.copy(
+        context,
+        tile,
+        true,
+        left,
+        Math.max(0, left),
+        Math.min(split, left + TILE_COLUMNS),
+        limit,
+      );
+      this.copy(
+        context,
+        tile,
+        false,
+        left,
+        Math.max(split, left),
+        Math.min(width, left + TILE_COLUMNS),
+        limit,
+      );
+    }
+  }
+
+  /** Copies the columns `start` to `end` of the view from `tile`, whose first column is at `left`. */
+  private copy(
+    context: Context2D,
+    tile: number,
+    played: boolean,
+    left: number,
+    start: number,
+    end: number,
+    limit: number,
+  ): void {
+    if (end <= start) return;
+    const image = this.tile(tile, played, limit);
+    if (!image) return;
+    const width = end - start;
+    context.drawImage(
+      image.canvas,
+      start - left,
+      0,
+      width,
+      this.height,
+      start,
+      0,
+      width,
+      this.height,
+    );
+  }
+
+  /** Tile `index` in its played or its ahead version, drawn if it is not kept. */
+  private tile(index: number, played: boolean, limit: number): TileCanvas | null {
+    const id = `${index}:${played ? 'played' : 'ahead'}`;
+    const kept = this.tiles.get(id);
+    if (kept) {
+      this.tiles.delete(id);
+      this.tiles.set(id, kept);
+      return kept;
+    }
+    const tile = this.createTile(TILE_COLUMNS, this.height);
+    if (!tile || !this.waveform) return null;
+    const from = index * TILE_COLUMNS * this.secondsPerColumn;
+    const view = {
+      from,
+      to: (index + 1) * TILE_COLUMNS * this.secondsPerColumn,
+      played: played ? Infinity : -Infinity,
+      available: this.available,
+    };
+    drawWaveform(tile.context, this.waveform, view, TILE_COLUMNS, this.height, this.style);
+    this.tiles.set(id, tile);
+    for (const old of this.tiles.keys()) {
+      if (this.tiles.size <= limit) break;
+      this.tiles.delete(old);
+    }
+    return tile;
   }
 }
