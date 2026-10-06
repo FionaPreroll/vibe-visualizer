@@ -58,6 +58,15 @@ export const SHORTCUTS: readonly { title: string; keys: readonly [string[], stri
     ],
   },
   {
+    title: 'Undo',
+    keys: [
+      [
+        ['Ctrl + Z', 'Cmd + Z'],
+        'Undo removing a track, clearing the queue, or deleting a cue or the markers',
+      ],
+    ],
+  },
+  {
     title: 'Help',
     keys: [
       [['?'], 'These shortcuts'],
