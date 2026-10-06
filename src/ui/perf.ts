@@ -171,8 +171,14 @@ export class PerfRecorder {
     this.published.push(published);
   }
 
-  snapshot(): PerfSnapshot {
-    const intervals = this.intervals.values;
+  /**
+   * What was measured since the last {@link reset}; with `last`, the frame by frame measurements
+   * (frames, work, parts, playhead) of the last `last` frames only (the long frames stay since the
+   * reset).
+   */
+  snapshot(last?: number): PerfSnapshot {
+    const recent = (values: number[]) => (last === undefined ? values : values.slice(-last));
+    const intervals = recent(this.intervals.values);
     const usual = quantile(
       [...intervals].sort((a, b) => a - b),
       0.5,
@@ -185,11 +191,11 @@ export class PerfRecorder {
         ...spread(intervals),
         dropped: intervals.filter((interval) => interval > DROPPED * usual).length,
       },
-      work: spread(this.work.values),
+      work: spread(recent(this.work.values)),
       parts: Object.fromEntries(
-        [...this.parts].map(([label, samples]) => [label, spread(samples.values)]),
+        [...this.parts].map(([label, samples]) => [label, spread(recent(samples.values))]),
       ),
-      playhead: this.playheadEvenness(),
+      playhead: this.playheadEvenness(last),
       longFrames: {
         count: this.longCount,
         totalMs: Math.round(this.longTotal),
@@ -206,12 +212,21 @@ export class PerfRecorder {
     };
   }
 
-  /** How evenly the playhead moved on, or null when it did not move (nothing played). */
-  private playheadEvenness(): PerfSnapshot['playhead'] {
-    const times = this.playheadTimes.values;
-    const shown = evenness(times, this.shown.values);
+  /** The time between the last `count` frames (ms), oldest first. */
+  recentFrames(count: number): number[] {
+    return this.intervals.values.slice(-count);
+  }
+
+  /**
+   * How evenly the playhead moved on (over the last `last` frames, if given), or null when it did
+   * not move (nothing played).
+   */
+  private playheadEvenness(last?: number): PerfSnapshot['playhead'] {
+    const recent = (values: number[]) => (last === undefined ? values : values.slice(-last));
+    const times = recent(this.playheadTimes.values);
+    const shown = evenness(times, recent(this.shown.values));
     if (shown.frames === 0) return null;
-    return { shown, published: evenness(times, this.published.values) };
+    return { shown, published: evenness(times, recent(this.published.values)) };
   }
 
   /** Long animation frames where the browser reports them (with their scripts), else long tasks. */
