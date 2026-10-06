@@ -456,6 +456,20 @@ export class Player {
     return this.lastPosition;
   }
 
+  /**
+   * The playback position to show (seconds) at `now` (as performance.now() gives it; an
+   * animation frame's time, for what it draws): as {@link position}, but moving on smoothly
+   * between the audio callbacks, for what moves with the music on screen (the playhead, the
+   * detail waveform). What acts at the position (cues, markers, seeks) takes {@link position}.
+   */
+  displayPosition(now = performance.now()): number {
+    if (this.loadedId === null) return 0;
+    const scrubbed = this.scrubPosition();
+    if (scrubbed !== null) return scrubbed;
+    if (this.engine.heardToken !== this.loadedToken) return this.lastPosition;
+    return this.engine.displayPosition(now);
+  }
+
   private dispatch(action: AppAction): void {
     this.store.dispatch(action);
   }

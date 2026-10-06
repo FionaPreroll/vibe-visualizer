@@ -111,6 +111,20 @@ describe('audio ring buffer', () => {
     expect(monitor.isEnded()).toBe(true);
   });
 
+  it('publishes the speed the position moves on at, and keeps it until it is given again', () => {
+    const { producer, consumer, monitor } = setup(8);
+    producer.beginGeneration(0);
+    consumer.syncGeneration();
+    expect(monitor.rate).toBe(0);
+    consumer.publish(100, 1.0, consumer.startToken, 0.92);
+    expect(monitor.rate).toBe(0.92);
+    // The ring's own reads publish the position only.
+    consumer.read([new Float32Array(4), new Float32Array(4)], 4, 1.0, RATE);
+    expect(monitor.rate).toBe(0.92);
+    consumer.publish(104, 1.1, consumer.startToken, 0);
+    expect(monitor.rate).toBe(0);
+  });
+
   it('records where the next file starts, and which file is heard', () => {
     const { producer, consumer, monitor } = setup(64);
     const generation = producer.beginGeneration(4800, 7);

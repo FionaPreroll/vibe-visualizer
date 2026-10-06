@@ -234,6 +234,7 @@ class EngineProcessor extends AudioWorkletProcessor {
       this.heardBase + heard - this.heardOffset,
       currentTime + frames / sampleRate,
       this.heardToken,
+      this.blockRate,
     );
     if (this.consumer.ended && heard >= this.consumer.takenFrames) this.consumer.markPlayedOut();
   }
