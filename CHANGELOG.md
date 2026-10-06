@@ -4,6 +4,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 ## 6 October 2026
 
+- **What the app keeps, and deleting it:** **Settings → Stored in this browser** shows how much the track analysis, the details of tracks, exports and the rest take, and deletes them by kind: the analysis or the details of tracks no longer in the queue, the analysis of all, an unfinished export, or everything. Each asks first and offers to save a backup before.
 - **Fixes:** the buttons in the bar at the bottom stay where they are when the next track has markers and the one before had none, or the other way round; the markers show to the right of them, and the volume sits on the line of the timeline, out of their way.
 
 ## 5 October 2026

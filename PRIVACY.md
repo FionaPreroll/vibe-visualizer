@@ -17,7 +17,7 @@ The app keeps what it needs in your browser's storage for this site (local stora
 - the queue, and in Chrome and Edge the access to its files, so that it survives a reload;
 - exports in progress, so that they can go on after a crash; and in browsers that cannot write straight to a file, the finished videos until you download them.
 
-None of it is sent anywhere. The app needs it for what you use, so it asks for no consent. It asks the browser to keep this storage, so that it is not cleared when the disk runs low. Clearing the site's data in your browser removes all of it. A backup (**Settings → Save a backup**) is a file on your computer, and goes only where you take it.
+None of it is sent anywhere. The app needs it for what you use, so it asks for no consent. It asks the browser to keep this storage, so that it is not cleared when the disk runs low. **Settings → Stored in this browser** shows it and deletes it, by kind or all of it; so does clearing the site's data in your browser. A backup (**Settings → Save a backup**) is a file on your computer, and goes only where you take it.
 
 ## Music, live input and devices
 
