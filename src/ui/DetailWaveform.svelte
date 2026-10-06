@@ -53,7 +53,7 @@
   /** The grid's shift as shown: as dragged, or as corrected. */
   const gridShift = $derived(gridDrag?.shift ?? current?.gridEdit.shift ?? 0);
 
-  onMount(() => onFrame(render));
+  onMount(() => onFrame(render, 'detail waveform'));
 
   /**
    * Seconds at the middle of the view (the playhead, moved by a drag) at `now`, moving on

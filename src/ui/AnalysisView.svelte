@@ -145,7 +145,7 @@
         context.lineWidth = 2 * ratio;
         context.stroke();
       }
-    });
+    }, 'analysis');
   });
 </script>
 
