@@ -153,7 +153,8 @@
       context.fillStyle = '#000';
       context.fillText(String(index + 1), position + 3 * ratio, 7 * ratio);
     }
-    // The playhead.
+    // The playhead, once there is a track.
+    if (!track) return;
     context.fillStyle = '#fff';
     context.fillRect(Math.round(width / 2) - ratio, 0, 2 * ratio, height);
   }
@@ -313,7 +314,18 @@
       }}
       onwheel={onWheel}
     ></canvas>
-    <div class="grid-tools" role="group" aria-label="Beat grid" data-testid="grid-tools">
+    {#if !current}
+      <p class="empty" data-testid="detail-empty">
+        The waveform of the track playing shows here, with its beat grid and hot cues.
+      </p>
+    {/if}
+    <div
+      class="grid-tools"
+      class:hidden={!current}
+      role="group"
+      aria-label="Beat grid"
+      data-testid="grid-tools"
+    >
       <button
         onclick={() => player.setDownbeat()}
         disabled={!hasGrid}
@@ -453,6 +465,21 @@
   .view:hover .style,
   .style:focus-visible {
     opacity: 1;
+  }
+  .empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    padding: 0 12px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    pointer-events: none;
+  }
+  .grid-tools.hidden {
+    display: none;
   }
   .grid-tools {
     position: absolute;
