@@ -4,7 +4,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 ## 6 October 2026
 
-- **Fixes:** the buttons in the bar at the bottom stay where they are when the next track has markers and the one before had none, or the other way round; the markers show to the right of them.
+- **Fixes:** the buttons in the bar at the bottom stay where they are when the next track has markers and the one before had none, or the other way round; the markers show to the right of them, and the volume sits on the line of the timeline, out of their way.
 
 ## 5 October 2026
 

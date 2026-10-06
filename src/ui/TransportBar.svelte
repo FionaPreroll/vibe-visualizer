@@ -415,7 +415,8 @@
     </div>
   {/if}
 
-  <label class="volume">
+  <!-- On the line of the timeline, below the markers: they never meet. -->
+  <label class="volume" class:wave={!live && waveform !== null} data-testid="volume">
     <Icon name="volume" />
     <input
       type="range"
@@ -713,7 +714,7 @@
     margin: 0 4px;
     background: var(--border);
   }
-  /* Beyond its column, into the room left of the volume. */
+  /* Beyond its column if need be, above the volume. */
   .marks {
     grid-column: 3;
     justify-self: start;
@@ -745,23 +746,19 @@
     opacity: 1;
   }
   .volume {
+    align-self: end;
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
+    height: 20px;
     color: var(--muted);
+  }
+  .volume.wave {
+    height: 32px;
   }
   .volume input {
     width: 110px;
     accent-color: var(--accent);
-  }
-  /* Narrower, the markers leave out their length (the title has it), and the volume is shorter. */
-  @media (max-width: 1200px) {
-    .marks .length {
-      display: none;
-    }
-    .volume input {
-      width: 70px;
-    }
   }
 </style>

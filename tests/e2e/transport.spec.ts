@@ -251,10 +251,12 @@ test('the buttons stay put whether the track playing has markers or not', async 
     return Math.round(box.x);
   };
   const marked = await where();
-  // The markers sit to the right of the buttons, not over them.
+  // The markers sit to the right of the buttons, not over them, and above the volume.
   const marks = (await page.getByTestId('marks').boundingBox())!;
   const last = (await page.getByTestId('detail-toggle').boundingBox())!;
+  const volume = (await page.getByTestId('volume').boundingBox())!;
   expect(marks.x).toBeGreaterThanOrEqual(last.x + last.width);
+  expect(marks.y + marks.height).toBeLessThanOrEqual(volume.y);
 
   // B has no markers: the chip goes, the buttons stay.
   await page.getByRole('button', { name: 'Next', exact: true }).click();
