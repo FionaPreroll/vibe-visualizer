@@ -4,11 +4,11 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 ## 6 October 2026
 
-- **Lighter on the computer:** while a slider, a knob or a fader of a DJ controller moves, the app stores its settings at most four times a second instead of with every step, and the detail waveform is drawn only when something in it changes, so it costs nothing while the music is paused. The sliders and the sound follow every movement as before.
+- **Lighter on the computer:** while a slider, a knob or a fader of a DJ controller moves, the app stores its settings at most four times a second instead of with every step, and the detail waveform is drawn only when something in it changes, so it costs nothing while the music is paused. While the music plays, the detail waveform is drawn once and glides along with the music, rather than being drawn anew for every frame, and the playhead, the waveforms, the meters and the analysis share one animation loop. The sliders and the sound follow every movement as before.
 - **Reduce flashing** is on from the first start where the system asks for less motion (*Reduce motion* in the settings of Windows, macOS and others), until you choose otherwise.
 - **The shortcuts** (**?**) list **Ctrl+Z** (**Cmd+Z** on a Mac), which undoes removing a track, clearing the queue, deleting a cue or clearing the markers.
 - **What the app keeps, and deleting it:** **Settings → Stored in this browser** shows how much the track analysis, the details of tracks, exports and the rest take, and deletes them by kind: the analysis or the details of tracks no longer in the queue, the analysis of all, an unfinished export, or everything. Each asks first and offers to save a backup before.
-- **Fixes:** the buttons in the bar at the bottom stay where they are when the next track has markers and the one before had none, or the other way round; the markers show to the right of them, and the volume sits on the line of the timeline, out of their way.
+- **Fixes:** the buttons in the bar at the bottom stay where they are when the next track has markers and the one before had none, or the other way round; the markers show to the right of them, and the volume sits on the line of the timeline, out of their way. The detail waveform shows as soon as it is switched on (the wave button or **W**), also before a track plays, and says what comes there; before, it appeared only with the first track, so the button seemed to do nothing.
 
 ## 5 October 2026
 

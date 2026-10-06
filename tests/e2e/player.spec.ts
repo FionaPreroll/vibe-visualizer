@@ -49,6 +49,41 @@ function summarise(samples: { title: string; peak: number }[]) {
   return { titles, quietest };
 }
 
+test('the detail waveform shows when switched on, also before a track plays (TR-08)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  // On at the start: its place shows, saying what comes there; no playhead, no grid tools.
+  const detail = page.getByTestId('detail-waveform');
+  await expect(detail).toBeVisible();
+  await expect(page.getByTestId('detail-empty')).toBeVisible();
+  await expect(page.getByTestId('grid-tools')).toBeHidden();
+  await expect(page.getByTestId('cue-pad').first()).toBeDisabled();
+
+  // The button and W switch it off and on again, with no track either.
+  const toggle = page.getByTestId('detail-toggle');
+  await toggle.click();
+  await expect(detail).toHaveCount(0);
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.click();
+  await expect(detail).toBeVisible();
+  await page.keyboard.press('w');
+  await expect(detail).toHaveCount(0);
+  await page.keyboard.press('w');
+  await expect(detail).toBeVisible();
+
+  // A track that plays takes the place: its waveform, the grid tools, the cue pads.
+  await page
+    .getByTestId('file-input')
+    .setInputFiles({ name: 'Beat.wav', mimeType: 'audio/wav', buffer: createWav(8) });
+  await page.getByTestId('play-button').click();
+  await expect(page.getByTestId('detail-empty')).toHaveCount(0);
+  await expect(page.getByTestId('grid-tools')).toBeVisible();
+  await expect(page.getByTestId('cue-pad').first()).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
 test('waveform, hot cues and beat grid of a file, kept for the next visit (TR-03–05, TR-08, AN-07)', async ({
   page,
 }) => {

@@ -96,7 +96,18 @@ test('the visuals can rest while the music plays on (DS-05)', async ({ page }) =
   await expect(page.getByTestId('picture-button')).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('more-menu')).toBeHidden();
-  await page.waitForTimeout(300);
+  // The render worker may still finish what it was busy with when the pause came (drawing in
+  // software, a frame can take long); then the picture stays.
+  await expect
+    .poll(
+      async () => {
+        const shot = await stage.screenshot();
+        await page.waitForTimeout(300);
+        return shot.equals(await stage.screenshot());
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true);
   const first = await stage.screenshot();
   const before = await elapsed();
   await page.waitForTimeout(700);

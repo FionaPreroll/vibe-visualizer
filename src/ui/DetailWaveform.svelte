@@ -5,7 +5,8 @@
   import { CUE_COUNT } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import { usePlayer } from './player-context';
-  import { CUE_COLOURS, drawWaveform } from './waveform-draw';
+  import { onFrame } from './frame-clock';
+  import { CUE_COLOURS, WaveformStrip } from './waveform-draw';
 
   /**
    * The detail view around the playhead (TR-08): the waveform of the seconds before and after,
@@ -52,15 +53,7 @@
   /** The grid's shift as shown: as dragged, or as corrected. */
   const gridShift = $derived(gridDrag?.shift ?? current?.gridEdit.shift ?? 0);
 
-  onMount(() => {
-    let frame = 0;
-    const tick = () => {
-      render();
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  });
+  onMount(() => onFrame(render));
 
   /** Seconds at the middle of the view (the playhead, moved by a drag). */
   function centre(): number {
@@ -70,6 +63,9 @@
   function span(): number {
     return ZOOMS[zoom]!;
   }
+
+  /** The waveform drawn once into a strip, which each frame copies as the view moves. */
+  const strip = new WaveformStrip();
 
   /** What the last frame was drawn from: an unchanged view (paused, say) is not drawn again. */
   let drawn: readonly unknown[] = [];
@@ -106,7 +102,7 @@
     const from = at - span() / 2;
     const to = at + span() / 2;
     const x = (time: number) => ((time - from) / (to - from)) * width;
-    drawWaveform(
+    strip.draw(
       context,
       analysis?.waveform ?? null,
       { from, to, played: at, available: analysis?.seconds ?? 0 },
@@ -157,7 +153,8 @@
       context.fillStyle = '#000';
       context.fillText(String(index + 1), position + 3 * ratio, 7 * ratio);
     }
-    // The playhead.
+    // The playhead, once there is a track.
+    if (!track) return;
     context.fillStyle = '#fff';
     context.fillRect(Math.round(width / 2) - ratio, 0, 2 * ratio, height);
   }
@@ -317,7 +314,18 @@
       }}
       onwheel={onWheel}
     ></canvas>
-    <div class="grid-tools" role="group" aria-label="Beat grid" data-testid="grid-tools">
+    {#if !current}
+      <p class="empty" data-testid="detail-empty">
+        The waveform of the track playing shows here, with its beat grid and hot cues.
+      </p>
+    {/if}
+    <div
+      class="grid-tools"
+      class:hidden={!current}
+      role="group"
+      aria-label="Beat grid"
+      data-testid="grid-tools"
+    >
       <button
         onclick={() => player.setDownbeat()}
         disabled={!hasGrid}
@@ -457,6 +465,21 @@
   .view:hover .style,
   .style:focus-visible {
     opacity: 1;
+  }
+  .empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    padding: 0 12px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    pointer-events: none;
+  }
+  .grid-tools.hidden {
+    display: none;
   }
   .grid-tools {
     position: absolute;
