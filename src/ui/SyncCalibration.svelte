@@ -52,7 +52,7 @@
     ticks = [];
     next = engine.contextTime + 0.4;
     stopLoop?.();
-    stopLoop = onFrame(loop);
+    stopLoop = onFrame(loop, 'sync calibration');
   }
 
   function stop() {

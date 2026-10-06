@@ -20,6 +20,8 @@
   import HelpDialog from './HelpDialog.svelte';
   import LivePanel from './LivePanel.svelte';
   import NewVersionNotice from './NewVersionNotice.svelte';
+  import { perfEnabled } from './perf';
+  import PerfOverlay from './PerfOverlay.svelte';
   import { provideExporter } from './exporter-context';
   import { notifyExportEnd } from './export-notify';
   import Icon from './Icon.svelte';
@@ -750,6 +752,10 @@
     onsettings={() => (settingsOpen = true)}
   />
   <DropOverlay />
+  {#if perfEnabled}
+    <!-- With ?perf in the address: the measurements on screen. -->
+    <PerfOverlay />
+  {/if}
   <WelcomeIntro
     bind:open={welcomeOpen}
     onhelp={() => {

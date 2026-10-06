@@ -45,6 +45,7 @@ export default defineConfig({
       'packages/*/src/**/*.test.ts',
       'vite-plugins/**/*.test.ts',
       'tests/eval/**/*.test.ts',
+      'tests/perf/**/*.test.ts',
     ],
     environment: 'node',
     // `pnpm test:coverage`: the unit tests' coverage of the app's code (CI sends it to Codecov).

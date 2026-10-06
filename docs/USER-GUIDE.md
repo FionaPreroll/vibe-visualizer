@@ -166,6 +166,7 @@ Press **?** for the full list. The main ones: Space play and pause, ← and → 
 - **Something went wrong:** an error the app did not expect shows at the bottom. **Copy details** copies what a bug report needs, and **Report…** opens a mail with it. A part of the app that failed shows **Try again**, while the rest goes on.
 - **A new version is out:** when the app was updated while it is open, a note offers to **Reload**.
 - **Storage:** the app asks the browser to keep its data, so that it is not cleared when the disk runs low (Firefox asks you, the first time you add an image or export). When the browser's storage is full, a message says that changes are not saved.
+- **Stutter:** add `?perf` to the app's address (such as `…workers.dev/?perf`) and reload: a panel at the top left measures how evenly the frames of the page come (the strip shows each frame, those that came late in red), how long each moving part takes, how evenly the playhead moves, and the long frames with what caused them. **Reset** starts the measurement anew, **Copy** puts it on the clipboard for a bug report. Without `?perf` nothing is measured.
 - **System check:** below, what this browser offers the app: the graphics, the encoders for videos, and the storage. **Copy the report** puts it on the clipboard for a bug report.
 - **The browser:** the app needs a current browser, with WebGL 2. If something is missing, it says what instead of starting. When it is WebGL 2 in Chrome, Edge or Firefox, turn on graphics acceleration in the browser's settings.
 
