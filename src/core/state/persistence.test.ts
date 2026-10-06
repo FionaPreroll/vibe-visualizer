@@ -94,3 +94,33 @@ describe('settings changed in bursts', () => {
     expect(volume()).toBe(0.1);
   });
 });
+
+describe('reduce flashing at first', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const system = (reduce: boolean) =>
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: reduce && query === '(prefers-reduced-motion: reduce)',
+    }));
+
+  it('follows the system asking for less motion', () => {
+    stubStorage({});
+    system(true);
+    expect(loadSettings().reduceFlashing).toBe(true);
+    system(false);
+    expect(loadSettings().reduceFlashing).toBe(false);
+  });
+
+  it("keeps the user's choice over the system's", () => {
+    system(true);
+    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: false }) });
+    expect(loadSettings().reduceFlashing).toBe(false);
+    system(false);
+    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: true }) });
+    expect(loadSettings().reduceFlashing).toBe(true);
+  });
+
+  it('is off without a way to ask the system', () => {
+    stubStorage({});
+    expect(loadSettings().reduceFlashing).toBe(false);
+  });
+});

@@ -286,6 +286,10 @@ export function loadSettings(): Settings {
     settings.renderScale = Number.isFinite(settings.renderScale)
       ? Math.max(RENDER_SCALE_RANGE.min, Math.min(RENDER_SCALE_RANGE.max, settings.renderScale))
       : DEFAULT_SETTINGS.renderScale;
+    // Until the user chooses, flashing is reduced where the system asks for less motion (VE-06).
+    if (typeof stored['reduceFlashing'] !== 'boolean') {
+      settings.reduceFlashing = prefersReducedMotion();
+    }
     settings.autoPresets = sanitizeAutoPresets(stored['autoPresets']);
     settings.overlay = sanitizeOverlay(stored['overlay']);
     settings.favourites = sanitizeFavourites(stored['favourites']);
@@ -293,6 +297,15 @@ export function loadSettings(): Settings {
     // Unreadable storage: defaults.
   }
   return settings;
+}
+
+/** Whether the system's settings ask for less motion (prefers-reduced-motion). */
+function prefersReducedMotion(): boolean {
+  try {
+    return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  } catch {
+    return false;
+  }
 }
 
 /** Favourite preset names per mode: strings only, each once. */
