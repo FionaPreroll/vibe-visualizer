@@ -71,21 +71,38 @@
     return ZOOMS[zoom]!;
   }
 
+  /** What the last frame was drawn from: an unchanged view (paused, say) is not drawn again. */
+  let drawn: readonly unknown[] = [];
+
+  /** True if `inputs` differ from those of the last frame drawn; they are kept then. */
+  function changed(inputs: readonly unknown[]): boolean {
+    if (inputs.length === drawn.length && inputs.every((value, i) => value === drawn[i])) {
+      return false;
+    }
+    drawn = inputs;
+    return true;
+  }
+
   function render(): void {
     if (!canvas) return;
     const ratio = window.devicePixelRatio || 1;
     const width = Math.round(canvas.clientWidth * ratio);
     const height = Math.round(canvas.clientHeight * ratio);
     if (width === 0 || height === 0) return;
+    const track = player.currentTrack;
+    const analysis = player.analysisOf(track);
+    const at = centre();
+    const style = $app.settings.waveformStyle;
+    // The track (its cues and markers), its analysis (growing while analysed, its grid as
+    // corrected), the view and a marker dragged: all a frame shows.
+    const inputs = [width, height, ratio, track, analysis, at, zoom, style, markDrag];
+    if (!changed(inputs)) return;
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
       canvas.height = height;
     }
     const context = canvas.getContext('2d');
     if (!context) return;
-    const track = player.currentTrack;
-    const analysis = player.analysisOf(track);
-    const at = centre();
     const from = at - span() / 2;
     const to = at + span() / 2;
     const x = (time: number) => ((time - from) / (to - from)) * width;
@@ -95,7 +112,7 @@
       { from, to, played: at, available: analysis?.seconds ?? 0 },
       width,
       height,
-      $app.settings.waveformStyle,
+      style,
     );
     // Beat grid: a line on every beat, stronger where the beat is clear; bar lines (on the
     // first beat of each bar, AN-11) wider and brighter, with a mark at the top.

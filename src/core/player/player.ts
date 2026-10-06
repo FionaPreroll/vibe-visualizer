@@ -61,6 +61,7 @@ import type { KaleidoSceneId, KaleidoSettings, ParamValue } from '../render/kale
 import type { LogoSpectrumSettings } from '../render/visual-settings';
 import { keepStorage } from '../state/keep-storage';
 import {
+  flushWrites,
   loadKaleido,
   loadSettings,
   loadSound,
@@ -695,6 +696,7 @@ export class Player {
   }
 
   private readonly flushSave = () => {
+    flushWrites();
     if (this.saveTimer !== undefined) void this.save();
   };
 

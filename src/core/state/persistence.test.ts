@@ -1,15 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { APP_NAME } from './app-state';
-import { loadSettings } from './persistence';
+import { APP_NAME, DEFAULT_SETTINGS } from './app-state';
+import {
+  flushWrites,
+  loadSettings,
+  saveSettings,
+  setSaving,
+  WRITE_INTERVAL_MS,
+} from './persistence';
 
 /** A localStorage of the test's own. */
-function stubStorage(entries: Record<string, string>): void {
+function stubStorage(entries: Record<string, string>): Map<string, string> {
   const store = new Map(Object.entries(entries));
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => store.set(key, value),
     removeItem: (key: string) => store.delete(key),
   });
+  return store;
 }
 
 const KEY = 'vibe-visualizer:settings:v1';
@@ -34,5 +41,86 @@ describe('the lettering in the ring and the app name', () => {
     expect(loadSettings().logoText).toBe(APP_NAME);
     stubStorage({ [KEY]: JSON.stringify({ logoText: ` ${'x'.repeat(60)} ` }) });
     expect(loadSettings().logoText).toBe('x'.repeat(40));
+  });
+});
+
+describe('settings changed in bursts', () => {
+  let setItem: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    const store = stubStorage({});
+    setItem = vi.fn((key: string, value: string) => store.set(key, value));
+    vi.stubGlobal('localStorage', { ...localStorage, setItem });
+  });
+  afterEach(() => {
+    flushWrites();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+  const volume = () =>
+    (JSON.parse(localStorage.getItem(KEY) ?? '{}') as { volume?: number }).volume;
+
+  it('stores the first change at once, and the last of a burst after a moment', () => {
+    for (let step = 1; step <= 50; step++) saveSettings({ ...DEFAULT_SETTINGS, volume: step / 50 });
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(volume()).toBe(0.02);
+    vi.advanceTimersByTime(WRITE_INTERVAL_MS);
+    expect(setItem).toHaveBeenCalledTimes(2);
+    expect(volume()).toBe(1);
+    // Nothing new: nothing more is written, and the next change is stored at once again.
+    vi.advanceTimersByTime(WRITE_INTERVAL_MS * 4);
+    expect(setItem).toHaveBeenCalledTimes(2);
+    saveSettings({ ...DEFAULT_SETTINGS, volume: 0.5 });
+    expect(volume()).toBe(0.5);
+  });
+
+  it('stores what waits at once when flushed', () => {
+    saveSettings({ ...DEFAULT_SETTINGS, volume: 0.1 });
+    saveSettings({ ...DEFAULT_SETTINGS, volume: 0.3 });
+    expect(volume()).toBe(0.1);
+    flushWrites();
+    expect(volume()).toBe(0.3);
+    vi.advanceTimersByTime(WRITE_INTERVAL_MS);
+    expect(setItem).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops what waits once storing stops (a backup is restored)', () => {
+    saveSettings({ ...DEFAULT_SETTINGS, volume: 0.1 });
+    saveSettings({ ...DEFAULT_SETTINGS, volume: 0.3 });
+    setSaving(false);
+    vi.advanceTimersByTime(WRITE_INTERVAL_MS);
+    flushWrites();
+    setSaving(true);
+    expect(volume()).toBe(0.1);
+  });
+});
+
+describe('reduce flashing at first', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const system = (reduce: boolean) =>
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: reduce && query === '(prefers-reduced-motion: reduce)',
+    }));
+
+  it('follows the system asking for less motion', () => {
+    stubStorage({});
+    system(true);
+    expect(loadSettings().reduceFlashing).toBe(true);
+    system(false);
+    expect(loadSettings().reduceFlashing).toBe(false);
+  });
+
+  it("keeps the user's choice over the system's", () => {
+    system(true);
+    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: false }) });
+    expect(loadSettings().reduceFlashing).toBe(false);
+    system(false);
+    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: true }) });
+    expect(loadSettings().reduceFlashing).toBe(true);
+  });
+
+  it('is off without a way to ask the system', () => {
+    stubStorage({});
+    expect(loadSettings().reduceFlashing).toBe(false);
   });
 });
