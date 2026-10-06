@@ -2,6 +2,10 @@
 
 What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with the day and the time of the build, such as 0.9.20261003.1432 (**About** shows yours), so the changes are listed by the day they came out.
 
+## 6 October 2026
+
+- **Fixes:** the buttons in the bar at the bottom stay where they are when the next track has markers and the one before had none, or the other way round; the markers show to the right of them.
+
 ## 5 October 2026
 
 - **The lettering in the ring:** what you type in the top bar (double-click) or in **Settings** is now the text of the default logo in the ring only; the app keeps its name, *FibeStation*, in the window's title, About and its notices.
