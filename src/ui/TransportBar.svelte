@@ -56,8 +56,8 @@
   const tempoChanges = $derived(analysis?.grid ? tempoSections(analysis.grid).slice(1) : []);
 
   onMount(() =>
-    onFrame(() => {
-      position = player.position;
+    onFrame((now) => {
+      position = player.displayPosition(now);
     }),
   );
 

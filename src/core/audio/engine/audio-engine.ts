@@ -6,6 +6,7 @@ import { WorkerClient } from '../../util/worker-rpc';
 import { DEFAULT_SOUND, type SoundSettings } from '../dsp/sound-settings';
 import { AudioRingMonitor, createAudioRing } from '../ring-buffer';
 import { createEngineControl, EngineControl } from './engine-control';
+import { PositionSmoother } from './position-smoother';
 import type { EngineEvent, EngineMessage, EngineProcessorOptions } from './engine.worklet';
 import workletUrl from './engine.worklet.ts?worker&url';
 import type { LoadResult, NextFile } from './media.worker';
@@ -50,6 +51,8 @@ export class AudioEngine {
   private nudgeFactor = 1;
   private trackerRange: TrackerRange | null = null;
   private offset = 0;
+  /** The position to show, moving on smoothly between the audio callbacks. */
+  private readonly smoother = new PositionSmoother();
   /**
    * Told when the sound stops without being asked to (NF-09): the engine failed, the audio
    * output failed, or the browser or the system took the sound away. The message says what
@@ -390,6 +393,15 @@ export class AudioEngine {
   /** Playback position in seconds (of the audio being rendered right now). */
   get position(): number {
     return this.monitor.position / AudioEngine.SAMPLE_RATE;
+  }
+
+  /**
+   * The playback position to show, in seconds: {@link position}, carried on to `now` (as
+   * performance.now() gives it) at the speed the music plays, so it moves on smoothly between
+   * the audio callbacks (see {@link PositionSmoother}).
+   */
+  displayPosition(now = performance.now()): number {
+    return this.smoother.at(this.position, this.monitor.rate, this.monitor.renderTime, now / 1000);
   }
 
   /** True when the current stream has been played to its end. */

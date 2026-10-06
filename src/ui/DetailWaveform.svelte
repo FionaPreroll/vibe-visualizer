@@ -55,9 +55,12 @@
 
   onMount(() => onFrame(render));
 
-  /** Seconds at the middle of the view (the playhead, moved by a drag). */
-  function centre(): number {
-    return player.position + dragOffset;
+  /**
+   * Seconds at the middle of the view (the playhead, moved by a drag) at `now`, moving on
+   * smoothly between the audio callbacks.
+   */
+  function centre(now?: number): number {
+    return player.displayPosition(now) + dragOffset;
   }
 
   function span(): number {
@@ -79,7 +82,8 @@
     return true;
   }
 
-  function render(): void {
+  /** Draws the view of the frame at `now` (its time, as the animation frame gives it). */
+  function render(now?: number): void {
     if (!canvas) return;
     const ratio = window.devicePixelRatio || 1;
     const width = Math.round(canvas.clientWidth * ratio);
@@ -87,7 +91,7 @@
     if (width === 0 || height === 0) return;
     const track = player.currentTrack;
     const analysis = player.analysisOf(track);
-    const at = centre();
+    const at = centre(now);
     const style = $app.settings.waveformStyle;
     // The track (its cues and markers), its analysis (growing while analysed, its grid as
     // corrected), the view and a marker dragged: all a frame shows.
