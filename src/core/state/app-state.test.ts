@@ -283,7 +283,10 @@ describe('app state', () => {
 
   it('logs every action with a timestamp, including ones that change nothing', () => {
     let time = 0;
-    const store = createStore<AppState, AppAction>(initialState(), reducer, { now: () => ++time });
+    const store = createStore<AppState, AppAction>(initialState(), reducer, {
+      now: () => ++time,
+      logLimit: 100,
+    });
     const seen: AppState[] = [];
     store.subscribe((state) => seen.push(state));
     store.dispatch({ type: 'player/seeked', seconds: 12 });
@@ -293,6 +296,14 @@ describe('app state', () => {
       ['player/playing', 2],
     ]);
     expect(seen).toHaveLength(2); // initial call + the one real change
+  });
+
+  it('keeps no log unless asked to', () => {
+    const store = createStore<AppState, AppAction>(initialState(), reducer);
+    store.dispatch({ type: 'player/seeked', seconds: 12 });
+    store.dispatch({ type: 'player/playing', playing: true });
+    expect(store.log).toEqual([]);
+    expect(store.state.playing).toBe(true);
   });
 
   it('changes visual settings and keeps them valid', () => {
