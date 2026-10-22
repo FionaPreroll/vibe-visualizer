@@ -30,6 +30,12 @@
     return grid && (gridTempo(grid) > 0 || track.tempo !== null) ? grid : null;
   }
 
+  /** The title and artist in full, and the file: a long title is cut short in the row. */
+  function fullName(track: Track): string {
+    const artist = shownArtist(track);
+    return `${shownTitle(track)}${artist ? ` – ${artist}` : ''}\n${track.fileName}`;
+  }
+
   /**
    * True while the grid is being computed anew for a corrected tempo (TMP-06) or another tempo
    * range (AN-12).
@@ -273,7 +279,7 @@
             ? 'Double-click to allow access and play'
             : track.status === 'missing'
               ? `Add ${track.fileName} again to play it`
-              : (track.reason ?? track.fileName)}
+              : (track.reason ?? fullName(track))}
         >
           <span class="grip" aria-hidden="true"><Icon name="grip" size={16} /></span>
           {#if shownCover(track)}
@@ -281,8 +287,37 @@
           {:else}
             <span class="cover-placeholder"><Icon name="music" size={16} /></span>
           {/if}
+          <!-- The title and the artist take the row; the duration ends the first line (the
+               buttons take its place while the pointer is on the row), the tempo the second. -->
           <span class="text">
             <span class="title">{shownTitle(track)}</span>
+            <span class="end">
+              <span class="duration" data-testid="queue-duration">
+                {track.status === 'probing'
+                  ? '…'
+                  : track.duration !== null
+                    ? formatDuration(track.duration)
+                    : ''}
+              </span>
+              <span class="actions">
+                <button
+                  class="rename ghost"
+                  onclick={() => (naming = track)}
+                  aria-label="Title, artist, cover, colours and look of {shownTitle(track)}"
+                  title="Title, artist, cover, colours and look (F2)"
+                  data-testid="queue-rename"
+                >
+                  <Icon name="pencil" size={15} />
+                </button>
+                <button
+                  class="remove ghost"
+                  onclick={() => player.remove(track.id)}
+                  aria-label="Remove {shownTitle(track)}"
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              </span>
+            </span>
             <span class="artist">
               {#if track.status === 'unsupported'}
                 <Icon name="alert" size={12} /> {track.reason}
@@ -291,38 +326,15 @@
               {:else if track.status === 'missing'}
                 <Icon name="alert" size={12} /> File not available
               {:else}
-                {shownArtist(track) ?? track.fileName}
+                {shownArtist(track) ?? ''}
               {/if}
             </span>
-          </span>
-          <span class="numbers">
-            <span class="duration" data-testid="queue-duration">
-              {track.status === 'probing'
-                ? '…'
-                : track.duration !== null
-                  ? formatDuration(track.duration)
-                  : ''}
-            </span>
             {#if gridOf(track)}
-              <TrackTempo {track} grid={gridOf(track)!} pending={regridding(track)} />
+              <span class="tempo">
+                <TrackTempo {track} grid={gridOf(track)!} pending={regridding(track)} />
+              </span>
             {/if}
           </span>
-          <button
-            class="rename ghost"
-            onclick={() => (naming = track)}
-            aria-label="Title, artist, cover, colours and look of {shownTitle(track)}"
-            title="Title, artist, cover, colours and look (F2)"
-            data-testid="queue-rename"
-          >
-            <Icon name="pencil" size={15} />
-          </button>
-          <button
-            class="remove ghost"
-            onclick={() => player.remove(track.id)}
-            aria-label="Remove {shownTitle(track)}"
-          >
-            <Icon name="close" size={16} />
-          </button>
         </li>
       {/each}
     </ol>
@@ -385,7 +397,7 @@
   }
   li {
     display: grid;
-    grid-template-columns: 16px 36px 1fr auto 28px 28px;
+    grid-template-columns: 16px 36px minmax(0, 1fr);
     align-items: center;
     gap: 10px;
     padding: 6px 8px;
@@ -456,8 +468,10 @@
     color: var(--muted);
   }
   .text {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
     min-width: 0;
   }
   .title,
@@ -476,29 +490,41 @@
     font-size: 12px;
     color: var(--muted);
   }
-  .numbers {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+  .end,
+  .tempo {
+    display: grid;
+    justify-items: end;
+  }
+  /* The duration and the buttons share a place: the buttons show while the row is pointed at
+     or focused, without taking room from the title. */
+  .end > * {
+    grid-area: 1 / 1;
   }
   .duration {
     font-family: var(--mono);
     font-size: 12px;
     color: var(--muted);
   }
+  .actions {
+    display: flex;
+    gap: 2px;
+    margin: -4px -4px -4px 0;
+    opacity: 0;
+  }
+  li:hover .actions,
+  li:focus-within .actions {
+    opacity: 1;
+  }
+  li:hover .duration,
+  li:focus-within .duration {
+    opacity: 0;
+  }
   .remove,
   .rename {
     display: grid;
     place-items: center;
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     padding: 0;
-    opacity: 0;
-  }
-  li:hover .remove,
-  li:focus-within .remove,
-  li:hover .rename,
-  li:focus-within .rename {
-    opacity: 1;
   }
 </style>
