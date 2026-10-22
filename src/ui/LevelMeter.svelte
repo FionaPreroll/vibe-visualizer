@@ -37,7 +37,7 @@
       }
       if (frame[F.peak]! >= 0.99) clipUntil = now + HOLD_MS;
       clipped = now < clipUntil;
-    });
+    }, 'level meter');
   });
 </script>
 

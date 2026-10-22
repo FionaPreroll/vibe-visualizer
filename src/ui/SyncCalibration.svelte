@@ -37,9 +37,10 @@
     if (open && !dialog.open) {
       dialog.showModal();
       void start();
-    } else if (!open && dialog.open) {
+    } else if (!open) {
+      // Escape closes the dialog by itself: the ticks stop all the same.
       stop();
-      dialog.close();
+      if (dialog.open) dialog.close();
     }
   });
 
@@ -48,11 +49,13 @@
   async function start() {
     player.pause();
     await engine.start();
+    // Closed meanwhile: no ticks.
+    if (!dialog?.open) return;
     reported = engine.reportedLatency;
     ticks = [];
     next = engine.contextTime + 0.4;
     stopLoop?.();
-    stopLoop = onFrame(loop);
+    stopLoop = onFrame(loop, 'sync calibration');
   }
 
   function stop() {

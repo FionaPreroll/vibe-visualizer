@@ -53,7 +53,7 @@
   /** The grid's shift as shown: as dragged, or as corrected. */
   const gridShift = $derived(gridDrag?.shift ?? current?.gridEdit.shift ?? 0);
 
-  onMount(() => onFrame(render));
+  onMount(() => onFrame(render, 'detail waveform'));
 
   /**
    * Seconds at the middle of the view (the playhead, moved by a drag) at `now`, moving on
@@ -218,7 +218,12 @@
       markDrag = { mark, seconds: markTarget(mark, event) };
       return;
     }
-    drag = { x: event.clientX, at: player.position, moved: false, pointer: event.pointerId };
+    drag = {
+      x: event.clientX,
+      at: player.displayPosition(),
+      moved: false,
+      pointer: event.pointerId,
+    };
   }
 
   function onPointerMove(event: PointerEvent) {
@@ -242,7 +247,7 @@
     const dx = event.clientX - drag.x;
     if (Math.abs(dx) > 3) drag.moved = true;
     // Dragging moves the waveform under the playhead.
-    if (drag.moved) dragOffset = drag.at - player.position - dx * secondsPerPixel();
+    if (drag.moved) dragOffset = drag.at - player.displayPosition() - dx * secondsPerPixel();
   }
 
   function onPointerUp(event: PointerEvent) {
@@ -259,8 +264,8 @@
     if (!drag || !canvas) return;
     const rect = canvas.getBoundingClientRect();
     const target = drag.moved
-      ? player.position + dragOffset
-      : player.position + (event.clientX - rect.left - rect.width / 2) * secondsPerPixel();
+      ? player.displayPosition() + dragOffset
+      : player.displayPosition() + (event.clientX - rect.left - rect.width / 2) * secondsPerPixel();
     drag = null;
     dragOffset = 0;
     void player.seek(target);

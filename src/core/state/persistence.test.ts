@@ -112,11 +112,23 @@ describe('reduce flashing at first', () => {
 
   it("keeps the user's choice over the system's", () => {
     system(true);
-    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: false }) });
+    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: false, reduceFlashingChosen: true }) });
     expect(loadSettings().reduceFlashing).toBe(false);
     system(false);
-    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: true }) });
+    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: true, reduceFlashingChosen: true }) });
     expect(loadSettings().reduceFlashing).toBe(true);
+  });
+
+  it('follows the system until the user chooses, with other settings stored', () => {
+    system(true);
+    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: false, reduceFlashingChosen: false }) });
+    expect(loadSettings().reduceFlashing).toBe(true);
+    // Stored before the choice was kept: off was the default, on was the user's choice.
+    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: false, volume: 0.5 }) });
+    expect(loadSettings().reduceFlashing).toBe(true);
+    system(false);
+    stubStorage({ [KEY]: JSON.stringify({ reduceFlashing: true, volume: 0.5 }) });
+    expect(loadSettings()).toMatchObject({ reduceFlashing: true, reduceFlashingChosen: true });
   });
 
   it('is off without a way to ask the system', () => {

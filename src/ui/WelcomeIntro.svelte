@@ -140,7 +140,10 @@
               type="checkbox"
               checked={$app.settings.reduceFlashing}
               onchange={(event) =>
-                player.updateSettings({ reduceFlashing: event.currentTarget.checked })}
+                player.updateSettings({
+                  reduceFlashing: event.currentTarget.checked,
+                  reduceFlashingChosen: true,
+                })}
               data-testid="welcome-reduce-flashing"
             />
             Reduce flashing (also in Visuals → Display)

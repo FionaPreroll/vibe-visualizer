@@ -12,6 +12,7 @@
   import { formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
   import { onFrame } from './frame-clock';
+  import { perf } from './perf';
   import LiveTempo from './LiveTempo.svelte';
   import { usePlayer } from './player-context';
   import { CUE_COLOURS, drawWaveform } from './waveform-draw';
@@ -58,7 +59,8 @@
   onMount(() =>
     onFrame((now) => {
       position = player.displayPosition(now);
-    }),
+      perf?.playhead(now, position, player.position);
+    }, 'transport'),
   );
 
   $effect(() => {
