@@ -3,6 +3,7 @@
   import { SYNC_OFFSET_RANGE } from '../core/state/app-state';
   import Slider from './controls/Slider.svelte';
   import Icon from './Icon.svelte';
+  import { onFrame } from './frame-clock';
   import { usePlayer } from './player-context';
 
   /**
@@ -26,7 +27,8 @@
   let dialog: HTMLDialogElement | undefined = $state();
   let flash = $state(0);
   let reported = $state<number | null>(null);
-  let frame = 0;
+  /** Stops the loop on the frame clock while the calibration runs. */
+  let stopLoop: (() => void) | null = null;
   let ticks: number[] = [];
   let next = 0;
 
@@ -35,9 +37,10 @@
     if (open && !dialog.open) {
       dialog.showModal();
       void start();
-    } else if (!open && dialog.open) {
+    } else if (!open) {
+      // Escape closes the dialog by itself: the ticks stop all the same.
       stop();
-      dialog.close();
+      if (dialog.open) dialog.close();
     }
   });
 
@@ -46,21 +49,22 @@
   async function start() {
     player.pause();
     await engine.start();
+    // Closed meanwhile: no ticks.
+    if (!dialog?.open) return;
     reported = engine.reportedLatency;
     ticks = [];
     next = engine.contextTime + 0.4;
-    cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(loop);
+    stopLoop?.();
+    stopLoop = onFrame(loop, 'sync calibration');
   }
 
   function stop() {
-    cancelAnimationFrame(frame);
-    frame = 0;
+    stopLoop?.();
+    stopLoop = null;
     flash = 0;
   }
 
   function loop() {
-    frame = requestAnimationFrame(loop);
     // The ticks are scheduled a little ahead, on the audio clock.
     while (next < engine.contextTime + 0.25) {
       engine.beep(next);

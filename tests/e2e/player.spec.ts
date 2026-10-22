@@ -49,6 +49,41 @@ function summarise(samples: { title: string; peak: number }[]) {
   return { titles, quietest };
 }
 
+test('the detail waveform shows when switched on, also before a track plays (TR-08)', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  // On at the start: its place shows, saying what comes there; no playhead, no grid tools.
+  const detail = page.getByTestId('detail-waveform');
+  await expect(detail).toBeVisible();
+  await expect(page.getByTestId('detail-empty')).toBeVisible();
+  await expect(page.getByTestId('grid-tools')).toBeHidden();
+  await expect(page.getByTestId('cue-pad').first()).toBeDisabled();
+
+  // The button and W switch it off and on again, with no track either.
+  const toggle = page.getByTestId('detail-toggle');
+  await toggle.click();
+  await expect(detail).toHaveCount(0);
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.click();
+  await expect(detail).toBeVisible();
+  await page.keyboard.press('w');
+  await expect(detail).toHaveCount(0);
+  await page.keyboard.press('w');
+  await expect(detail).toBeVisible();
+
+  // A track that plays takes the place: its waveform, the grid tools, the cue pads.
+  await page
+    .getByTestId('file-input')
+    .setInputFiles({ name: 'Beat.wav', mimeType: 'audio/wav', buffer: createWav(8) });
+  await page.getByTestId('play-button').click();
+  await expect(page.getByTestId('detail-empty')).toHaveCount(0);
+  await expect(page.getByTestId('grid-tools')).toBeVisible();
+  await expect(page.getByTestId('cue-pad').first()).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
 test('waveform, hot cues and beat grid of a file, kept for the next visit (TR-03–05, TR-08, AN-07)', async ({
   page,
 }) => {
@@ -119,6 +154,46 @@ test('tracks follow each other without a gap, also at another sample rate (PL-05
   expect(titles).toEqual(['One', 'Two', 'One']);
   // The tone plays at −12 dBFS; a gap would show as silence (−60).
   expect(quietest).toBeGreaterThan(-30);
+  expect(errors).toEqual([]);
+});
+
+test('the time shown goes on from track to track without a jump back (PL-05)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles([
+    { name: 'One.wav', mimeType: 'audio/wav', buffer: createWav(1.5) },
+    { name: 'Two.wav', mimeType: 'audio/wav', buffer: createWav(1.5) },
+  ]);
+  await expect(page.getByTestId('queue-item').nth(1)).toHaveAttribute('data-status', 'ready');
+  await page.getByTestId('repeat').click();
+  await expect(page.getByTestId('repeat')).toHaveAttribute('data-mode', 'all');
+  await page.getByTestId('play-button').click();
+  // The title and the time shown in every frame, over a few transitions.
+  const frames = await page.evaluate(
+    () =>
+      new Promise<[string, number][]>((done) => {
+        const shown: [string, number][] = [];
+        const end = performance.now() + 9000;
+        const frame = (now: number) => {
+          const title = document.querySelector('[data-testid="now-title"]')!.textContent!.trim();
+          const time = document
+            .querySelector('[data-testid="elapsed"]')!
+            .getAttribute('data-seconds');
+          shown.push([title, Number(time)]);
+          if (now > end) done(shown);
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
+  const switches = frames.filter(([title], i) => i > 0 && title !== frames[i - 1]![0]);
+  expect(switches.length).toBeGreaterThan(3);
+  // Until the player follows into the next file, the time stays where the track ended; it once
+  // showed the position read last (0 here) for a frame or two.
+  const back = frames.filter(
+    ([title, time], i) => i > 0 && title === frames[i - 1]![0] && time < frames[i - 1]![1] - 0.05,
+  );
+  expect(back).toEqual([]);
   expect(errors).toEqual([]);
 });
 

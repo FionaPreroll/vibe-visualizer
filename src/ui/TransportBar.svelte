@@ -11,6 +11,8 @@
   } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import Icon from './Icon.svelte';
+  import { onFrame } from './frame-clock';
+  import { perf } from './perf';
   import LiveTempo from './LiveTempo.svelte';
   import { usePlayer } from './player-context';
   import { CUE_COLOURS, drawWaveform } from './waveform-draw';
@@ -54,15 +56,12 @@
   /** Where the beat grid changes tempo (Korrektur 5): the start and tempo of each new section. */
   const tempoChanges = $derived(analysis?.grid ? tempoSections(analysis.grid).slice(1) : []);
 
-  onMount(() => {
-    let request = 0;
-    const tick = () => {
-      position = player.position;
-      request = requestAnimationFrame(tick);
-    };
-    request = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(request);
-  });
+  onMount(() =>
+    onFrame((now) => {
+      position = player.displayPosition(now);
+      perf?.playhead(now, position, player.position);
+    }, 'transport'),
+  );
 
   $effect(() => {
     if (!timeline) return;

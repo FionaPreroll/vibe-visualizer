@@ -5,3 +5,4 @@ test-results/
 playwright-report/
 src/core/audio/stretch/signalsmith-stretch-wasm.ts
 *.md
+perf-results/

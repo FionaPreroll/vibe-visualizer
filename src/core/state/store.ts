@@ -2,6 +2,9 @@
  * Minimal framework-free store. Every change is a typed action with a timestamp (NF-08); the
  * action log is the basis for recording and replaying sessions later. The subscribe contract
  * matches Svelte stores, so components can use `$store`.
+ *
+ * The log is kept only when asked for (`logLimit`): nothing reads it yet (EX-13 will), and it
+ * would hold on to every settings object and track of the session.
  */
 
 export type Timed<A> = A & { at: number };
@@ -18,7 +21,7 @@ export function createStore<S, A extends { type: string }>(
   reducer: (state: S, action: A) => S,
   options: { logLimit?: number; now?: () => number } = {},
 ): Store<S, A> {
-  const logLimit = options.logLimit ?? 10_000;
+  const logLimit = options.logLimit ?? 0;
   const now = options.now ?? (() => performance.now());
   let state = initial;
   const log: Timed<A>[] = [];
@@ -33,8 +36,10 @@ export function createStore<S, A extends { type: string }>(
     },
     dispatch(action) {
       const timed = { ...action, at: now() };
-      log.push(timed);
-      if (log.length > logLimit) log.splice(0, log.length - logLimit);
+      if (logLimit > 0) {
+        log.push(timed);
+        if (log.length > logLimit) log.splice(0, log.length - logLimit);
+      }
       const next = reducer(state, timed);
       if (next === state) return;
       state = next;

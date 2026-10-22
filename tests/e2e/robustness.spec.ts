@@ -107,6 +107,38 @@ test('the music pauses with a message when the sound stops by itself (NF-09)', a
   expect(errors).toEqual([]);
 });
 
+test('the time shown stands while the browser suspends the sound (NF-09)', async ({ page }) => {
+  const errors = collectErrors(page);
+  await watchAudio(page);
+  await page.goto('/');
+  await playClicks(page);
+  const elapsed = page.getByTestId('elapsed');
+  await expect
+    .poll(async () => Number(await elapsed.getAttribute('data-seconds')))
+    .toBeGreaterThan(1);
+  // Suspended, the engine publishes no position: the time shown stays where the music stopped
+  // (it ran on and jumped back, a quarter of a second at a time).
+  const shown = await page.evaluate(async () => {
+    await (window as unknown as { audio: Audio }).audio.contexts[0]!.suspend();
+    const times: number[] = [];
+    const end = performance.now() + 1500;
+    await new Promise<void>((done) => {
+      const frame = (now: number) => {
+        const time = document
+          .querySelector('[data-testid="elapsed"]')!
+          .getAttribute('data-seconds');
+        times.push(Number(time));
+        if (now > end) done();
+        else requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    return times;
+  });
+  expect(Math.max(...shown) - Math.min(...shown)).toBeLessThan(0.02);
+  expect(errors).toEqual([]);
+});
+
 test('a browser without a feature the app needs says so instead (NF-02)', async ({ page }) => {
   const errors = collectErrors(page);
   await page.addInitScript(() => {

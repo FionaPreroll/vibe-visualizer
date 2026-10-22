@@ -15,6 +15,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:perf": "vite build --minify false --sourcemap",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p tsconfig.node.json",
     "lint": "eslint .",
@@ -26,6 +27,8 @@
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:firefox": "playwright test --project=firefox",
     "test:soak": "playwright test -c playwright.soak.config.ts",
+    "test:perf": "playwright test -c playwright.perf.config.ts",
+    "perf:report": "node --experimental-strip-types tests/perf/report.ts",
     "eval:drums": "vitest run tests/eval --silent=false",
     "screenshots": "playwright test -c playwright.screenshots.config.ts"
   },

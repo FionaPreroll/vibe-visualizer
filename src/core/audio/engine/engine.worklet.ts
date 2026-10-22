@@ -75,6 +75,8 @@ class EngineProcessor extends AudioWorkletProcessor {
   private nextStart = -1;
   private nextToken = 0;
   private nextBase = 0;
+  /** The position published last, in frames of the heard file. */
+  private publishedPosition = -1;
   /** Beat grids of the files (AN-07), by token: they replace the live beat tracking. */
   private readonly grids = new Map<number, GridBeats>();
   /** How loud each file gets, by token: the analysis's auto-gain stays above its levels. */
@@ -230,11 +232,16 @@ class EngineProcessor extends AudioWorkletProcessor {
       this.heardBase = this.nextBase;
       this.consumer.passBoundary();
     }
+    const position = this.heardBase + heard - this.heardOffset;
     this.consumer.publish(
-      this.heardBase + heard - this.heardOffset,
+      position,
       currentTime + frames / sampleRate,
       this.heardToken,
+      // Where the music stands still (before its first frame, run dry, at its end), so does the
+      // position shown.
+      position === this.publishedPosition ? 0 : this.blockRate,
     );
+    this.publishedPosition = position;
     if (this.consumer.ended && heard >= this.consumer.takenFrames) this.consumer.markPlayedOut();
   }
 

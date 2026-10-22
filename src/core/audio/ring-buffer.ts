@@ -38,7 +38,8 @@ const RENDER_TIME = 2; // consumer: context time at the end of the last render q
 const FIRST_FRAME_TIME = 3; // consumer: context time at which the generation's first frame played
 const BOUNDARY_START = 4; // per slot: frame of the generation at which the next file starts
 const BOUNDARY_BASE = BOUNDARY_START + BOUNDARY_SLOTS; // per slot: the next file's own frame there
-const FLOAT_FIELDS = BOUNDARY_BASE + BOUNDARY_SLOTS;
+const RATE = BOUNDARY_BASE + BOUNDARY_SLOTS; // consumer: frames of the file per output frame (0: still)
+const FLOAT_FIELDS = RATE + 1;
 
 const HEADER_BYTES = CONTROL_INTS * 4 + FLOAT_FIELDS * 8;
 
@@ -232,11 +233,18 @@ export class AudioRingConsumer extends AudioRingView {
 
   /**
    * Publishes the playback position for the main thread: frame `fileFrame` of the file with
-   * `token` is heard at context time `renderTime`.
+   * `token` is heard at context time `renderTime`, and moves on at `rate` frames of the file per
+   * output frame (0 while it stands still), when given.
    */
-  publish(fileFrame: number, renderTime: number, token = this.generationToken): void {
+  publish(
+    fileFrame: number,
+    renderTime: number,
+    token = this.generationToken,
+    rate?: number,
+  ): void {
     this.floats[POSITION] = fileFrame;
     this.floats[RENDER_TIME] = renderTime;
+    if (rate !== undefined) this.floats[RATE] = rate;
     Atomics.store(this.control, HEARD_TOKEN, token);
   }
 
@@ -336,6 +344,10 @@ export class AudioRingMonitor extends AudioRingView {
   /** Context time at which {@link position} plays. */
   get renderTime(): number {
     return this.floats[RENDER_TIME]!;
+  }
+  /** Frames of the file per output frame the position moves on at (0 while it stands still). */
+  get rate(): number {
+    return this.floats[RATE]!;
   }
   get underruns(): number {
     return Atomics.load(this.control, UNDERRUNS);

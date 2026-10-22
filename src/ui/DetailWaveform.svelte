@@ -5,7 +5,8 @@
   import { CUE_COUNT } from '../core/state/app-state';
   import { formatDuration } from '../core/util/format';
   import { usePlayer } from './player-context';
-  import { CUE_COLOURS, drawWaveform } from './waveform-draw';
+  import { onFrame } from './frame-clock';
+  import { CUE_COLOURS, WaveformStrip } from './waveform-draw';
 
   /**
    * The detail view around the playhead (TR-08): the waveform of the seconds before and after,
@@ -52,50 +53,66 @@
   /** The grid's shift as shown: as dragged, or as corrected. */
   const gridShift = $derived(gridDrag?.shift ?? current?.gridEdit.shift ?? 0);
 
-  onMount(() => {
-    let frame = 0;
-    const tick = () => {
-      render();
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  });
+  onMount(() => onFrame(render, 'detail waveform'));
 
-  /** Seconds at the middle of the view (the playhead, moved by a drag). */
-  function centre(): number {
-    return player.position + dragOffset;
+  /**
+   * Seconds at the middle of the view (the playhead, moved by a drag) at `now`, moving on
+   * smoothly between the audio callbacks.
+   */
+  function centre(now?: number): number {
+    return player.displayPosition(now) + dragOffset;
   }
 
   function span(): number {
     return ZOOMS[zoom]!;
   }
 
-  function render(): void {
+  /** The waveform drawn once into a strip, which each frame copies as the view moves. */
+  const strip = new WaveformStrip();
+
+  /** What the last frame was drawn from: an unchanged view (paused, say) is not drawn again. */
+  let drawn: readonly unknown[] = [];
+
+  /** True if `inputs` differ from those of the last frame drawn; they are kept then. */
+  function changed(inputs: readonly unknown[]): boolean {
+    if (inputs.length === drawn.length && inputs.every((value, i) => value === drawn[i])) {
+      return false;
+    }
+    drawn = inputs;
+    return true;
+  }
+
+  /** Draws the view of the frame at `now` (its time, as the animation frame gives it). */
+  function render(now?: number): void {
     if (!canvas) return;
     const ratio = window.devicePixelRatio || 1;
     const width = Math.round(canvas.clientWidth * ratio);
     const height = Math.round(canvas.clientHeight * ratio);
     if (width === 0 || height === 0) return;
+    const track = player.currentTrack;
+    const analysis = player.analysisOf(track);
+    const at = centre(now);
+    const style = $app.settings.waveformStyle;
+    // The track (its cues and markers), its analysis (growing while analysed, its grid as
+    // corrected), the view and a marker dragged: all a frame shows.
+    const inputs = [width, height, ratio, track, analysis, at, zoom, style, markDrag];
+    if (!changed(inputs)) return;
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
       canvas.height = height;
     }
     const context = canvas.getContext('2d');
     if (!context) return;
-    const track = player.currentTrack;
-    const analysis = player.analysisOf(track);
-    const at = centre();
     const from = at - span() / 2;
     const to = at + span() / 2;
     const x = (time: number) => ((time - from) / (to - from)) * width;
-    drawWaveform(
+    strip.draw(
       context,
       analysis?.waveform ?? null,
       { from, to, played: at, available: analysis?.seconds ?? 0 },
       width,
       height,
-      $app.settings.waveformStyle,
+      style,
     );
     // Beat grid: a line on every beat, stronger where the beat is clear; bar lines (on the
     // first beat of each bar, AN-11) wider and brighter, with a mark at the top.
@@ -140,7 +157,8 @@
       context.fillStyle = '#000';
       context.fillText(String(index + 1), position + 3 * ratio, 7 * ratio);
     }
-    // The playhead.
+    // The playhead, once there is a track.
+    if (!track) return;
     context.fillStyle = '#fff';
     context.fillRect(Math.round(width / 2) - ratio, 0, 2 * ratio, height);
   }
@@ -200,7 +218,12 @@
       markDrag = { mark, seconds: markTarget(mark, event) };
       return;
     }
-    drag = { x: event.clientX, at: player.position, moved: false, pointer: event.pointerId };
+    drag = {
+      x: event.clientX,
+      at: player.displayPosition(),
+      moved: false,
+      pointer: event.pointerId,
+    };
   }
 
   function onPointerMove(event: PointerEvent) {
@@ -224,7 +247,7 @@
     const dx = event.clientX - drag.x;
     if (Math.abs(dx) > 3) drag.moved = true;
     // Dragging moves the waveform under the playhead.
-    if (drag.moved) dragOffset = drag.at - player.position - dx * secondsPerPixel();
+    if (drag.moved) dragOffset = drag.at - player.displayPosition() - dx * secondsPerPixel();
   }
 
   function onPointerUp(event: PointerEvent) {
@@ -241,8 +264,8 @@
     if (!drag || !canvas) return;
     const rect = canvas.getBoundingClientRect();
     const target = drag.moved
-      ? player.position + dragOffset
-      : player.position + (event.clientX - rect.left - rect.width / 2) * secondsPerPixel();
+      ? player.displayPosition() + dragOffset
+      : player.displayPosition() + (event.clientX - rect.left - rect.width / 2) * secondsPerPixel();
     drag = null;
     dragOffset = 0;
     void player.seek(target);
@@ -300,7 +323,18 @@
       }}
       onwheel={onWheel}
     ></canvas>
-    <div class="grid-tools" role="group" aria-label="Beat grid" data-testid="grid-tools">
+    {#if !current}
+      <p class="empty" data-testid="detail-empty">
+        The waveform of the track playing shows here, with its beat grid and hot cues.
+      </p>
+    {/if}
+    <div
+      class="grid-tools"
+      class:hidden={!current}
+      role="group"
+      aria-label="Beat grid"
+      data-testid="grid-tools"
+    >
       <button
         onclick={() => player.setDownbeat()}
         disabled={!hasGrid}
@@ -440,6 +474,21 @@
   .view:hover .style,
   .style:focus-visible {
     opacity: 1;
+  }
+  .empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    padding: 0 12px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    pointer-events: none;
+  }
+  .grid-tools.hidden {
+    display: none;
   }
   .grid-tools {
     position: absolute;

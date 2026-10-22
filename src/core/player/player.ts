@@ -61,6 +61,7 @@ import type { KaleidoSceneId, KaleidoSettings, ParamValue } from '../render/kale
 import type { LogoSpectrumSettings } from '../render/visual-settings';
 import { keepStorage } from '../state/keep-storage';
 import {
+  flushWrites,
   loadKaleido,
   loadSettings,
   loadSound,
@@ -269,6 +270,8 @@ export class Player {
       console.error('The queue of the last visit could not be restored', error);
     });
     window.addEventListener('pagehide', this.flushSave);
+    // A tab in the background can be discarded without a pagehide (on phones above all).
+    document.addEventListener('visibilitychange', this.flushSave);
   }
 
   /** A new token for the file of track `id`. */
@@ -453,6 +456,22 @@ export class Player {
     if (this.engine.heardToken !== this.loadedToken) return this.lastPosition;
     this.lastPosition = this.engine.position;
     return this.lastPosition;
+  }
+
+  /**
+   * The playback position to show (seconds) at `now` (as performance.now() gives it; an
+   * animation frame's time, for what it draws): as {@link position}, but moving on smoothly
+   * between the audio callbacks, for what moves with the music on screen (the playhead, the
+   * detail waveform). What acts at the position (cues, markers, seeks) takes {@link position}.
+   */
+  displayPosition(now = performance.now()): number {
+    if (this.loadedId === null) return 0;
+    const scrubbed = this.scrubPosition();
+    if (scrubbed !== null) return scrubbed;
+    if (this.engine.heardToken !== this.loadedToken) return this.lastPosition;
+    // Kept for the gapless transition above: what is shown may be all that reads the position.
+    this.lastPosition = this.engine.position;
+    return this.engine.displayPosition(now);
   }
 
   private dispatch(action: AppAction): void {
@@ -695,6 +714,7 @@ export class Player {
   }
 
   private readonly flushSave = () => {
+    flushWrites();
     if (this.saveTimer !== undefined) void this.save();
   };
 
@@ -1444,6 +1464,7 @@ export class Player {
     this.endScrub();
     this.dropUndo();
     window.removeEventListener('pagehide', this.flushSave);
+    document.removeEventListener('visibilitychange', this.flushSave);
     this.flushSave();
     if (this.liveInput) closeInput(this.liveInput.stream);
     this.probeClient.terminate();

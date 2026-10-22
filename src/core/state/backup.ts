@@ -4,6 +4,7 @@ import type { ImageKind } from '../render/logo-spectrum';
 import { ASSET_DIRECTORY } from '../render/visual-assets';
 import { decodeBase64, encodeBase64 } from '../util/base64';
 import {
+  flushWrites,
   KALEIDO_PRESETS_KEY,
   PRESETS_KEY,
   setSaving,
@@ -231,6 +232,8 @@ export async function createBackup(
   options: { analysis: boolean },
   now = new Date(),
 ): Promise<Backup> {
+  // The settings of the last moment, not yet stored, go in too.
+  flushWrites();
   const assets = await directory(ASSET_DIRECTORY);
   const images = assets
     ? await readFiles(assets, (name) => (IMAGE_KINDS as string[]).includes(name))

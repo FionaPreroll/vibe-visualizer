@@ -2,7 +2,7 @@ import { ANALYSIS_DIRECTORY } from '../library/analysis-cache';
 import { forgetQueue } from '../library/queue-store';
 import { COVER_DIRECTORY, COVER_FILE } from '../library/track-covers';
 import { ASSET_DIRECTORY } from '../render/visual-assets';
-import { setSaving, STORAGE_PREFIX, TRACK_PREFIX } from './persistence';
+import { flushWrites, setSaving, STORAGE_PREFIX, TRACK_PREFIX } from './persistence';
 
 /**
  * What the app keeps in this browser, by kind, and deleting it (UI-12): the analysis of tracks
@@ -111,6 +111,7 @@ export function formatBytes(bytes: number): string {
 
 /** The app's entries in localStorage. */
 function appEntries(): Record<string, string> {
+  flushWrites();
   const entries: Record<string, string> = {};
   try {
     for (let i = 0; i < localStorage.length; i++) {

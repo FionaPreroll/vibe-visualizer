@@ -1,0 +1,80 @@
+name: Perf
+
+# Measures the app while it plays and exports (tests/perf, with `?perf`): the time between the
+# frames of the page, the time each live part of the UI takes per frame, how evenly the playhead
+# moves on, the long frames and the scripts in them, the memory and the export's speed. It
+# measures a pull request and its base in the same job, in turns, and the job's summary compares
+# them; the traces of both are in the artifact "perf" (open them in Chrome's DevTools,
+# Performance tab, or at ui.perfetto.dev). Nothing here fails a pull request: the runners have no
+# GPU (the visuals draw in software) and their speed varies.
+#
+# Run it by hand (Actions → Perf → Run workflow: the branch to measure, and what to compare it
+# with), or give a pull request the label "perf": it then runs on each push to it.
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Branch, tag or commit to compare with
+        default: dev
+      seconds:
+        description: Seconds measured per scenario
+        default: '10'
+  pull_request:
+    types: [labeled, opened, reopened, synchronize]
+
+concurrency:
+  group: perf-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  perf:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'perf')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      PERF_SECONDS: ${{ inputs.seconds || '10' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha || inputs.base }}
+          path: base
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      # Both builds as the measurements need them (not minified, with source maps); a base
+      # from before `build:perf` gets the same flags.
+      - run: pnpm build:perf
+      - name: Build the base
+        working-directory: base
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vite build --minify false --sourcemap
+      # A round with traces (they slow the page down), then two without, for the numbers; the
+      # base and the head in turns, as the runner's speed drifts.
+      - name: Measure
+        run: |
+          for round in 1 2 3; do
+            trace=$([ "$round" = 1 ] && echo 1 || echo 0)
+            for label in base head; do
+              dist=$([ "$label" = base ] && echo base/dist || echo dist)
+              PERF_LABEL=$label PERF_ROUND=$round PERF_TRACE=$trace PERF_DIST=$dist pnpm test:perf ||
+                echo "::warning::Measuring the $label failed in round $round (see the log above)."
+            done
+          done
+      - name: Report
+        if: always()
+        run: pnpm -s perf:report perf-results >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: perf
+          path: perf-results
+          if-no-files-found: ignore

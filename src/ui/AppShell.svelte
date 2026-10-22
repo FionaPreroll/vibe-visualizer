@@ -20,6 +20,8 @@
   import HelpDialog from './HelpDialog.svelte';
   import LivePanel from './LivePanel.svelte';
   import NewVersionNotice from './NewVersionNotice.svelte';
+  import { perfEnabled } from './perf';
+  import PerfOverlay from './PerfOverlay.svelte';
   import { provideExporter } from './exporter-context';
   import { notifyExportEnd } from './export-notify';
   import Icon from './Icon.svelte';
@@ -715,7 +717,9 @@
     </aside>
   {/if}
 
-  {#if $app.settings.detailWaveform && $app.currentId !== null && $app.live.status === 'off'}
+  <!-- Also before a track plays, so switching it on shows where it goes; not for live input,
+       which has no waveform of its own. -->
+  {#if $app.settings.detailWaveform && $app.live.status === 'off'}
     <div class="detail-row">
       <Guard where="The waveform"><DetailWaveform /></Guard>
     </div>
@@ -748,6 +752,10 @@
     onsettings={() => (settingsOpen = true)}
   />
   <DropOverlay />
+  {#if perfEnabled}
+    <!-- With ?perf in the address: the measurements on screen. -->
+    <PerfOverlay />
+  {/if}
   <WelcomeIntro
     bind:open={welcomeOpen}
     onhelp={() => {
@@ -892,6 +900,27 @@
   .welcome p + p {
     margin-top: 4px;
     font-size: 14px;
+  }
+  /* In a low window, with the detail waveform below the stage too, a smaller card stays below
+     the logo; the notes still fit under it. */
+  @media (max-height: 760px) {
+    .welcome {
+      bottom: 56px;
+    }
+    .welcome .card {
+      padding: 8px 18px 10px;
+    }
+    .welcome h1 {
+      margin-bottom: 2px;
+      font-size: 20px;
+    }
+    .welcome p {
+      font-size: 14px;
+    }
+    .welcome p + p {
+      margin-top: 2px;
+      font-size: 13px;
+    }
   }
   .notes {
     position: absolute;
