@@ -253,6 +253,7 @@
                 repeat: REPEAT_MODES[(REPEAT_MODES.indexOf($app.settings.repeat) + 1) % 3]!,
               })}
             aria-label={REPEAT_LABELS[$app.settings.repeat]}
+            aria-pressed={$app.settings.repeat !== 'off'}
             title={`${REPEAT_LABELS[$app.settings.repeat]} (click to change)`}
             data-testid="repeat"
             data-mode={$app.settings.repeat}
@@ -262,25 +263,25 @@
           </button>
           <span class="divider"></span>
           <button
-            class="icon"
+            class="icon labelled"
             onclick={() => player.mark('in')}
             aria-label="Mark in"
             title="Mark in (I): the track starts here, and so does the export"
             disabled={!current}
           >
-            <Icon name="markIn" />
+            <Icon name="markIn" /><span class="label">In</span>
           </button>
           <button
-            class="icon"
+            class="icon labelled"
             onclick={() => player.mark('out')}
             aria-label="Mark out"
             title="Mark out (O): the queue moves on here, and the export ends"
             disabled={!current}
           >
-            <Icon name="markOut" />
+            <Icon name="markOut" /><span class="label">Out</span>
           </button>
           <button
-            class="icon"
+            class="icon labelled"
             class:on={$app.settings.quantize}
             onclick={() => player.updateSettings({ quantize: !$app.settings.quantize })}
             aria-label="Snap to the beat"
@@ -288,10 +289,10 @@
             title="Snap markers and cues to the beat (Q)"
             data-testid="quantize"
           >
-            <Icon name="magnet" />
+            <Icon name="magnet" /><span class="label">Snap</span>
           </button>
           <button
-            class="icon"
+            class="icon labelled"
             class:on={$app.settings.detailWaveform}
             onclick={() => player.updateSettings({ detailWaveform: !$app.settings.detailWaveform })}
             aria-label="Detail waveform and hot cues"
@@ -299,7 +300,7 @@
             title="Detail waveform and hot cues (W)"
             data-testid="detail-toggle"
           >
-            <Icon name="wave" />
+            <Icon name="wave" /><span class="label">Wave</span>
           </button>
         </div>
         {#if marked}
@@ -407,7 +408,10 @@
           {/if}
           <div class="knob" style:left="{fraction * 100}%"></div>
         </div>
-        <span class="time" title={playEnd < duration ? 'Until the out marker' : undefined}>
+        <span
+          class="time remaining"
+          title={playEnd < duration ? 'Until the out marker' : undefined}
+        >
           -{formatDuration(Math.max(0, playEnd - shown))}
         </span>
       </div>
@@ -539,8 +543,30 @@
   .icon:hover:not(:disabled) {
     background: var(--surface-2);
   }
+  /* A toggle that is on shows it by more than its colour. */
   .icon.on {
     color: var(--accent-2);
+    background: color-mix(in srgb, var(--accent-2) 16%, transparent);
+  }
+  .icon.on:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent-2) 26%, transparent);
+  }
+  /* Where the bar has room, the marker and view buttons say what they are. */
+  .label {
+    display: none;
+  }
+  @media (min-width: 1280px) {
+    .icon.labelled {
+      display: flex;
+      gap: 5px;
+      width: auto;
+      padding: 0 11px 0 8px;
+      border-radius: 18px;
+    }
+    .labelled .label {
+      display: inline;
+      font-size: 13px;
+    }
   }
   .repeat {
     position: relative;
@@ -566,12 +592,17 @@
     gap: 10px;
     width: 100%;
   }
+  /* The time played is looked at most; the time left stays quieter. */
   .time {
     font-family: var(--mono);
-    font-size: 12px;
-    color: var(--muted);
-    min-width: 52px;
+    font-size: 15px;
+    color: var(--text);
+    min-width: 56px;
     text-align: center;
+  }
+  .time.remaining {
+    font-size: 13px;
+    color: var(--muted);
   }
   .timeline {
     position: relative;

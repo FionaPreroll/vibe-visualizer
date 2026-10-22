@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { elapsed, shown, speed } from './time';
-import { createWav } from './wav';
+import { createTaggedWav, createWav } from './wav';
 
 // The welcome (tested in visuals.spec.ts) would cover the page.
 test.beforeEach(async ({ page }) => {
@@ -78,6 +78,37 @@ test('queue: adds files, reports unsupported ones, reorders and removes', async 
     .getByRole('button', { name: /Remove/ })
     .click();
   await expect(items).toHaveCount(2);
+  expect(errors).toEqual([]);
+});
+
+test('queue: a title takes most of its row, and a file without tags is named once', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  const title = 'FibeStation Demo Mix (Extended Version)';
+  const artist = 'The Very Long Artist Name Collective';
+  await page.getByTestId('file-input').setInputFiles([
+    { name: 'tagged.wav', mimeType: 'audio/wav', buffer: createTaggedWav(4, { title, artist }) },
+    { name: 'Without tags.wav', mimeType: 'audio/wav', buffer: createWav(3) },
+  ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items.nth(1)).toHaveAttribute('data-status', 'ready');
+  // The duration ends the title's line instead of a column of its own, and the buttons show in
+  // its place only while the row is pointed at: the title has more than half of the row.
+  const share = await items
+    .nth(0)
+    .evaluate(
+      (row) =>
+        row.querySelector('.title')!.getBoundingClientRect().width /
+        row.getBoundingClientRect().width,
+    );
+  expect(share).toBeGreaterThan(0.5);
+  // Cut short in the row, in full in the tooltip, with the file.
+  await expect(items.nth(0)).toHaveAttribute('title', `${title} – ${artist}\ntagged.wav`);
+  // Without tags, the file names the track: it is not repeated as the artist.
+  await expect(items.nth(1).locator('.title')).toHaveText('Without tags');
+  await expect(items.nth(1).locator('.artist')).toHaveText('');
   expect(errors).toEqual([]);
 });
 
