@@ -14,10 +14,15 @@ concurrency:
 # Ubuntu 24.04 rather than ubuntu-latest: the jobs install browsers and their system packages
 # (the Firefox job also a display and a sound server), which a new Ubuntu may change. Move on
 # to a newer one on purpose.
+#
+# Each job has a time limit, so a runner that hangs fails within the hour rather than after
+# GitHub's six (one hung for hours in `playwright install`). The limits leave room for slow
+# system packages: once Firefox's took 24 minutes to install, and its job 34 in all.
 jobs:
   # Types, lint, formatting and the unit tests.
   static:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
       # Codecov takes the coverage signed in with GitHub's OIDC token: no secret to keep.
@@ -51,6 +56,7 @@ jobs:
   e2e:
     name: e2e (${{ matrix.part }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -90,6 +96,7 @@ jobs:
     if: always()
     needs: [static, e2e]
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - run: |
           test "${{ needs.static.result }}" = success
@@ -98,6 +105,7 @@ jobs:
   # The second browser (NF-02): the main paths, in a job of their own.
   firefox:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
