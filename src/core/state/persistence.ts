@@ -287,9 +287,11 @@ export function loadSettings(): Settings {
       ? Math.max(RENDER_SCALE_RANGE.min, Math.min(RENDER_SCALE_RANGE.max, settings.renderScale))
       : DEFAULT_SETTINGS.renderScale;
     // Until the user chooses, flashing is reduced where the system asks for less motion (VE-06).
-    if (typeof stored['reduceFlashing'] !== 'boolean') {
-      settings.reduceFlashing = prefersReducedMotion();
+    // Settings stored before the choice was kept had it on only if the user turned it on.
+    if (typeof stored['reduceFlashingChosen'] !== 'boolean') {
+      settings.reduceFlashingChosen = stored['reduceFlashing'] === true;
     }
+    if (!settings.reduceFlashingChosen) settings.reduceFlashing = prefersReducedMotion();
     settings.autoPresets = sanitizeAutoPresets(stored['autoPresets']);
     settings.overlay = sanitizeOverlay(stored['overlay']);
     settings.favourites = sanitizeFavourites(stored['favourites']);

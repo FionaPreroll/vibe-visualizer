@@ -270,6 +270,8 @@ export class Player {
       console.error('The queue of the last visit could not be restored', error);
     });
     window.addEventListener('pagehide', this.flushSave);
+    // A tab in the background can be discarded without a pagehide (on phones above all).
+    document.addEventListener('visibilitychange', this.flushSave);
   }
 
   /** A new token for the file of track `id`. */
@@ -467,6 +469,8 @@ export class Player {
     const scrubbed = this.scrubPosition();
     if (scrubbed !== null) return scrubbed;
     if (this.engine.heardToken !== this.loadedToken) return this.lastPosition;
+    // Kept for the gapless transition above: what is shown may be all that reads the position.
+    this.lastPosition = this.engine.position;
     return this.engine.displayPosition(now);
   }
 
@@ -1460,6 +1464,7 @@ export class Player {
     this.endScrub();
     this.dropUndo();
     window.removeEventListener('pagehide', this.flushSave);
+    document.removeEventListener('visibilitychange', this.flushSave);
     this.flushSave();
     if (this.liveInput) closeInput(this.liveInput.stream);
     this.probeClient.terminate();

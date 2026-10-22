@@ -97,12 +97,26 @@ export function evenness(times: readonly number[], positions: readonly number[])
   };
 }
 
-/** Keeps the last {@link KEEP} values. */
+/** Keeps the last {@link KEEP} values, in a ring: a value more costs the same however many. */
 class Samples {
-  readonly values: number[] = [];
+  private readonly ring = new Float64Array(KEEP);
+  private next = 0;
+  private count = 0;
   push(value: number): void {
-    this.values.push(value);
-    if (this.values.length > KEEP) this.values.splice(0, this.values.length - KEEP);
+    this.ring[this.next] = value;
+    this.next = (this.next + 1) % KEEP;
+    this.count = Math.min(this.count + 1, KEEP);
+  }
+  /** The last `last` values (all kept, without it), oldest first. */
+  recent(last = KEEP): number[] {
+    const count = Math.min(last, this.count);
+    const values = new Array<number>(count);
+    for (let i = 0; i < count; i++) values[i] = this.ring[(this.next - count + i + KEEP) % KEEP]!;
+    return values;
+  }
+  clear(): void {
+    this.next = 0;
+    this.count = 0;
   }
 }
 
@@ -137,7 +151,7 @@ export class PerfRecorder {
       this.shown,
       this.published,
     ]) {
-      samples.values.length = 0;
+      samples.clear();
     }
     this.parts.clear();
     this.longCount = 0;
@@ -177,8 +191,7 @@ export class PerfRecorder {
    * reset).
    */
   snapshot(last?: number): PerfSnapshot {
-    const recent = (values: number[]) => (last === undefined ? values : values.slice(-last));
-    const intervals = recent(this.intervals.values);
+    const intervals = this.intervals.recent(last);
     const usual = quantile(
       [...intervals].sort((a, b) => a - b),
       0.5,
@@ -191,9 +204,9 @@ export class PerfRecorder {
         ...spread(intervals),
         dropped: intervals.filter((interval) => interval > DROPPED * usual).length,
       },
-      work: spread(recent(this.work.values)),
+      work: spread(this.work.recent(last)),
       parts: Object.fromEntries(
-        [...this.parts].map(([label, samples]) => [label, spread(recent(samples.values))]),
+        [...this.parts].map(([label, samples]) => [label, spread(samples.recent(last))]),
       ),
       playhead: this.playheadEvenness(last),
       longFrames: {
@@ -214,7 +227,7 @@ export class PerfRecorder {
 
   /** The time between the last `count` frames (ms), oldest first. */
   recentFrames(count: number): number[] {
-    return this.intervals.values.slice(-count);
+    return this.intervals.recent(count);
   }
 
   /**
@@ -222,11 +235,10 @@ export class PerfRecorder {
    * not move (nothing played).
    */
   private playheadEvenness(last?: number): PerfSnapshot['playhead'] {
-    const recent = (values: number[]) => (last === undefined ? values : values.slice(-last));
-    const times = recent(this.playheadTimes.values);
-    const shown = evenness(times, recent(this.shown.values));
+    const times = this.playheadTimes.recent(last);
+    const shown = evenness(times, this.shown.recent(last));
     if (shown.frames === 0) return null;
-    return { shown, published: evenness(times, recent(this.published.values)) };
+    return { shown, published: evenness(times, this.published.recent(last)) };
   }
 
   /** Long animation frames where the browser reports them (with their scripts), else long tasks. */

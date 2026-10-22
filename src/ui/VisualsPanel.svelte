@@ -89,7 +89,11 @@
     <input
       type="checkbox"
       checked={$app.settings.reduceFlashing}
-      onchange={(event) => player.updateSettings({ reduceFlashing: event.currentTarget.checked })}
+      onchange={(event) =>
+        player.updateSettings({
+          reduceFlashing: event.currentTarget.checked,
+          reduceFlashingChosen: true,
+        })}
       data-testid="reduce-flashing"
     />
     Reduce flashing

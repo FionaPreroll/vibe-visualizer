@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evenness, spread } from './perf';
+import { evenness, PerfRecorder, spread } from './perf';
 
 describe('the measurements of ?perf', () => {
   it('give the percentiles and the maximum', () => {
@@ -27,5 +27,16 @@ describe('the measurements of ?perf', () => {
     const result = evenness(times, positions);
     expect(result.sd).toBeLessThan(0.01);
     expect(result.frames).toBe(88);
+  });
+
+  it('keep the last minute of frames, oldest first', () => {
+    const recorder = new PerfRecorder();
+    let now = 0;
+    // Frames 1 ms apart, then 2 ms, and so on: more than a minute of them.
+    for (let interval = 0; interval <= 4000; interval++) recorder.frame((now += interval));
+    expect(recorder.recentFrames(3)).toEqual([3998, 3999, 4000]);
+    const kept = recorder.recentFrames(5000);
+    expect(kept).toHaveLength(3600);
+    expect(kept[0]).toBe(401);
   });
 });

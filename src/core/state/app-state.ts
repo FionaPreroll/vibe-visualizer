@@ -213,6 +213,8 @@ export interface Settings {
   autoQuality: boolean;
   /** Damp sudden jumps in brightness, live and in exports (VE-06). */
   reduceFlashing: boolean;
+  /** The user chose {@link reduceFlashing}; until then, it follows the system (VE-06). */
+  reduceFlashingChosen: boolean;
   /** The track's title and artist over the visuals, live and in exports (LS-18, LS-19). */
   overlay: OverlaySettings;
   /** The Logo Spectrum shows the cover art of the track playing as its logo (LS-15). */
@@ -402,6 +404,7 @@ export const DEFAULT_SETTINGS: Settings = {
   renderScale: 1,
   autoQuality: true,
   reduceFlashing: false,
+  reduceFlashingChosen: false,
   overlay: DEFAULT_OVERLAY,
   coverLogo: false,
   coverColors: false,

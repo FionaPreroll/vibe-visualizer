@@ -53,6 +53,9 @@ export class AudioEngine {
   private offset = 0;
   /** The position to show, moving on smoothly between the audio callbacks. */
   private readonly smoother = new PositionSmoother();
+  /** The position last shown, and the time it was for. */
+  private displayed = 0;
+  private displayedAt = NaN;
   /**
    * Told when the sound stops without being asked to (NF-09): the engine failed, the audio
    * output failed, or the browser or the system took the sound away. The message says what
@@ -401,7 +404,14 @@ export class AudioEngine {
    * the audio callbacks (see {@link PositionSmoother}).
    */
   displayPosition(now = performance.now()): number {
-    return this.smoother.at(this.position, this.monitor.rate, this.monitor.renderTime, now / 1000);
+    // Once per time: the parts of a frame show the same, and the smoothing goes one step.
+    if (now !== this.displayedAt) {
+      // A suspended or interrupted context publishes nothing more: the position stands.
+      const rate = this.context?.state === 'running' ? this.monitor.rate : 0;
+      this.displayed = this.smoother.at(this.position, rate, this.monitor.renderTime, now / 1000);
+      this.displayedAt = now;
+    }
+    return this.displayed;
   }
 
   /** True when the current stream has been played to its end. */

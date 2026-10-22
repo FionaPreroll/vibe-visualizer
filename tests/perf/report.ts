@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /**
  * Turns the results of tests/perf (a directory of `<label>-r<round>-<scenario>.json`) into a
@@ -249,6 +250,6 @@ export function report(directory: string): string {
   return lines.join('\n');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.stdout.write(report(process.argv[2] ?? 'perf-results'));
 }
