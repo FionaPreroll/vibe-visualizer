@@ -1,9 +1,11 @@
 # Updates of the dependencies as pull requests: once a week, the minor and patch updates of npm
-# in one pull request, majors one by one; the GitHub Actions once a month.
+# in one pull request, majors one by one; the GitHub Actions once a month. They go into dev,
+# like every change, and reach main with it. (Security updates go into main, whatever is set.)
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
     groups:
@@ -11,5 +13,6 @@ updates:
         update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: monthly
