@@ -2,6 +2,10 @@
 
 What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with the day and the time of the build, such as 0.9.20261003.1432 (**About** shows yours), so the changes are listed by the day they came out.
 
+## 22 October 2026
+
+- **The bar at the bottom:** where the window is wide enough (1280 pixels or more), the buttons for the markers and the detail waveform say what they are: *In*, *Out*, *Snap*, *Wave*. A switch that is on (shuffle, repeat, snap, the detail waveform) shows it with a filled background as well as its colour. The time played is larger and brighter; the time left stays quieter.
+
 ## 6 October 2026
 
 - **Measuring a stutter:** with `?perf` at the end of the address, a panel shows how evenly the frames come and the playhead moves, what each moving part costs, and the long frames with what caused them; **Copy** puts it all on the clipboard for a bug report (see *When something goes wrong* in the guide).
