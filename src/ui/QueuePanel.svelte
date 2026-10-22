@@ -500,10 +500,12 @@
   .end > * {
     grid-area: 1 / 1;
   }
+  /* Never in the way of the buttons over it: hidden, it would still take their clicks. */
   .duration {
     font-family: var(--mono);
     font-size: 12px;
     color: var(--muted);
+    pointer-events: none;
   }
   .actions {
     display: flex;
