@@ -5,6 +5,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 ## 22 October 2026
 
 - **The bar at the bottom:** where the window is wide enough (1280 pixels or more), the buttons for the markers and the detail waveform say what they are: *In*, *Out*, *Snap*, *Wave*. A switch that is on (shuffle, repeat, snap, the detail waveform) shows it with a filled background as well as its colour. The time played is larger and brighter; the time left stays quieter.
+- **Correcting the beat grid** is easier to find: its buttons, the style and the zoom of the detail waveform sit in a strip of their own above it, as large as the other controls, instead of small and faint on top of the waveform. The waveform is a little wider for it.
 
 ## 6 October 2026
 

@@ -309,110 +309,118 @@
     {/each}
   </div>
   <div class="view">
-    <canvas
-      bind:this={canvas}
-      onpointerdown={onPointerDown}
-      onpointermove={onPointerMove}
-      onpointerup={onPointerUp}
-      onpointercancel={() => {
-        drag = null;
-        dragOffset = 0;
-        markDrag = null;
-        if (gridDrag) player.shiftGrid(gridDrag.from, false);
-        gridDrag = null;
-      }}
-      onwheel={onWheel}
-    ></canvas>
-    {#if !current}
-      <p class="empty" data-testid="detail-empty">
-        The waveform of the track playing shows here, with its beat grid and hot cues.
-      </p>
-    {/if}
-    <div
-      class="grid-tools"
-      class:hidden={!current}
-      role="group"
-      aria-label="Beat grid"
-      data-testid="grid-tools"
-    >
-      <button
-        onclick={() => player.setDownbeat()}
-        disabled={!hasGrid}
-        title="Beat 1 here: the beat at the playhead starts its bar"
-        data-testid="grid-downbeat">1 here</button
+    <!-- The grid's tools on the left, the look and the zoom on the right: a strip of their own,
+         as large as the other controls, rather than small on top of the waveform. -->
+    <div class="strip">
+      <div
+        class="grid-tools"
+        class:hidden={!current}
+        role="group"
+        aria-label="Beat grid"
+        data-testid="grid-tools"
       >
-      <span class="pair">
         <button
-          onclick={() => player.moveBars(-1)}
+          onclick={() => player.setDownbeat()}
           disabled={!hasGrid}
-          aria-label="Bars one beat earlier"
-          title="The bars start one beat earlier"
-          data-testid="grid-bars-earlier">◂</button
+          title="Beat 1 here: the beat at the playhead starts its bar"
+          data-testid="grid-downbeat">1 here</button
         >
-        <span>bar</span>
+        <span class="pair">
+          <button
+            onclick={() => player.moveBars(-1)}
+            disabled={!hasGrid}
+            aria-label="Bars one beat earlier"
+            title="The bars start one beat earlier"
+            data-testid="grid-bars-earlier">◂</button
+          >
+          <span>bar</span>
+          <button
+            onclick={() => player.moveBars(1)}
+            disabled={!hasGrid}
+            aria-label="Bars one beat later"
+            title="The bars start one beat later"
+            data-testid="grid-bars-later">▸</button
+          >
+        </span>
+        <span class="pair">
+          <button
+            onclick={(event) => player.nudgeGrid(-(event.shiftKey ? GRID_FINE_STEP : GRID_STEP))}
+            disabled={!hasGrid}
+            aria-label="Beat grid earlier"
+            title="Move the beat grid 5 ms earlier (Shift: 1 ms), or Shift+drag the waveform"
+            data-testid="grid-earlier">◂</button
+          >
+          <span data-testid="grid-shift">{formatShift(gridShift)}</span>
+          <button
+            onclick={(event) => player.nudgeGrid(event.shiftKey ? GRID_FINE_STEP : GRID_STEP)}
+            disabled={!hasGrid}
+            aria-label="Beat grid later"
+            title="Move the beat grid 5 ms later (Shift: 1 ms), or Shift+drag the waveform"
+            data-testid="grid-later">▸</button
+          >
+        </span>
+        {#if current && isGridEdited(current.gridEdit)}
+          <button
+            onclick={() => player.resetGrid()}
+            aria-label="Reset the beat grid"
+            title="The beat grid as the analysis found it"
+            data-testid="grid-reset">↺</button
+          >
+        {/if}
+      </div>
+      <div class="look">
         <button
-          onclick={() => player.moveBars(1)}
-          disabled={!hasGrid}
-          aria-label="Bars one beat later"
-          title="The bars start one beat later"
-          data-testid="grid-bars-later">▸</button
+          class="style"
+          onclick={() =>
+            player.updateSettings({
+              waveformStyle: $app.settings.waveformStyle === 'bands' ? 'rgb' : 'bands',
+            })}
+          title={$app.settings.waveformStyle === 'bands'
+            ? 'Three bands: lows blue, mids orange, highs white. Click for RGB'
+            : 'RGB: coloured by the bands. Click for three bands'}
+          data-testid="waveform-style"
+          data-style={$app.settings.waveformStyle}
         >
-      </span>
-      <span class="pair">
-        <button
-          onclick={(event) => player.nudgeGrid(-(event.shiftKey ? GRID_FINE_STEP : GRID_STEP))}
-          disabled={!hasGrid}
-          aria-label="Beat grid earlier"
-          title="Move the beat grid 5 ms earlier (Shift: 1 ms), or Shift+drag the waveform"
-          data-testid="grid-earlier">◂</button
-        >
-        <span data-testid="grid-shift">{formatShift(gridShift)}</span>
-        <button
-          onclick={(event) => player.nudgeGrid(event.shiftKey ? GRID_FINE_STEP : GRID_STEP)}
-          disabled={!hasGrid}
-          aria-label="Beat grid later"
-          title="Move the beat grid 5 ms later (Shift: 1 ms), or Shift+drag the waveform"
-          data-testid="grid-later">▸</button
-        >
-      </span>
-      {#if current && isGridEdited(current.gridEdit)}
-        <button
-          onclick={() => player.resetGrid()}
-          aria-label="Reset the beat grid"
-          title="The beat grid as the analysis found it"
-          data-testid="grid-reset">↺</button
-        >
+          {$app.settings.waveformStyle === 'bands' ? '3 bands' : 'RGB'}
+        </button>
+        <div class="zoom" role="group" aria-label="Zoom">
+          <button
+            onclick={() => (zoom = Math.min(ZOOMS.length - 1, zoom + 1))}
+            disabled={zoom === ZOOMS.length - 1}
+            aria-label="Zoom out"
+            title="Zoom out (or the mouse wheel)">−</button
+          >
+          <span data-testid="detail-span">{ZOOMS[zoom]} s</span>
+          <button
+            onclick={() => (zoom = Math.max(0, zoom - 1))}
+            disabled={zoom === 0}
+            aria-label="Zoom in"
+            title="Zoom in (or the mouse wheel)">+</button
+          >
+        </div>
+      </div>
+    </div>
+    <div class="wave">
+      <canvas
+        bind:this={canvas}
+        onpointerdown={onPointerDown}
+        onpointermove={onPointerMove}
+        onpointerup={onPointerUp}
+        onpointercancel={() => {
+          drag = null;
+          dragOffset = 0;
+          markDrag = null;
+          if (gridDrag) player.shiftGrid(gridDrag.from, false);
+          gridDrag = null;
+        }}
+        onwheel={onWheel}
+      ></canvas>
+      {#if !current}
+        <p class="empty" data-testid="detail-empty">
+          The waveform of the track playing shows here, with its beat grid and hot cues.
+        </p>
       {/if}
     </div>
-    <button
-      class="style"
-      onclick={() =>
-        player.updateSettings({
-          waveformStyle: $app.settings.waveformStyle === 'bands' ? 'rgb' : 'bands',
-        })}
-      title={$app.settings.waveformStyle === 'bands'
-        ? 'Three bands: lows blue, mids orange, highs white. Click for RGB'
-        : 'RGB: coloured by the bands. Click for three bands'}
-      data-testid="waveform-style"
-      data-style={$app.settings.waveformStyle}
-    >
-      {$app.settings.waveformStyle === 'bands' ? '3 bands' : 'RGB'}
-    </button>
-  </div>
-  <div class="zoom" role="group" aria-label="Zoom">
-    <button
-      onclick={() => (zoom = Math.max(0, zoom - 1))}
-      disabled={zoom === 0}
-      aria-label="Zoom in"
-      title="Zoom in (or the mouse wheel)">+</button
-    >
-    <span data-testid="detail-span">{ZOOMS[zoom]} s</span>
-    <button
-      onclick={() => (zoom = Math.min(ZOOMS.length - 1, zoom + 1))}
-      disabled={zoom === ZOOMS.length - 1}
-      aria-label="Zoom out"
-      title="Zoom out">−</button
-    >
   </div>
 </section>
 
@@ -421,7 +429,7 @@
     display: flex;
     align-items: stretch;
     gap: 8px;
-    height: 72px;
+    height: 90px;
     padding: 6px 12px;
     background: var(--bg);
     border-top: 1px solid var(--border);
@@ -446,9 +454,30 @@
     color: #000;
   }
   .view {
-    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     flex: 1;
     min-width: 0;
+  }
+  .strip {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 22px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .strip button {
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 6px;
+    line-height: 20px;
+  }
+  .wave {
+    position: relative;
+    flex: 1;
+    min-height: 0;
   }
   canvas {
     display: block;
@@ -459,21 +488,8 @@
     cursor: grab;
     touch-action: none;
   }
-  .style {
-    position: absolute;
-    right: 4px;
-    bottom: 4px;
-    padding: 0 5px;
-    border-color: transparent;
-    border-radius: 4px;
-    background: rgb(11 11 20 / 0.7);
-    font: 10px/16px var(--mono);
-    color: var(--muted);
-    opacity: 0.6;
-  }
-  .view:hover .style,
-  .style:focus-visible {
-    opacity: 1;
+  canvas:active {
+    cursor: grabbing;
   }
   .empty {
     position: absolute;
@@ -487,61 +503,41 @@
     text-align: center;
     pointer-events: none;
   }
+  .grid-tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
   .grid-tools.hidden {
     display: none;
   }
-  .grid-tools {
-    position: absolute;
-    left: 4px;
-    bottom: 4px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font: 10px/16px var(--mono);
-    color: var(--muted);
-    opacity: 0.6;
-  }
-  .view:hover .grid-tools,
-  .grid-tools:focus-within {
-    opacity: 1;
-  }
-  .grid-tools button {
-    padding: 0 5px;
-    border-color: transparent;
-    border-radius: 4px;
-    background: rgb(11 11 20 / 0.7);
-    font: inherit;
-    color: inherit;
-  }
-  .grid-tools button:hover:not(:disabled) {
-    color: var(--text);
-  }
+  /* A value between the buttons that change it: one control. */
   .pair {
     display: flex;
     align-items: center;
-    gap: 1px;
-    padding: 0 1px;
-    border-radius: 4px;
-    background: rgb(11 11 20 / 0.7);
+    gap: 4px;
   }
-  .pair button {
-    background: transparent;
+  .pair button,
+  .zoom button {
+    width: 24px;
+    padding: 0;
   }
-  canvas:active {
-    cursor: grabbing;
+  [data-testid='grid-shift'],
+  [data-testid='detail-span'] {
+    min-width: 3.5em;
+    font-family: var(--mono);
+    font-size: 12px;
+    text-align: center;
+  }
+  .look {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: auto;
   }
   .zoom {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 2px;
-    font: 11px var(--mono);
-    color: var(--muted);
-  }
-  .zoom button {
-    width: 26px;
-    height: 22px;
-    padding: 0;
+    gap: 4px;
   }
 </style>
