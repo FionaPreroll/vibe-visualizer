@@ -14,7 +14,7 @@
   import { DragScroll } from './drag-scroll';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
-  import TrackNameDialog from './TrackNameDialog.svelte';
+  import { trackNameDialog } from './later.svelte';
   import TrackTempo from './TrackTempo.svelte';
 
   const player = usePlayer();
@@ -55,6 +55,9 @@
   let dragScroll: DragScroll | null = null;
   /** The track being named (LS-18). */
   let naming = $state<Track | null>(null);
+  $effect(() => {
+    if (naming) void trackNameDialog.load();
+  });
 
   const totalDuration = $derived($tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0));
 
@@ -337,7 +340,9 @@
       {/each}
     </ol>
   {/if}
-  <TrackNameDialog track={naming} onclose={() => (naming = null)} />
+  {#if trackNameDialog.component}
+    <trackNameDialog.component track={naming} onclose={() => (naming = null)} />
+  {/if}
 </section>
 
 <style>
