@@ -13,7 +13,7 @@
   import Section from './controls/Section.svelte';
   import Slider from './controls/Slider.svelte';
   import { usePlayer } from './player-context';
-  import TrackNameDialog from './TrackNameDialog.svelte';
+  import { trackNameDialog } from './later.svelte';
 
   /**
    * The track overlay (LS-18, LS-19), for both modes: the title and artist of the track playing
@@ -24,6 +24,9 @@
   const overlay = $derived($settings.overlay);
   const current = $derived($currentTrack);
   let naming = $state<Track | null>(null);
+  $effect(() => {
+    if (naming) void trackNameDialog.load();
+  });
 
   const set = (changes: Partial<OverlaySettings>) =>
     player.updateSettings({ overlay: { ...overlay, ...changes } });
@@ -163,7 +166,9 @@
   {/if}
 </Section>
 
-<TrackNameDialog track={naming} onclose={() => (naming = null)} />
+{#if trackNameDialog.component}
+  <trackNameDialog.component track={naming} onclose={() => (naming = null)} />
+{/if}
 
 <style>
   .check {

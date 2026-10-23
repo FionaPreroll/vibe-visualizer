@@ -10,15 +10,11 @@
   import { Player } from '../core/player/player';
   import type { SceneKind } from '../core/render/render-protocol';
   import { VisualAssets } from '../core/render/visual-assets';
-  import AnalysisView from './AnalysisView.svelte';
   import { provideControllers } from './controller-context';
-  import ControllerDialog from './ControllerDialog.svelte';
   import { renderDefaultLogo } from './default-logo';
   import DetailWaveform from './DetailWaveform.svelte';
   import DropOverlay from './DropOverlay.svelte';
-  import ExportDialog from './ExportDialog.svelte';
   import Guard from './Guard.svelte';
-  import HelpDialog from './HelpDialog.svelte';
   import LivePanel from './LivePanel.svelte';
   import NewVersionNotice from './NewVersionNotice.svelte';
   import { perfEnabled } from './perf';
@@ -26,6 +22,14 @@
   import { provideExporter } from './exporter-context';
   import { notifyExportEnd } from './export-notify';
   import Icon from './Icon.svelte';
+  import {
+    analysisView,
+    controllerDialog,
+    exportDialog,
+    helpDialog,
+    loadWhenIdle,
+    settingsDialog,
+  } from './later.svelte';
   import { openMiniPlayerWindow, supportsMiniPlayer } from './mini-player';
   import MiniPlayerControls from './MiniPlayerControls.svelte';
   import { savePicture } from './picture';
@@ -39,7 +43,6 @@
   import { portal } from './portal';
   import ProblemNotice from './ProblemNotice.svelte';
   import QueuePanel from './QueuePanel.svelte';
-  import SettingsDialog from './SettingsDialog.svelte';
   import { releasedShortcut, shortcutFor, type ShortcutActions } from './shortcuts';
   import { provideCapture, StageCapture } from './stage-capture';
   import SoundPanel from './SoundPanel.svelte';
@@ -74,6 +77,16 @@
   let helpSection = $state('getting-started');
   let welcomeOpen = $state(false);
   let stage: HTMLElement;
+  // Each dialog loads as it opens, if the browser had no time for it before (later.svelte.ts).
+  onMount(loadWhenIdle);
+  $effect(() => {
+    if (exportOpen) void exportDialog.load();
+    if (settingsOpen) void settingsDialog.load();
+    if (helpOpen) void helpDialog.load();
+    if (controllerOpen) void controllerDialog.load();
+    if ($settings.visualMode === 'analysis') void analysisView.load();
+  });
+
   /** While the side panel's edge is dragged: the panel's width, stored when it is let go. */
   let dragWidth = $state<number | null>(null);
   const panelWidth = $derived(dragWidth ?? $settings.panelWidth);
@@ -559,8 +572,8 @@
     }}
   >
     <Guard where="The visuals">
-      {#if $settings.visualMode === 'analysis'}
-        <AnalysisView />
+      {#if $settings.visualMode === 'analysis' && analysisView.component}
+        <analysisView.component />
       {/if}
       <!-- The mini player's (DS-06) or the second screen's window (DS-03) takes the stage, also
            while the tab shows the Analysis. -->
@@ -723,32 +736,40 @@
     </div>
   {/if}
   <Guard where="The transport bar"><TransportBar /></Guard>
-  <ExportDialog open={exportOpen} onclose={() => (exportOpen = false)} />
-  <ControllerDialog
-    open={controllerOpen}
-    onclose={() => (controllerOpen = false)}
-    onhelp={() => {
-      controllerOpen = false;
-      helpSection = 'dj-controller';
-      helpOpen = true;
-    }}
-  />
-  <SettingsDialog
-    open={settingsOpen}
-    onclose={() => (settingsOpen = false)}
-    onhelp={(section) => {
-      settingsOpen = false;
-      helpSection = section;
-      helpOpen = true;
-    }}
-  />
-  <HelpDialog
-    open={helpOpen}
-    bind:section={helpSection}
-    onclose={() => (helpOpen = false)}
-    onwelcome={() => (welcomeOpen = true)}
-    onsettings={() => (settingsOpen = true)}
-  />
+  {#if exportDialog.component}
+    <exportDialog.component open={exportOpen} onclose={() => (exportOpen = false)} />
+  {/if}
+  {#if controllerDialog.component}
+    <controllerDialog.component
+      open={controllerOpen}
+      onclose={() => (controllerOpen = false)}
+      onhelp={() => {
+        controllerOpen = false;
+        helpSection = 'dj-controller';
+        helpOpen = true;
+      }}
+    />
+  {/if}
+  {#if settingsDialog.component}
+    <settingsDialog.component
+      open={settingsOpen}
+      onclose={() => (settingsOpen = false)}
+      onhelp={(section) => {
+        settingsOpen = false;
+        helpSection = section;
+        helpOpen = true;
+      }}
+    />
+  {/if}
+  {#if helpDialog.component}
+    <helpDialog.component
+      open={helpOpen}
+      bind:section={helpSection}
+      onclose={() => (helpOpen = false)}
+      onwelcome={() => (welcomeOpen = true)}
+      onsettings={() => (settingsOpen = true)}
+    />
+  {/if}
   <DropOverlay />
   {#if perfEnabled}
     <!-- With ?perf in the address: the measurements on screen. -->
