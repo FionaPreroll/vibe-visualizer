@@ -99,11 +99,14 @@ test('markers snap to the beat, can be dragged and nudged, and clearing them can
   await page.getByTestId('quantize').click();
   await expect(page.getByTestId('quantize')).toHaveAttribute('aria-pressed', 'true');
 
-  // Drag the out marker to about 2/3 of the 14 s track: it snaps to the beat at 9.5 s.
+  // Drag the out marker to about 2/3 of the 14 s track: it snaps to the beat at 9.5 s. The
+  // pointer goes to the marker once it stands still and nothing covers it, and holds it.
+  const outMark = page.getByTestId('mark-out');
   const timeline = (await page.getByTestId('timeline').boundingBox())!;
-  const handle = (await page.getByTestId('mark-out').boundingBox())!;
-  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await outMark.hover();
+  const handle = (await outMark.boundingBox())!;
   await page.mouse.down();
+  await expect(outMark).toHaveClass(/dragging/);
   await page.mouse.move(timeline.x + timeline.width * (9.55 / 14), handle.y + 4, { steps: 6 });
   await page.mouse.up();
   await expect(page.getByTestId('mark-out')).toHaveAttribute('aria-valuetext', '0:09');
