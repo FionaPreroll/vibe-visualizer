@@ -74,6 +74,7 @@ import {
   saveVisuals,
   whenStorageFails,
 } from '../state/persistence';
+import { appParts, watch, type AppParts } from '../state/select';
 import { createStore, type Store } from '../state/store';
 import { errorMessage } from '../util/format';
 import { WorkerClient } from '../util/worker-rpc';
@@ -113,6 +114,8 @@ export interface StreamFile {
  */
 export class Player {
   readonly store: Store<AppState, AppAction>;
+  /** The parts of the state, each told to its subscribers only when it changes (#52). */
+  readonly parts: AppParts;
   readonly engine = new AudioEngine();
   /** Waveforms and beat grids of the queue's tracks (a Svelte store). */
   readonly analysis = new TrackAnalyzer();
@@ -196,6 +199,7 @@ export class Player {
       initialState(loadSettings(), loadVisuals(), loadKaleido(), loadSound()),
       reducer,
     );
+    this.parts = appParts(this.store);
     this.engine.volume = this.state.settings.volume;
     this.engine.inputGainDecibels = this.state.settings.inputGain;
     this.engine.syncOffset = this.state.settings.syncOffset / 1000;
@@ -215,49 +219,33 @@ export class Player {
       ),
     );
     this.updateTrackerRange();
-    let lastSettings = this.state.settings;
-    let lastVisuals = this.state.visuals;
-    let lastKaleido = this.state.kaleido;
-    let lastSound = this.state.sound;
-    let lastTracks = this.state.tracks;
-    let lastCurrent = this.state.currentId;
-    this.store.subscribe((state) => {
+    const { tracks, currentId, settings, visuals, kaleido, sound, live } = this.parts;
+    watch(live, () => this.updateTrackerRange());
+    watch(tracks, (now, before) => {
+      this.scheduleSave();
+      this.storeTrackData(before, now);
+      // The playing track's out marker may have moved: its stream stops somewhere else now.
+      const was = before.find((track) => track.id === this.loadedId);
+      const is = now.find((track) => track.id === this.loadedId);
+      if (was && is && was.marks !== is.marks) this.updateEnd();
+      // The queue changed: the track that follows may be another one.
+      this.planNext();
+    });
+    watch(currentId, () => this.scheduleSave());
+    watch(sound, (now) => {
+      saveSound(now);
+      this.engine.sound = now;
+    });
+    watch(visuals, (now) => saveVisuals(now));
+    watch(kaleido, (now) => saveKaleido(now));
+    watch(settings, (now, before) => {
       this.updateTrackerRange();
-      const queueChanged =
-        state.tracks !== lastTracks ||
-        state.settings.shuffle !== lastSettings.shuffle ||
-        state.settings.repeat !== lastSettings.repeat;
-      if (state.tracks !== lastTracks || state.currentId !== lastCurrent) this.scheduleSave();
-      lastCurrent = state.currentId;
-      if (state.tracks !== lastTracks) {
-        this.storeTrackData(lastTracks, state.tracks);
-        // The playing track's out marker may have moved: its stream stops somewhere else now.
-        const before = lastTracks.find((track) => track.id === this.loadedId);
-        const after = state.tracks.find((track) => track.id === this.loadedId);
-        lastTracks = state.tracks;
-        if (before && after && before.marks !== after.marks) this.updateEnd();
-      }
-      // The queue or the order changed: the track that follows may be another one.
-      if (queueChanged) this.planNext();
-      if (state.sound !== lastSound) {
-        lastSound = state.sound;
-        saveSound(state.sound);
-        this.engine.sound = state.sound;
-      }
-      if (state.visuals !== lastVisuals) {
-        lastVisuals = state.visuals;
-        saveVisuals(state.visuals);
-      }
-      if (state.kaleido !== lastKaleido) {
-        lastKaleido = state.kaleido;
-        saveKaleido(state.kaleido);
-      }
-      if (state.settings === lastSettings) return;
-      lastSettings = state.settings;
-      saveSettings(state.settings);
-      this.engine.volume = state.settings.volume;
-      this.engine.inputGainDecibels = state.settings.inputGain;
-      this.engine.syncOffset = state.settings.syncOffset / 1000;
+      saveSettings(now);
+      this.engine.volume = now.volume;
+      this.engine.inputGainDecibels = now.inputGain;
+      this.engine.syncOffset = now.syncOffset / 1000;
+      // The order changed: the track that follows may be another one.
+      if (now.shuffle !== before.shuffle || now.repeat !== before.repeat) this.planNext();
     });
     this.endCheck = setInterval(() => {
       this.followStream();

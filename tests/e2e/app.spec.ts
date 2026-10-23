@@ -1,6 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './test';
 import { elapsed, shown, speed } from './time';
-import { createWav } from './wav';
+import { createTaggedWav, createWav } from './wav';
 
 // The welcome (tested in visuals.spec.ts) would cover the page.
 test.beforeEach(async ({ page }) => {
@@ -78,6 +79,37 @@ test('queue: adds files, reports unsupported ones, reorders and removes', async 
     .getByRole('button', { name: /Remove/ })
     .click();
   await expect(items).toHaveCount(2);
+  expect(errors).toEqual([]);
+});
+
+test('queue: a title takes most of its row, and a file without tags is named once', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  const title = 'FibeStation Demo Mix (Extended Version)';
+  const artist = 'The Very Long Artist Name Collective';
+  await page.getByTestId('file-input').setInputFiles([
+    { name: 'tagged.wav', mimeType: 'audio/wav', buffer: createTaggedWav(4, { title, artist }) },
+    { name: 'Without tags.wav', mimeType: 'audio/wav', buffer: createWav(3) },
+  ]);
+  const items = page.getByTestId('queue-item');
+  await expect(items.nth(1)).toHaveAttribute('data-status', 'ready');
+  // The duration ends the title's line instead of a column of its own, and the buttons show in
+  // its place only while the row is pointed at: the title has more than half of the row.
+  const share = await items
+    .nth(0)
+    .evaluate(
+      (row) =>
+        row.querySelector('.title')!.getBoundingClientRect().width /
+        row.getBoundingClientRect().width,
+    );
+  expect(share).toBeGreaterThan(0.5);
+  // Cut short in the row, in full in the tooltip, with the file.
+  await expect(items.nth(0)).toHaveAttribute('title', `${title} – ${artist}\ntagged.wav`);
+  // Without tags, the file names the track: it is not repeated as the artist.
+  await expect(items.nth(1).locator('.title')).toHaveText('Without tags');
+  await expect(items.nth(1).locator('.artist')).toHaveText('');
   expect(errors).toEqual([]);
 });
 
@@ -179,4 +211,79 @@ test('settings survive a reload', async ({ page }) => {
     'true',
   );
   await expect(page.getByTestId('analysis-view')).toBeVisible();
+});
+
+test('the side panel is made wider or narrower by its edge, also with the keys, and keeps it', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const panel = page.locator('aside.panel');
+  const stage = page.getByRole('main', { name: 'Visual stage' });
+  const edge = page.getByTestId('panel-edge');
+  const width = async () => Math.round((await panel.boundingBox())!.width);
+  const drag = async (by: number) => {
+    const box = (await edge.boundingBox())!;
+    const [x, y] = [box.x + box.width / 2, box.y + 200];
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + by, y, { steps: 5 });
+    await page.mouse.up();
+  };
+  expect(await width()).toBe(360);
+  // To the left, wider: the stage gives the room.
+  await drag(-100);
+  await expect.poll(width).toBe(460);
+  expect(Math.round((await stage.boundingBox())!.width)).toBe(1440 - 460);
+  // Not wider than 560, nor narrower than 300.
+  await drag(-300);
+  await expect.poll(width).toBe(560);
+  await drag(400);
+  await expect.poll(width).toBe(300);
+  // The arrow keys move the edge, and do not seek; End: the widest.
+  await edge.focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(width).toBe(320);
+  await expect(edge).toHaveAttribute('aria-valuenow', '320');
+  await page.keyboard.press('End');
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(width).toBe(540);
+  // The panel keeps its width, and a double-click gives it its usual one.
+  await page.reload();
+  await expect.poll(width).toBe(540);
+  await edge.dblclick();
+  await expect.poll(width).toBe(360);
+  expect(errors).toEqual([]);
+});
+
+test('in a narrow window the side panel lies over the stage, and closes with Escape or a click beside it', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.goto('/');
+  const panel = page.locator('aside.panel');
+  const stage = page.getByRole('main', { name: 'Visual stage' });
+  const toggle = page.getByRole('button', { name: 'Side panel' });
+  await expect(panel).toBeVisible();
+  // The stage keeps the width of the window; the panel lies over its right side.
+  expect(Math.round((await stage.boundingBox())!.width)).toBe(1000);
+  const over = (await panel.boundingBox())!;
+  expect(Math.round(over.x + over.width)).toBe(1000);
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await toggle.click();
+  await expect(panel).toBeVisible();
+  await stage.click({ position: { x: 100, y: 100 } });
+  await expect(panel).toBeHidden();
+  // In a wide window it stands beside the stage, and stays.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await toggle.click();
+  await expect(panel).toBeVisible();
+  await page.keyboard.press('Escape');
+  await stage.click({ position: { x: 100, y: 100 } });
+  await expect(panel).toBeVisible();
+  expect(Math.round((await stage.boundingBox())!.width)).toBe(1440 - 360);
+  expect(errors).toEqual([]);
 });

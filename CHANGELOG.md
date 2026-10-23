@@ -2,6 +2,18 @@
 
 What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with the day and the time of the build, such as 0.9.20261003.1432 (**About** shows yours), so the changes are listed by the day they came out.
 
+## 23 October 2026
+
+- **Text that follows your browser:** the app's text takes the font size set in the browser (*Font size* in its settings), larger or smaller, instead of fixed sizes; the sizes come from one scale, so text that should look the same does.
+- **A side panel as wide as you like:** drag its left edge (300 to 560 pixels; a double-click gives it its usual width), and it keeps that width. In a narrow window, below about 1100 pixels, it lies over the stage, which keeps its full width, and **Escape** or a click on the stage closes it.
+- **The Visuals tab starts with the settings:** the Kaleidoscope's scenes are buttons in one row (what each shows is its tooltip), and saving, exporting and importing presets moved into the **⋯** next to the presets (**Save as…** asks for the name). On a laptop screen the first slider shows without scrolling.
+
+## 22 October 2026
+
+- **The bar at the bottom:** where the window is wide enough (1280 pixels or more), the buttons for the markers and the detail waveform say what they are: *In*, *Out*, *Snap*, *Wave*. A switch that is on (shuffle, repeat, snap, the detail waveform) shows it with a filled background as well as its colour. The time played is larger and brighter; the time left stays quieter.
+- **Correcting the beat grid** is easier to find: its buttons, the style and the zoom of the detail waveform sit in a strip of their own above it, as large as the other controls, instead of small and faint on top of the waveform. The waveform is a little wider for it.
+- **Fix:** on a German keyboard, **[** (AltGr+8, or Option+5 on a Mac) goes to the previous preset, as **]** goes to the next; it jumped to hot cue 8 (or 5) instead.
+
 ## 6 October 2026
 
 - **Measuring a stutter:** with `?perf` at the end of the address, a panel shows how evenly the frames come and the playhead moves, what each moving part costs, and the long frames with what caused them; **Copy** puts it all on the clipboard for a bug report (see *When something goes wrong* in the guide).

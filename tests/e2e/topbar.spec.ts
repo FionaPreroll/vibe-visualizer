@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test';
 import { openMore } from './topbar';
 
 test.beforeEach(async ({ page }) => {

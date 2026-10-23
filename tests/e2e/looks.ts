@@ -15,3 +15,11 @@ export async function startWithClassicLook(page: Page): Promise<void> {
     }
   });
 }
+
+/** Saves the settings shown as a preset of your own: ⋯ → Save as…, then the name. */
+export async function savePreset(page: Page, name: string): Promise<void> {
+  await page.getByTestId('preset-tools-button').click();
+  await page.getByTestId('preset-save-as').click();
+  await page.getByTestId('preset-name').fill(name);
+  await page.getByTestId('preset-save').click();
+}

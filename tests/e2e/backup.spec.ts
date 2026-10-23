@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './test';
+import { savePreset } from './looks';
 import { createPng } from './png';
 import { createWav } from './wav';
 
@@ -83,8 +85,7 @@ test('a backup holds everything the app keeps, and brings it back (UI-06)', asyn
   await page.getByRole('slider', { name: 'Glow', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(preset).toHaveValue('');
-  await page.getByTestId('preset-name').fill('Mine');
-  await page.getByTestId('preset-save').click();
+  await savePreset(page, 'Mine');
   await expect(preset).toHaveValue('Mine');
   await page.getByText('Background', { exact: true }).click();
   await page.getByTestId('background-input').setInputFiles({

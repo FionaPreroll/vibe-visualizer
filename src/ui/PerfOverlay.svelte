@@ -169,7 +169,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     background: rgb(11 11 18 / 0.88);
-    font: 11px/1.45 var(--mono);
+    font: var(--text-xs)/1.45 var(--mono);
     color: var(--text);
   }
   .perf.closed {

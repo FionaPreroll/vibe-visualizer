@@ -20,9 +20,9 @@
    * over the visuals, with its progress and time on request.
    */
   const player = usePlayer();
-  const app = player.store;
-  const overlay = $derived($app.settings.overlay);
-  const current = $derived($app.tracks.find((track) => track.id === $app.currentId) ?? null);
+  const { currentTrack, settings } = player.parts;
+  const overlay = $derived($settings.overlay);
+  const current = $derived($currentTrack);
   let naming = $state<Track | null>(null);
 
   const set = (changes: Partial<OverlaySettings>) =>
@@ -171,7 +171,7 @@
     align-items: center;
     gap: 8px;
     min-height: 32px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .row {
     display: grid;
@@ -182,7 +182,7 @@
   }
   .row label,
   .row .label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   select {
@@ -192,7 +192,7 @@
     background: var(--surface-2);
     color: var(--text);
     font: inherit;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .positions {
     display: grid;
@@ -217,14 +217,14 @@
   .hint {
     margin: 4px 0 6px;
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .now {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .name {
     overflow: hidden;

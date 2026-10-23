@@ -1,12 +1,14 @@
 <script lang="ts" generics="S">
   import type { Writable } from 'svelte/store';
   import Icon from '../Icon.svelte';
+  import MoreMenu, { type MoreMenuItem } from '../MoreMenu.svelte';
 
   /**
    * Preset picker for a visual mode (PR-01, PR-03, PR-04): built-in presets and your own, which
    * you can save from the current settings, delete, mark as favourites, pick at random, and
    * export to a file or import from one. The preset shown is the one that matches the current
-   * settings exactly; any change turns it into "Custom settings".
+   * settings exactly; any change turns it into "Custom settings". Saving, exporting and importing
+   * are in a ⋯ menu, so that the settings below start high in the panel.
    */
   interface Preset {
     name: string;
@@ -30,8 +32,17 @@
     $props();
 
   let name = $state('');
+  /** The name of a preset to save is asked for ("Save as…"). */
+  let saving = $state(false);
   let message = $state<string | null>(null);
+  let select: HTMLSelectElement | undefined = $state();
+  let nameInput: HTMLInputElement | undefined = $state();
   let fileInput: HTMLInputElement | undefined = $state();
+
+  // The name field takes the focus as it opens.
+  $effect(() => {
+    if (saving) nameInput?.focus();
+  });
 
   const all = $derived([...builtIn, ...$store]);
   const active = $derived(
@@ -45,14 +56,25 @@
     if (preset) onapply(preset.settings);
   }
 
-  function saveCurrent() {
+  /** Saves the settings shown under the name given; `keyboard`: see {@link stopSaving}. */
+  function saveCurrent(keyboard: boolean) {
     const trimmed = name.trim();
     if (!trimmed) return;
     store.update((presets) => [
       ...presets.filter((preset) => preset.name !== trimmed),
       { name: trimmed, settings: current, builtIn: false },
     ]);
+    stopSaving(keyboard);
+  }
+
+  /**
+   * Closes the name field. Used with the keyboard, the focus goes to the presets, which show the
+   * one saved; after a click it goes, so that the keys go on to the app.
+   */
+  function stopSaving(keyboard: boolean) {
+    saving = false;
     name = '';
+    if (keyboard) select?.focus();
   }
 
   function remove(presetName: string) {
@@ -94,6 +116,35 @@
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+
+  /** The tools used now and then. */
+  const tools = $derived<MoreMenuItem[]>([
+    {
+      label: 'Save as…',
+      icon: 'save',
+      title: 'Keep these settings as a preset of your own',
+      testid: 'preset-save-as',
+      onselect: () => {
+        message = null;
+        saving = true;
+      },
+    },
+    {
+      label: 'Export yours',
+      icon: 'export',
+      disabled: $store.length === 0,
+      title: $store.length === 0 ? 'Save a preset first' : 'Save your presets to a file',
+      testid: 'preset-export',
+      onselect: exportPresets,
+    },
+    {
+      label: 'Import…',
+      icon: 'import',
+      title: 'Add the presets of a file to yours',
+      testid: 'preset-import',
+      onselect: () => fileInput?.click(),
+    },
+  ]);
 
   /** Adds the presets of a file to yours; names already taken get a number. */
   async function importPresets(file: File) {
@@ -139,6 +190,7 @@
   <div class="row">
     <select
       id="preset-select"
+      bind:this={select}
       value={active}
       onchange={(event) => apply(event.currentTarget.value)}
       data-testid="preset-select"
@@ -188,51 +240,62 @@
         <Icon name="trash" size={16} />
       </button>
     {/if}
+    <MoreMenu
+      items={tools}
+      label="Preset tools"
+      title="Save, export or import presets"
+      testid="preset-tools"
+    />
   </div>
-  <form
-    class="row"
-    onsubmit={(event) => {
-      event.preventDefault();
-      saveCurrent();
+  {#if saving}
+    <!-- Enter in the name clicks Save, as a click without a count: from the keyboard. -->
+    <form class="row" onsubmit={(event) => event.preventDefault()}>
+      <input
+        bind:this={nameInput}
+        type="text"
+        placeholder="Name for your preset"
+        bind:value={name}
+        maxlength="40"
+        aria-label="Preset name"
+        data-testid="preset-name"
+        onkeydown={(event) => {
+          if (event.key !== 'Escape') return;
+          event.preventDefault();
+          event.stopPropagation();
+          stopSaving(true);
+        }}
+      />
+      <button
+        type="submit"
+        disabled={!name.trim()}
+        onclick={(event) => saveCurrent(event.detail === 0)}
+        data-testid="preset-save"
+      >
+        <Icon name="save" size={16} /> Save
+      </button>
+      <button
+        type="button"
+        class="icon"
+        onclick={(event) => stopSaving(event.detail === 0)}
+        aria-label="Cancel"
+        title="Cancel"
+      >
+        <Icon name="close" size={16} />
+      </button>
+    </form>
+  {/if}
+  <input
+    bind:this={fileInput}
+    type="file"
+    accept=".json,application/json"
+    hidden
+    data-testid="preset-import-input"
+    onchange={(event) => {
+      const file = event.currentTarget.files?.[0];
+      event.currentTarget.value = '';
+      if (file) void importPresets(file);
     }}
-  >
-    <input
-      type="text"
-      placeholder="Name for your preset"
-      bind:value={name}
-      maxlength="40"
-      aria-label="Preset name"
-      data-testid="preset-name"
-    />
-    <button type="submit" disabled={!name.trim()} data-testid="preset-save">
-      <Icon name="save" size={16} /> Save
-    </button>
-  </form>
-  <div class="row files">
-    <button
-      onclick={exportPresets}
-      disabled={$store.length === 0}
-      title={$store.length === 0 ? 'Save a preset first' : 'Save your presets to a file'}
-      data-testid="preset-export"
-    >
-      <Icon name="export" size={16} /> Export yours
-    </button>
-    <button onclick={() => fileInput?.click()} data-testid="preset-import">
-      <Icon name="import" size={16} /> Import
-    </button>
-    <input
-      bind:this={fileInput}
-      type="file"
-      accept=".json,application/json"
-      hidden
-      data-testid="preset-import-input"
-      onchange={(event) => {
-        const file = event.currentTarget.files?.[0];
-        event.currentTarget.value = '';
-        if (file) void importPresets(file);
-      }}
-    />
-  </div>
+  />
   {#if message}
     <p class="message" role="status" data-testid="preset-message">{message}</p>
   {/if}
@@ -247,7 +310,7 @@
     border-bottom: 1px solid var(--border);
   }
   label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .row {
@@ -271,11 +334,6 @@
     gap: 6px;
     padding: 5px 10px;
   }
-  .files button {
-    flex: 1;
-    justify-content: center;
-    font-size: 13px;
-  }
   .icon {
     padding: 5px 8px;
   }
@@ -284,7 +342,7 @@
   }
   .message {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
 </style>

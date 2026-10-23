@@ -183,7 +183,7 @@
   }
   h2 {
     margin: 0;
-    font-size: 20px;
+    font-size: var(--text-xl);
   }
   .close {
     padding: 4px;
@@ -208,7 +208,7 @@
   .group {
     margin: 12px 10px 4px;
     color: var(--muted);
-    font-size: 11px;
+    font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -222,7 +222,7 @@
     border-radius: 7px;
     background: transparent;
     color: var(--muted);
-    font-size: 14px;
+    font-size: var(--text-md);
     text-align: left;
   }
   nav button:hover {
@@ -242,7 +242,7 @@
   }
   .title {
     margin: 0 0 12px;
-    font-size: 18px;
+    font-size: var(--text-lg);
   }
   .guide :global(p),
   .guide :global(ul),
@@ -262,7 +262,7 @@
   }
   .guide :global(h3) {
     margin: 18px 0 8px;
-    font-size: 15px;
+    font-size: var(--text-md);
   }
   .guide :global(a) {
     color: var(--accent-2);
@@ -271,7 +271,7 @@
     padding: 1px 5px;
     border-radius: 4px;
     background: var(--surface-2);
-    font: 12px var(--mono);
+    font: var(--text-xs) var(--mono);
   }
   .actions {
     display: flex;
@@ -286,7 +286,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--text);
-    font-size: 14px;
+    font-size: var(--text-md);
     text-decoration: none;
   }
   .button:hover {

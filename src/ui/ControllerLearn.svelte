@@ -241,17 +241,17 @@
   }
   h3 {
     margin: 0 0 8px;
-    font-size: 16px;
+    font-size: var(--text-md);
   }
   h4 {
     margin: 14px 0 6px;
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .muted {
     color: var(--muted);
   }
   .small {
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .row {
     display: flex;
@@ -273,7 +273,7 @@
     align-items: center;
     padding: 4px 0;
     border-bottom: 1px solid var(--border);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .profiles li {
     grid-template-columns: 1fr 1fr auto auto;
@@ -283,7 +283,7 @@
   }
   .what {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .listening .what {
     font-family: inherit;

@@ -60,7 +60,7 @@
     border-radius: 10px;
     background: var(--surface);
     max-width: calc(100vw - 32px);
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .versions {
     white-space: nowrap;

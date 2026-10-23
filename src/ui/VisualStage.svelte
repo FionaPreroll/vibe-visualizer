@@ -44,7 +44,7 @@
   const player = usePlayer();
   const assets = useAssets();
   const capture = useCapture();
-  const app = player.store;
+  const { tracks, settings, visuals, kaleido, sound } = player.parts;
   let canvas: HTMLCanvasElement | undefined = $state();
   let renderer: Renderer | null = $state(null);
   let status = $state<'starting' | 'running' | 'failed'>('starting');
@@ -60,8 +60,8 @@
   // Render scale and auto-quality (VE-07).
   const quality = new AutoQuality();
   let autoScale = $state(1);
-  const autoQuality = $derived($app.settings.autoQuality);
-  const scale = $derived($app.settings.renderScale * (autoQuality ? autoScale : 1));
+  const autoQuality = $derived($settings.autoQuality);
+  const scale = $derived($settings.renderScale * (autoQuality ? autoScale : 1));
   /** Device pixels of the canvas box, before the scale. */
   let box: readonly [number, number] = [1, 1];
   const scaled = () =>
@@ -130,7 +130,7 @@
     return () => observer.disconnect();
   });
 
-  const reduceFlashing = $derived($app.settings.reduceFlashing);
+  const reduceFlashing = $derived($settings.reduceFlashing);
   $effect(() => {
     renderer?.setReduceFlashing(reduceFlashing);
   });
@@ -138,15 +138,15 @@
   // The track overlay (LS-18, LS-19), the cover art as the logo (LS-15) and its colours
   // (VE-12): the worker learns the tracks of the files in the stream, and shows the one the
   // music heard comes from.
-  const overlay = $derived($app.settings.overlay);
+  const overlay = $derived($settings.overlay);
   $effect(() => {
     renderer?.setOverlay(overlay);
   });
-  const coverLogo = $derived($app.settings.coverLogo);
+  const coverLogo = $derived($settings.coverLogo);
   $effect(() => {
     renderer?.setCoverLogo(coverLogo);
   });
-  const coverColors = $derived($app.settings.coverColors);
+  const coverColors = $derived($settings.coverColors);
   $effect(() => {
     renderer?.setCoverColors(coverColors);
   });
@@ -154,12 +154,12 @@
   const analyses = player.analysis;
   const streamInfo = $derived(renderer ? new StreamInfo(renderer) : null);
   $effect(() => {
-    streamInfo?.update($stream, $app.tracks, $app.sound.rate, coverLogo || coverColors, $analyses);
+    streamInfo?.update($stream, $tracks, $sound.rate, coverLogo || coverColors, $analyses);
   });
 
   // Automatic preset switching: its settings and the presets of each mode that take part.
-  const autoPresets = $derived($app.settings.autoPresets);
-  const favourites = $derived($app.settings.favourites);
+  const autoPresets = $derived($settings.autoPresets);
+  const favourites = $derived($settings.favourites);
   $effect(() => {
     const pool = autoPresets.pool;
     renderer?.setAutoPresets(
@@ -199,20 +199,9 @@
       }
     };
 
-    let lastVisuals = $app.visuals;
-    let lastKaleido = $app.kaleido;
-    instance.setLogoSpectrum(lastVisuals);
-    instance.setKaleidoscope(lastKaleido);
-    const unsubscribeSettings = app.subscribe((state) => {
-      if (state.visuals !== lastVisuals) {
-        lastVisuals = state.visuals;
-        instance.setLogoSpectrum(state.visuals);
-      }
-      if (state.kaleido !== lastKaleido) {
-        lastKaleido = state.kaleido;
-        instance.setKaleidoscope(state.kaleido);
-      }
-    });
+    // Each look goes to the renderer now, and again when it changes.
+    const unsubscribeVisuals = visuals.subscribe((look) => instance.setLogoSpectrum(look));
+    const unsubscribeKaleido = kaleido.subscribe((look) => instance.setKaleidoscope(look));
 
     // Decode images off the render thread's path; skip results that were replaced meanwhile.
     const shown: Record<ImageKind, StoredImage | null | undefined> = {
@@ -251,7 +240,8 @@
       instance.onEvent = null;
       capture.attach(null);
       window.removeEventListener('pagehide', onPageHide);
-      unsubscribeSettings();
+      unsubscribeVisuals();
+      unsubscribeKaleido();
       unsubscribeAssets();
       instance.dispose();
     };
@@ -387,7 +377,7 @@
   .rest p {
     margin: 0;
     color: var(--text);
-    font-size: 15px;
+    font-size: var(--text-md);
   }
   .failed {
     position: absolute;

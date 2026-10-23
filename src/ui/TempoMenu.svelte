@@ -53,7 +53,7 @@
   } = $props();
 
   const player = usePlayer();
-  const app = player.store;
+  const { settings } = player.parts;
   let open = $state(false);
   let button: HTMLButtonElement;
   let menu = $state<HTMLDivElement>();
@@ -305,8 +305,8 @@
           {#each TEMPO_RANGE_IDS as id (id)}
             <button
               role="menuitemradio"
-              aria-checked={$app.settings.bpmRange === id}
-              class:on={$app.settings.bpmRange === id}
+              aria-checked={$settings.bpmRange === id}
+              class:on={$settings.bpmRange === id}
               onclick={(event) => {
                 event.stopPropagation();
                 chooseRange(id, event);
@@ -330,7 +330,7 @@
     border-radius: 4px;
     background: transparent;
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: var(--text-2xs);
     line-height: 16px;
     color: var(--muted);
     white-space: nowrap;
@@ -373,7 +373,7 @@
     border: none;
     border-radius: 5px;
     background: transparent;
-    font-size: 13px;
+    font-size: var(--text-sm);
     text-align: left;
   }
   .menu button:hover:not(:disabled),
@@ -382,7 +382,7 @@
   }
   .value {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .menu button.on .value {
@@ -403,7 +403,7 @@
     flex: 1;
     min-width: 56px;
     padding: 3px 6px;
-    font: 12px var(--mono);
+    font: var(--text-xs) var(--mono);
   }
   .entry button {
     flex: none;
@@ -417,7 +417,7 @@
     padding: 2px 4px 4px;
   }
   .caption {
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .range-buttons {
@@ -429,7 +429,7 @@
     justify-content: center;
     padding: 3px 4px;
     border: 1px solid var(--border);
-    font: 11px var(--mono);
+    font: var(--text-xs) var(--mono);
     white-space: nowrap;
   }
   .range-buttons button.on {

@@ -34,8 +34,8 @@
   let { behind = false }: Props = $props();
 
   const player = usePlayer();
-  const app = player.store;
-  const k = $derived(behind ? ($app.visuals.layerLook ?? $app.kaleido) : $app.kaleido);
+  const { settings, visuals, kaleido } = player.parts;
+  const k = $derived(behind ? ($visuals.layerLook ?? $kaleido) : $kaleido);
   const scene = $derived(sceneById(k.scene));
   const edit = $derived(
     behind
@@ -83,17 +83,18 @@
   class="kaleido"
   aria-label={behind ? 'Settings of the Kaleidoscope behind' : 'Kaleidoscope settings'}
 >
+  <!-- The scenes by name, in a row: what each shows is its tooltip. -->
   <div class="scenes" role="radiogroup" aria-label="Scene">
     {#each KALEIDO_SCENES as entry (entry.id)}
       <button
         role="radio"
         aria-checked={k.scene === entry.id}
         class:on={k.scene === entry.id}
+        title={entry.description}
         onclick={() => edit.scene(entry.id)}
         data-testid={`scene-${entry.id}`}
       >
-        <span class="name">{entry.name}</span>
-        <span class="description">{entry.description}</span>
+        {entry.name}
       </button>
     {/each}
   </div>
@@ -104,9 +105,9 @@
     store={kaleidoPresets}
     current={k}
     onapply={(settings) => edit.replace(settings)}
-    favourites={$app.settings.favourites.kaleidoscope}
+    favourites={$settings.favourites.kaleidoscope}
     onfavourites={(names) =>
-      player.updateSettings({ favourites: { ...$app.settings.favourites, kaleidoscope: names } })}
+      player.updateSettings({ favourites: { ...$settings.favourites, kaleidoscope: names } })}
     sanitize={sanitizeKaleido}
   />
   {#if !behind}
@@ -171,31 +172,23 @@
     display: flex;
     flex-direction: column;
   }
+  /* One column per scene, as wide as its name: in a narrow panel a long name wraps. */
   .scenes {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    padding: 14px 16px 0;
+    grid-auto-flow: column;
+    gap: 6px;
+    padding: 12px 16px 0;
   }
   .scenes button {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    padding: 10px;
-    text-align: left;
+    padding: 6px 8px;
+    font-size: var(--text-sm);
+    line-height: 1.25;
+    text-wrap: balance;
     background: transparent;
   }
   .scenes button.on {
     border-color: var(--accent);
     background: var(--surface-2);
-  }
-  .scenes .name {
-    font-weight: 600;
-  }
-  .scenes .description {
-    font-size: 12px;
-    color: var(--muted);
   }
   .palettes {
     display: grid;
@@ -221,7 +214,7 @@
     border-radius: 4px;
   }
   .palettes .label {
-    font-size: 12px;
+    font-size: var(--text-xs);
     text-transform: capitalize;
   }
   .footer {
@@ -232,7 +225,7 @@
     padding: 14px 16px 20px;
   }
   .hint {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
 </style>

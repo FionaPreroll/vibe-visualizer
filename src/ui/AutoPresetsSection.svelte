@@ -17,12 +17,10 @@
    * way.
    */
   const player = usePlayer();
-  const app = player.store;
-  const auto = $derived($app.settings.autoPresets);
-  const mode = $derived(
-    $app.settings.visualMode === 'kaleidoscope' ? 'kaleidoscope' : 'logoSpectrum',
-  );
-  const favourites = $derived($app.settings.favourites[mode].length);
+  const { settings } = player.parts;
+  const auto = $derived($settings.autoPresets);
+  const mode = $derived($settings.visualMode === 'kaleidoscope' ? 'kaleidoscope' : 'logoSpectrum');
+  const favourites = $derived($settings.favourites[mode].length);
 
   const set = (changes: Partial<AutoPresets>) =>
     player.updateSettings({ autoPresets: { ...auto, ...changes } });
@@ -136,7 +134,7 @@
     align-items: center;
     gap: 8px;
     min-height: 32px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .choice {
     display: grid;
@@ -146,7 +144,7 @@
     min-height: 32px;
   }
   .choice .label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .quick {
@@ -156,7 +154,7 @@
   .quick button {
     flex: 1;
     padding: 4px 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     background: transparent;
   }
   .quick button.on {
@@ -165,7 +163,7 @@
   }
   .hint {
     margin: 4px 0 8px;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
 </style>

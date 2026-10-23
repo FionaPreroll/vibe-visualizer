@@ -1,12 +1,27 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './test';
 import { readFile } from 'node:fs/promises';
-import { startWithClassicLook } from './looks';
+import { savePreset, startWithClassicLook } from './looks';
 import { COVER, expectMotion, logoQuarters, measure, showsCover, type Region } from './pixels';
 import { moreAction, openMore } from './topbar';
 import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';
 
 const ACK = 'vibe-visualizer:welcome:v1';
+
+/** The files that have a cover of the user's (LS-21), as the browser stores them. */
+function storedCovers(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const covers = await root.getDirectoryHandle('track-covers', { create: true });
+    const names: string[] = [];
+    // keys() is missing from the DOM types the tests are checked with.
+    for await (const name of (covers as unknown as { keys(): AsyncIterable<string> }).keys()) {
+      names.push(name);
+    }
+    return names;
+  });
+}
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -200,8 +215,7 @@ test('visual settings and presets survive a reload', async ({ page }) => {
   await glow.focus();
   await page.keyboard.press('ArrowRight');
   await expect(preset).toHaveValue('');
-  await page.getByTestId('preset-name').fill('Mine');
-  await page.getByTestId('preset-save').click();
+  await savePreset(page, 'Mine');
   await expect(preset).toHaveValue('Mine');
   await page.reload();
   await expect(preset).toHaveValue('Mine');
@@ -366,9 +380,9 @@ test('favourite presets, a random pick, and your presets in a file (PR-03, PR-04
   // Your presets go into a file and come back from it.
   await page.getByRole('slider', { name: 'Glow', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
-  await page.getByTestId('preset-name').fill('Mine');
-  await page.getByTestId('preset-save').click();
+  await savePreset(page, 'Mine');
   await expect(preset).toHaveValue('Mine');
+  await page.getByTestId('preset-tools-button').click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByTestId('preset-export').click(),
@@ -400,6 +414,74 @@ test('favourite presets, a random pick, and your presets in a file (PR-03, PR-04
   await expect(page.getByTestId('preset-message')).toContainText('These are Kaleidoscope presets');
   await input.setInputFiles(json('{ nope'));
   await expect(page.getByTestId('preset-message')).toHaveText('This file is not valid JSON.');
+  expect(errors).toEqual([]);
+});
+
+test('the preset tools follow their button while the panel scrolls, until it is hidden', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const tools = page.getByTestId('preset-tools-button');
+  const menu = page.getByTestId('preset-tools-menu');
+  await tools.click();
+  await expect(menu).toBeVisible();
+  const scroll = (top: number) =>
+    page.locator('.panel-body').evaluate((body, to) => body.scrollTo({ top: to }), top);
+  // A little: the menu stays below its button.
+  await scroll(40);
+  await expect
+    .poll(async () => {
+      const [button, list] = [await tools.boundingBox(), await menu.boundingBox()];
+      return Math.round(list!.y - (button!.y + button!.height));
+    })
+    .toBe(6);
+  await expect(page.getByTestId('preset-save-as')).toBeVisible();
+  // Far: the button goes out of sight, and the menu with it.
+  await scroll(600);
+  await expect(menu).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test('a preset is named and saved from the keyboard too, and the focus comes back', async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  await acknowledge(page);
+  await page.goto('/');
+  await page.getByRole('tab', { name: 'Visuals' }).click();
+  const preset = page.getByTestId('preset-select');
+  const name = page.getByTestId('preset-name');
+  const saveAs = async () => {
+    await page.getByTestId('preset-tools-button').click();
+    await page.getByTestId('preset-save-as').click();
+    await expect(name).toBeFocused();
+  };
+  /** Settings of no preset yet. */
+  const change = async () => {
+    await page.getByRole('slider', { name: 'Glow', exact: true }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(preset).toHaveValue('');
+  };
+  // Escape closes the name field; the focus goes to the presets.
+  await saveAs();
+  await page.keyboard.press('Escape');
+  await expect(name).toBeHidden();
+  await expect(preset).toBeFocused();
+  // Enter saves.
+  await change();
+  await saveAs();
+  await page.keyboard.type('By keys');
+  await page.keyboard.press('Enter');
+  await expect(preset).toHaveValue('By keys');
+  await expect(preset).toBeFocused();
+  // After a click, the keys go to the app again.
+  await change();
+  await savePreset(page, 'By mouse');
+  await expect(preset).toHaveValue('By mouse');
+  await expect(preset).not.toBeFocused();
   expect(errors).toEqual([]);
 });
 
@@ -811,7 +893,9 @@ test('a track can be given a cover of your own, kept for the file (LS-21)', asyn
     })
     .toBe(true);
 
-  // Kept for the file: it is back with it after a reload.
+  // Kept for the file: it is back with it after a reload (once it is stored: that goes on
+  // after the dialog closed).
+  await expect.poll(() => storedCovers(page)).toHaveLength(1);
   await page.reload();
   await page.getByRole('tab', { name: 'Queue' }).click();
   await page.getByTestId('file-input').setInputFiles(file);
@@ -825,6 +909,7 @@ test('a track can be given a cover of your own, kept for the file (LS-21)', asyn
   await expect(page.getByTestId('track-cover-preview')).toHaveCount(0);
   await page.getByTestId('track-name-save').click();
   await expect(page.getByTestId('queue-cover')).toHaveCount(0);
+  await expect.poll(() => storedCovers(page)).toEqual([]);
   await page.reload();
   await page.getByRole('tab', { name: 'Queue' }).click();
   await page.getByTestId('file-input').setInputFiles(file);

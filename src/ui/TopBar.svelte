@@ -6,9 +6,9 @@
   import { useExporter } from './exporter-context';
   import Icon, { type IconName } from './Icon.svelte';
   import { supportsMiniPlayer } from './mini-player';
+  import MoreMenu, { type MoreMenuItem } from './MoreMenu.svelte';
   import { usePlayer } from './player-context';
   import { useCapture } from './stage-capture';
-  import TopBarMenu, { type TopBarMenuItem } from './TopBarMenu.svelte';
 
   interface Props {
     onFullscreen: () => void;
@@ -39,7 +39,7 @@
   }: Props = $props();
 
   const player = usePlayer();
-  const app = player.store;
+  const { settings } = player.parts;
   const exporter = useExporter();
   const captureReady = useCapture().ready;
   const controllers = useControllers();
@@ -60,7 +60,7 @@
   });
 
   function startRenaming() {
-    draft = $app.settings.logoText;
+    draft = $settings.logoText;
     renaming = true;
   }
 
@@ -83,7 +83,7 @@
   const canMiniPlayer = supportsMiniPlayer();
 
   /** The actions used now and then, in the ⋯ menu. */
-  const menuItems = $derived<TopBarMenuItem[]>([
+  const menuItems = $derived<MoreMenuItem[]>([
     ...(canMiniPlayer
       ? [
           {
@@ -94,7 +94,7 @@
             title: 'The visuals in a small window of their own, on top of other tabs and apps',
             testid: 'mini-player',
             onselect: onMiniPlayer,
-          } satisfies TopBarMenuItem,
+          } satisfies MoreMenuItem,
         ]
       : []),
     {
@@ -108,25 +108,25 @@
     {
       label: 'Safe areas',
       icon: 'safe',
-      checked: $app.settings.safeAreas,
+      checked: $settings.safeAreas,
       title: 'Where the platforms put their buttons and captions',
       testid: 'safe-areas-toggle',
-      onselect: () => player.updateSettings({ safeAreas: !$app.settings.safeAreas }),
+      onselect: () => player.updateSettings({ safeAreas: !$settings.safeAreas }),
     },
     {
       label: 'Only the music',
       icon: 'visualsOff',
       key: 'B',
-      checked: $app.settings.visualsPaused,
+      checked: $settings.visualsPaused,
       title: 'Pause the visuals; the music plays on',
       testid: 'visuals-pause',
-      onselect: () => player.updateSettings({ visualsPaused: !$app.settings.visualsPaused }),
+      onselect: () => player.updateSettings({ visualsPaused: !$settings.visualsPaused }),
     },
     {
       label: 'Save the picture as a PNG',
       icon: 'camera',
       key: 'C',
-      disabled: !$captureReady || $exporter.status === 'running' || $app.settings.visualsPaused,
+      disabled: !$captureReady || $exporter.status === 'running' || $settings.visualsPaused,
       title: 'The picture on the stage, e.g. as a thumbnail',
       testid: 'picture-button',
       onselect: onPicture,
@@ -183,7 +183,7 @@
         title="The lettering in the ring: double-click to change it"
         data-testid="logo-text"
       >
-        {$app.settings.logoText}
+        {$settings.logoText}
       </button>
     {/if}
   </div>
@@ -192,8 +192,8 @@
       {#each MODES as mode (mode.id)}
         <button
           class="toggle"
-          class:on={$app.settings.visualMode === mode.id}
-          aria-pressed={$app.settings.visualMode === mode.id}
+          class:on={$settings.visualMode === mode.id}
+          aria-pressed={$settings.visualMode === mode.id}
           onclick={() => player.updateSettings({ visualMode: mode.id })}
           title={mode.title}
         >
@@ -204,7 +204,7 @@
     </div>
     <select
       class="aspect"
-      value={$app.settings.aspect}
+      value={$settings.aspect}
       onchange={(event) => {
         const aspect = event.currentTarget.value;
         if (isAspectRatio(aspect)) player.updateSettings({ aspect });
@@ -224,14 +224,18 @@
     </button>
     <button
       class="toggle"
-      class:on={$app.settings.panelOpen}
-      onclick={() => player.updateSettings({ panelOpen: !$app.settings.panelOpen })}
-      aria-pressed={$app.settings.panelOpen}
+      class:on={$settings.panelOpen}
+      onclick={() => player.updateSettings({ panelOpen: !$settings.panelOpen })}
+      aria-pressed={$settings.panelOpen}
       title="Side panel"
     >
       <Icon name="panel" size={18} />
     </button>
-    <TopBarMenu items={menuItems} dot={controllerOn} />
+    <MoreMenu
+      items={menuItems}
+      dot={controllerOn}
+      title="More: safe areas, only the music, the picture, the DJ controller"
+    />
     <button class="primary export" onclick={onExport} data-testid="export-button">
       <Icon name="export" size={18} />
       {#if $exporter.status === 'running'}
@@ -287,7 +291,7 @@
     background: transparent;
     color: var(--text);
     font: inherit;
-    font-size: 16px;
+    font-size: var(--text-md);
   }
   /* A long name (up to 40 characters) must not push the buttons out of the bar. */
   button.name {
@@ -342,7 +346,7 @@
   .aspect {
     margin-right: 2px;
     padding: 4px 6px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .export {
     display: flex;

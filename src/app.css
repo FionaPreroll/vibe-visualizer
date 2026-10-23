@@ -12,6 +12,16 @@
   --info: #7aa7ff;
   --warning: #ffb454;
   --radius: 10px;
+  /* The type scale, in rem: it follows the font size set in the browser (16 px usually). The
+     canvases (waveforms, the overlay, the logo) draw in device pixels and keep their sizes. */
+  --text-2xs: 0.625rem; /* 10 px: labels in tight boxes (cues, meters, markers) */
+  --text-xs: 0.75rem; /* 12 px: hints, notes, keys */
+  --text-sm: 0.8125rem; /* 13 px: controls and their labels */
+  --text-md: 0.9375rem; /* 15 px: the body */
+  --text-lg: 1.125rem; /* 18 px: what a dialog stresses */
+  --text-xl: 1.25rem; /* 20 px: the titles of dialogs, large values */
+  --text-2xl: 1.625rem; /* 26 px: the stage's own note */
+  --text-3xl: 1.875rem; /* 30 px: the welcome */
   --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   color-scheme: dark;
@@ -25,7 +35,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.5 var(--sans);
+  font: var(--text-md)/1.5 var(--sans);
 }
 
 a {
@@ -79,5 +89,5 @@ input[type='number'] {
 code,
 pre {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }

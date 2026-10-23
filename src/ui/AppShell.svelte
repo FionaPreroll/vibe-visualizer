@@ -1,8 +1,9 @@
 <script lang="ts">
   import { flushSync, getAllContexts, mount, onDestroy, onMount, unmount, untrack } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { isClean } from '../core/audio/dsp/sound-settings';
   import { ControllerService } from '../core/control/controller-service';
-  import { APP_NAME, REPEAT_MODES } from '../core/state/app-state';
+  import { APP_NAME, DEFAULT_SETTINGS, PANEL_WIDTH_RANGE } from '../core/state/app-state';
   import { errorMessage } from '../core/util/format';
   import { isSoundFile } from '../core/export/export-job';
   import { Exporter, type ExportState } from '../core/export/exporter';
@@ -39,7 +40,7 @@
   import ProblemNotice from './ProblemNotice.svelte';
   import QueuePanel from './QueuePanel.svelte';
   import SettingsDialog from './SettingsDialog.svelte';
-  import { nextVisualMode, stepPreset } from './shortcuts';
+  import { releasedShortcut, shortcutFor, type ShortcutActions } from './shortcuts';
   import { provideCapture, StageCapture } from './stage-capture';
   import SoundPanel from './SoundPanel.svelte';
   import TopBar from './TopBar.svelte';
@@ -64,7 +65,7 @@
   const capture = new StageCapture();
   provideCapture(capture);
   const captureReady = capture.ready;
-  const app = player.store;
+  const { tracks, currentTrack, settings, sound, live, error, undo } = player.parts;
   let exportOpen = $state(false);
   let helpOpen = $state(false);
   let controllerOpen = $state(false);
@@ -73,6 +74,11 @@
   let helpSection = $state('getting-started');
   let welcomeOpen = $state(false);
   let stage: HTMLElement;
+  /** While the side panel's edge is dragged: the panel's width, stored when it is let go. */
+  let dragWidth = $state<number | null>(null);
+  const panelWidth = $derived(dragWidth ?? $settings.panelWidth);
+  /** In a narrow window the side panel lies over the stage instead of beside it. */
+  const panelOver = new MediaQuery('max-width: 1099px');
   /** In fullscreen, the mouse cursor hides after a moment without movement (DS-01). */
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -80,7 +86,7 @@
   // The lettering of the default logo in the ring, which the user can change; the app's own
   // name, in the title and the notices, is always APP_NAME. Derived, so that the logo is drawn
   // again when the lettering changes, not with every change of the state (that takes a while).
-  const logoText = $derived($app.settings.logoText);
+  const logoText = $derived($settings.logoText);
   /** How an export ended while the tab was in the background, until the tab is seen again. */
   let unseen = $state<UnseenOutcome>(null);
   // The title says what an export is doing, so that it shows in the tab while the user works
@@ -98,21 +104,21 @@
   // A track with a look of its own (PR-06): the visuals take it when it starts, or when the
   // look is given to the track playing. In the analysis, only the mode's settings change.
   const currentLook = $derived.by(() => {
-    const track = $app.tracks.find((entry) => entry.id === $app.currentId);
+    const track = $currentTrack;
     return track?.look ? `${track.id}|${track.look.mode}|${track.look.preset}` : null;
   });
   $effect(() => {
     if (!currentLook) return;
     untrack(() => {
-      const track = $app.tracks.find((entry) => entry.id === $app.currentId);
-      const settings = lookSettings(track?.look ?? null);
-      if (!track?.look || !settings) return;
+      const track = $currentTrack;
+      const look = lookSettings(track?.look ?? null);
+      if (!track?.look || !look) return;
       if (track.look.mode === 'logoSpectrum') {
-        player.replaceVisuals(settings as LogoSpectrumSettings);
+        player.replaceVisuals(look as LogoSpectrumSettings);
       } else {
-        player.replaceKaleido(settings as KaleidoSettings);
+        player.replaceKaleido(look as KaleidoSettings);
       }
-      const mode = $app.settings.visualMode;
+      const mode = $settings.visualMode;
       if (mode !== 'analysis' && mode !== track.look.mode) {
         player.updateSettings({ visualMode: track.look.mode });
       }
@@ -126,7 +132,7 @@
     if (was !== 'running' || document.visibilityState === 'visible') return;
     if (state.status !== 'done' && state.status !== 'failed') return;
     unseen = state.status;
-    if (!untrack(() => $app.settings.exportNotify)) return;
+    if (!untrack(() => $settings.exportNotify)) return;
     const name = APP_NAME;
     if (state.status === 'done') {
       const several = state.videos.length > 1;
@@ -183,6 +189,52 @@
 
   onDestroy(teardown);
 
+  /** Where the panel's edge was taken hold of, and the panel's width then. */
+  let resizing: { x: number; width: number } | null = null;
+
+  function withinPanelRange(width: number): number {
+    return Math.round(Math.min(PANEL_WIDTH_RANGE.max, Math.max(PANEL_WIDTH_RANGE.min, width)));
+  }
+
+  function startResize(event: PointerEvent) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    resizing = { x: event.clientX, width: panelWidth };
+  }
+
+  function resize(event: PointerEvent) {
+    if (!resizing) return;
+    // The edge is the panel's left one: to the left, the panel gets wider.
+    dragWidth = withinPanelRange(resizing.width + resizing.x - event.clientX);
+  }
+
+  function endResize() {
+    if (!resizing) return;
+    resizing = null;
+    if (dragWidth !== null) player.updateSettings({ panelWidth: dragWidth });
+    dragWidth = null;
+  }
+
+  /** The arrow keys move the edge (with Shift, further); Home and End: narrowest and widest. */
+  function resizeByKey(event: KeyboardEvent) {
+    const step = event.shiftKey ? 60 : 20;
+    const width = {
+      ArrowLeft: panelWidth + step,
+      ArrowRight: panelWidth - step,
+      Home: PANEL_WIDTH_RANGE.min,
+      End: PANEL_WIDTH_RANGE.max,
+    }[event.key];
+    if (width === undefined) return;
+    event.preventDefault();
+    player.updateSettings({ panelWidth: withinPanelRange(width) });
+  }
+
+  /** Over the stage, the side panel closes with Escape or a click on the stage beside it. */
+  function closePanelOver() {
+    if (panelOver.current && $settings.panelOpen) player.updateSettings({ panelOpen: false });
+  }
+
   function onPointerMove() {
     idle = false;
     clearTimeout(idleTimer);
@@ -229,7 +281,7 @@
    */
   let lastScene: SceneKind = 'logoSpectrum';
   const stageMode = $derived.by(() => {
-    const mode = $app.settings.visualMode;
+    const mode = $settings.visualMode;
     if (mode !== 'analysis') lastScene = mode;
     return lastScene;
   });
@@ -243,7 +295,7 @@
     miniOpening = true;
     let view: Window | null = null;
     try {
-      const opening = openMiniPlayerWindow($app.settings.aspect, title);
+      const opening = openMiniPlayerWindow($settings.aspect, title);
       // The second screen gives the visuals up; the browser asked for the window first.
       closeOutside();
       view = await opening;
@@ -343,7 +395,7 @@
 
   /** Saves the picture on the stage as a PNG (EX-10); not while an export renders. */
   function takePicture() {
-    if (!$captureReady || $exporter.status === 'running' || $app.settings.visualsPaused) return;
+    if (!$captureReady || $exporter.status === 'running' || $settings.visualsPaused) return;
     savePicture(player, capture).catch((error: unknown) =>
       player.reportError(`The picture could not be saved: ${errorMessage(error)}`),
     );
@@ -376,7 +428,9 @@
         'textarea, select, input:not([type="range"], [type="checkbox"], [type="radio"], [type="color"], [type="file"])',
       ) !== null;
     if (typing) return true;
-    if (target.closest('input[type="range"], [role="slider"]')) return SLIDER_KEYS.has(key);
+    if (target.closest('input[type="range"], [role="slider"], [role="separator"]')) {
+      return SLIDER_KEYS.has(key);
+    }
     if (target.matches('input[type="checkbox"]')) return key === ' ';
     if (target.matches('input[type="radio"]')) return key === ' ' || key.startsWith('Arrow');
     return false;
@@ -396,121 +450,34 @@
     control.blur();
   }
 
-  /** The keyboard shortcuts (UI-04), in the tab and in the mini player's or second screen's. */
+  /** What the keyboard shortcuts act on, besides the player. */
+  const shortcutActions: ShortcutActions = {
+    player,
+    toggleFullscreen,
+    toggleMiniPlayer,
+    takePicture,
+    openHelp: (section) => {
+      helpSection = section;
+      helpOpen = true;
+    },
+  };
+
+  /**
+   * The keyboard shortcuts (UI-04, in shortcuts.ts), in the tab and in the mini player's or
+   * second screen's.
+   */
   function onKey(event: KeyboardEvent) {
-    // Ctrl+Z (Cmd+Z) undoes a removal or deletion; text fields keep their own undo.
-    const command = event.metaKey || event.ctrlKey;
-    if (command && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
-      if (ownsKey(event.target, event.key) || document.querySelector('dialog[open]')) return;
-      if (player.state.undo) {
-        player.undo();
-        event.preventDefault();
-      }
-      return;
-    }
-    // Brackets need AltGr or Option on some layouts (German, for one).
-    const bracket = event.key === '[' || event.key === ']';
-    if (event.metaKey || ((event.ctrlKey || event.altKey) && !bracket)) return;
+    if (event.key === 'Escape' && !document.querySelector('dialog[open]')) closePanelOver();
+    const shortcut = shortcutFor(event);
+    if (!shortcut) return;
     if (ownsKey(event.target, event.key)) return;
     // A modal dialog (the export) has the keyboard to itself.
     if (document.querySelector('dialog[open]')) return;
-    // Hot cues (TR-04): 1–8 jump to a cue or set an empty one; with Shift they are deleted.
-    // By key position, so Shift works on every keyboard layout.
-    const digit = /^Digit([1-8])$/.exec(event.code);
-    if (digit) {
-      const index = Number(digit[1]) - 1;
-      if (event.shiftKey) player.setCue(index, null);
-      else void player.cue(index);
-      event.preventDefault();
-      return;
-    }
-    const step = event.shiftKey ? 30 : 5;
-    switch (event.key) {
-      case ' ':
-        void player.toggle();
-        break;
-      case 'ArrowLeft':
-        void player.seek(player.position - step);
-        break;
-      case 'ArrowRight':
-        void player.seek(player.position + step);
-        break;
-      case 'n':
-        void player.next();
-        break;
-      case 'p':
-        void player.previous();
-        break;
-      case 'f':
-        toggleFullscreen(event.view ?? window);
-        break;
-      case 'm':
-        toggleMiniPlayer();
-        break;
-      case 'c':
-        takePicture();
-        break;
-      case 'w':
-        player.updateSettings({ detailWaveform: !player.state.settings.detailWaveform });
-        break;
-      case 's':
-        player.updateSettings({ shuffle: !player.state.settings.shuffle });
-        break;
-      case 'q':
-        player.updateSettings({ quantize: !player.state.settings.quantize });
-        break;
-      case 'r': {
-        const index = REPEAT_MODES.indexOf(player.state.settings.repeat);
-        player.updateSettings({ repeat: REPEAT_MODES[(index + 1) % REPEAT_MODES.length]! });
-        break;
-      }
-      case 'v':
-        nextVisualMode(player);
-        break;
-      case 'b':
-        player.updateSettings({ visualsPaused: !player.state.settings.visualsPaused });
-        break;
-      case '[':
-        stepPreset(player, -1);
-        break;
-      case ']':
-        stepPreset(player, 1);
-        break;
-      case '?':
-        helpSection = 'keyboard-shortcuts';
-        helpOpen = true;
-        break;
-      // In/out markers of the export range (TR-09); with Shift they are cleared.
-      case 'i':
-      case 'I':
-        player.mark('in', event.shiftKey ? null : player.position);
-        break;
-      case 'o':
-      case 'O':
-        player.mark('out', event.shiftKey ? null : player.position);
-        break;
-      // Tempo in fine steps, and nudging while the key is held (TMP-03).
-      case '-':
-        player.stepTempo(-1);
-        break;
-      case '+':
-      case '=':
-        player.stepTempo(1);
-        break;
-      case ',':
-        if (!event.repeat) player.nudge(-1);
-        break;
-      case '.':
-        if (!event.repeat) player.nudge(1);
-        break;
-      default:
-        return;
-    }
-    event.preventDefault();
+    if (shortcut.run?.(shortcutActions, event) !== false) event.preventDefault();
   }
 
   function onKeyUp(event: KeyboardEvent) {
-    if (event.key === ',' || event.key === '.') player.nudge(0);
+    releasedShortcut(event)?.release?.(shortcutActions);
   }
 
   /** A nudge held with a key ends when the window loses the keyboard. */
@@ -562,7 +529,12 @@
   }}
 />
 
-<div class="shell" class:panel-open={$app.settings.panelOpen}>
+<div
+  class="shell"
+  class:panel-open={$settings.panelOpen}
+  class:panel-over={panelOver.current}
+  style:--panel-width="{panelWidth}px"
+>
   <TopBar
     onFullscreen={() => toggleFullscreen()}
     onPicture={takePicture}
@@ -582,27 +554,30 @@
     bind:this={stage}
     aria-label="Visual stage"
     onpointermove={onPointerMove}
+    onpointerdown={(event) => {
+      if (!(event.target as Element).closest('button, a, input, select')) closePanelOver();
+    }}
   >
     <Guard where="The visuals">
-      {#if $app.settings.visualMode === 'analysis'}
+      {#if $settings.visualMode === 'analysis'}
         <AnalysisView />
       {/if}
       <!-- The mini player's (DS-06) or the second screen's window (DS-03) takes the stage, also
            while the tab shows the Analysis. -->
-      {#if $app.settings.visualMode !== 'analysis' || outWindow}
+      {#if $settings.visualMode !== 'analysis' || outWindow}
         <div class="stage-host" use:portal={outSlot}>
           <VisualStage
             mode={stageMode}
-            aspect={$app.settings.aspect}
-            safeAreas={$app.settings.safeAreas}
-            paused={$exporter.status === 'running' || $app.settings.visualsPaused}
-            resting={$app.settings.visualsPaused}
+            aspect={$settings.aspect}
+            safeAreas={$settings.safeAreas}
+            paused={$exporter.status === 'running' || $settings.visualsPaused}
+            resting={$settings.visualsPaused}
             view={outWindow ?? window}
           />
         </div>
       {/if}
     </Guard>
-    {#if outWindow && $app.settings.visualMode !== 'analysis'}
+    {#if outWindow && $settings.visualMode !== 'analysis'}
       {@const mini = outKind === 'mini'}
       <div class="mini-note" data-testid={mini ? 'mini-note' : 'screen-note'}>
         <div class="card">
@@ -623,7 +598,7 @@
       </div>
     {/if}
     <!-- With the visuals in another window, the note says where they are; the queue says the rest. -->
-    {#if $app.tracks.length === 0 && $app.live.status === 'off' && !outWindow}
+    {#if $tracks.length === 0 && $live.status === 'off' && !outWindow}
       <div class="welcome" data-testid="empty-hint">
         <div class="card">
           <h1>Drop your music here</h1>
@@ -635,9 +610,9 @@
     <div class="notes">
       <ProblemNotice />
       <NewVersionNotice />
-      {#if $app.undo}
+      {#if $undo}
         <div class="undo" role="status" data-testid="undo-toast">
-          <span>{$app.undo}</span>
+          <span>{$undo}</span>
           <button onclick={() => player.undo()} title="Undo (Ctrl+Z)" data-testid="undo">
             Undo
           </button>
@@ -656,10 +631,10 @@
         </button>
       {/if}
     </div>
-    {#if $app.error}
+    {#if $error}
       <div class="error" role="alert" data-testid="app-error">
         <Icon name="alert" size={18} />
-        <span>{$app.error}</span>
+        <span>{$error}</span>
         <button onclick={() => player.dismissError()} aria-label="Dismiss">
           <Icon name="close" size={16} />
         </button>
@@ -667,47 +642,70 @@
     {/if}
   </main>
 
-  {#if $app.settings.panelOpen}
+  {#if $settings.panelOpen}
     <aside class="panel">
+      <!-- The panel's edge: dragged, or moved with the arrow keys, it makes the panel wider or
+           narrower; a double-click gives it its usual width. A focusable separator with a value
+           is a widget (the window splitter of the ARIA practices), which Svelte does not know. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+      <div
+        class="edge"
+        class:dragging={dragWidth !== null}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Width of the side panel"
+        aria-valuemin={PANEL_WIDTH_RANGE.min}
+        aria-valuemax={PANEL_WIDTH_RANGE.max}
+        aria-valuenow={panelWidth}
+        tabindex="0"
+        title="Drag to make the panel wider or narrower; a double-click gives it its usual width"
+        onpointerdown={startResize}
+        onpointermove={resize}
+        onpointerup={endResize}
+        onpointercancel={endResize}
+        ondblclick={() => player.updateSettings({ panelWidth: DEFAULT_SETTINGS.panelWidth })}
+        onkeydown={resizeByKey}
+        data-testid="panel-edge"
+      ></div>
       <div class="tabs" role="tablist" aria-label="Side panel">
         <button
           role="tab"
-          aria-selected={$app.settings.panel === 'queue'}
+          aria-selected={$settings.panel === 'queue'}
           onclick={() => player.updateSettings({ panel: 'queue' })}
         >
           <Icon name="music" size={16} /> Queue
         </button>
         <button
           role="tab"
-          aria-selected={$app.settings.panel === 'sound'}
+          aria-selected={$settings.panel === 'sound'}
           onclick={() => player.updateSettings({ panel: 'sound' })}
         >
           <Icon name="knob" size={16} /> Sound
-          {#if !isClean($app.sound)}<span class="sound-dot" aria-label="(changed)"></span>{/if}
+          {#if !isClean($sound)}<span class="sound-dot" aria-label="(changed)"></span>{/if}
         </button>
         <button
           role="tab"
-          aria-selected={$app.settings.panel === 'visuals'}
+          aria-selected={$settings.panel === 'visuals'}
           onclick={() => player.updateSettings({ panel: 'visuals' })}
         >
           <Icon name="sliders" size={16} /> Visuals
         </button>
         <button
           role="tab"
-          aria-selected={$app.settings.panel === 'live'}
+          aria-selected={$settings.panel === 'live'}
           onclick={() => player.updateSettings({ panel: 'live' })}
         >
           <Icon name="live" size={16} /> Live
-          {#if $app.live.status === 'on'}<span class="live-dot" aria-label="(on)"></span>{/if}
+          {#if $live.status === 'on'}<span class="live-dot" aria-label="(on)"></span>{/if}
         </button>
       </div>
       <div class="panel-body" role="tabpanel">
         <Guard where="The side panel">
-          {#if $app.settings.panel === 'queue'}
+          {#if $settings.panel === 'queue'}
             <QueuePanel />
-          {:else if $app.settings.panel === 'sound'}
+          {:else if $settings.panel === 'sound'}
             <SoundPanel />
-          {:else if $app.settings.panel === 'visuals'}
+          {:else if $settings.panel === 'visuals'}
             <VisualsPanel />
           {:else}
             <LivePanel />
@@ -719,7 +717,7 @@
 
   <!-- Also before a track plays, so switching it on shows where it goes; not for live input,
        which has no waveform of its own. -->
-  {#if $app.settings.detailWaveform && $app.live.status === 'off'}
+  {#if $settings.detailWaveform && $live.status === 'off'}
     <div class="detail-row">
       <Guard where="The waveform"><DetailWaveform /></Guard>
     </div>
@@ -774,7 +772,18 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .shell.panel-open {
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: minmax(0, 1fr) var(--panel-width);
+  }
+  /* A narrow window: the panel lies over the stage on the right, and the stage keeps its width. */
+  .shell.panel-over {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .shell.panel-over .panel {
+    grid-column: 1;
+    justify-self: end;
+    width: min(var(--panel-width), 100%);
+    z-index: 5;
+    box-shadow: -12px 0 32px rgb(0 0 0 / 0.55);
   }
   .shell > :global(.topbar),
   .shell > :global(.transport),
@@ -785,7 +794,10 @@
   .shell > :global(.transport) {
     grid-row: 4;
   }
+  /* The stage and the panel by their places: over the stage, the panel shares its cell. */
   .stage {
+    grid-row: 2;
+    grid-column: 1;
     position: relative;
     overflow: hidden;
     background: radial-gradient(ellipse at 50% 40%, #16162a 0%, var(--bg) 70%);
@@ -821,15 +833,48 @@
     color: var(--text);
   }
   .mini-note p.sub {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .panel {
+    grid-row: 2;
+    grid-column: 2;
+    position: relative;
     min-height: 0;
     display: flex;
     flex-direction: column;
     background: var(--surface);
     border-left: 1px solid var(--border);
+  }
+  .edge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -5px;
+    z-index: 1;
+    width: 9px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  /* A line along the edge where it can be taken hold of, and while it is dragged or focused. */
+  .edge::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 4px;
+    width: 2px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .edge:hover::after,
+  .edge:focus-visible::after,
+  .edge.dragging::after {
+    opacity: 1;
+  }
+  .edge:focus-visible {
+    outline: none;
   }
   .tabs {
     display: flex;
@@ -842,7 +887,7 @@
     align-items: center;
     gap: 5px;
     padding: 6px 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     border: 1px solid transparent;
     border-bottom: none;
     border-radius: 8px 8px 0 0;
@@ -891,7 +936,7 @@
   }
   .welcome h1 {
     margin: 0 0 6px;
-    font-size: 26px;
+    font-size: var(--text-2xl);
   }
   .welcome p {
     margin: 0;
@@ -899,7 +944,7 @@
   }
   .welcome p + p {
     margin-top: 4px;
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   /* In a low window, with the detail waveform below the stage too, a smaller card stays below
      the logo; the notes still fit under it. */
@@ -912,14 +957,14 @@
     }
     .welcome h1 {
       margin-bottom: 2px;
-      font-size: 20px;
+      font-size: var(--text-xl);
     }
     .welcome p {
-      font-size: 14px;
+      font-size: var(--text-md);
     }
     .welcome p + p {
       margin-top: 2px;
-      font-size: 13px;
+      font-size: var(--text-sm);
     }
   }
   .notes {
@@ -940,7 +985,7 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     background: var(--surface);
-    font-size: 14px;
+    font-size: var(--text-md);
     white-space: nowrap;
   }
   .undo button {

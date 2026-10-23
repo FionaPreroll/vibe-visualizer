@@ -26,7 +26,7 @@
   type Action = 'analysis-unused' | 'analysis-all' | 'tracks' | 'exports' | 'everything';
 
   const player = usePlayer();
-  const app = player.store;
+  const { tracks: tracksState } = player.parts;
   const exporter = useExporter();
   let summary = $state.raw<StorageSummary | null>(null);
   let pending = $state<Action | null>(null);
@@ -42,7 +42,7 @@
   const exporting = $derived($exporter.status === 'running');
   /** The fingerprints of the tracks in the queue: what belongs to them stays. */
   const inQueue = $derived(
-    new Set($app.tracks.map((track) => track.fingerprint).filter((print) => print !== null)),
+    new Set($tracksState.map((track) => track.fingerprint).filter((print) => print !== null)),
   );
 
   const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -294,7 +294,7 @@
     align-items: center;
     padding: 8px 0;
     border-bottom: 1px solid var(--border);
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .what {
     display: flex;
@@ -302,7 +302,7 @@
   }
   .size {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
     text-align: right;
   }
@@ -317,10 +317,10 @@
   .muted {
     margin: 0;
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .small {
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .danger {
     border-color: var(--fail);
@@ -341,7 +341,7 @@
   .message {
     margin: 0;
     color: var(--muted);
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .message.error {
     color: var(--fail);

@@ -1,4 +1,5 @@
-import { expect, test, type Download, type Page } from '@playwright/test';
+import type { Download, Page } from '@playwright/test';
+import { expect, test } from './test';
 import { readFile } from 'node:fs/promises';
 import { moreAction } from './topbar';
 import { createWav } from './wav';

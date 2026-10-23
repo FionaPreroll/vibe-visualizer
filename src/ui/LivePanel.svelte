@@ -13,13 +13,13 @@
    * from another tab or app, with input gain, a level meter and optional monitoring.
    */
   const player = usePlayer();
-  const app = player.store;
+  const { settings, live: liveState } = player.parts;
   const support = liveInputSupport();
-  const live = $derived($app.live);
+  const live = $derived($liveState);
   const starting = $derived(live.status === 'starting');
 
   let devices = $state<InputDevice[]>([]);
-  let chosen = $state(untrack(() => $app.settings.inputDevice));
+  let chosen = $state(untrack(() => $settings.inputDevice));
 
   async function refresh() {
     devices = await listInputDevices().catch(() => []);
@@ -41,7 +41,7 @@
   $effect(() => {
     if (live.status !== 'on') return;
     void refresh();
-    chosen = untrack(() => $app.settings.inputDevice);
+    chosen = untrack(() => $settings.inputDevice);
   });
 
   /** The input in the picker: from the list, or the one used last (its id may be outdated). */
@@ -140,7 +140,7 @@
     <LevelMeter />
     <Slider
       label="Input gain"
-      value={$app.settings.inputGain}
+      value={$settings.inputGain}
       min={INPUT_GAIN_RANGE.min}
       max={INPUT_GAIN_RANGE.max}
       step={0.5}
@@ -203,7 +203,7 @@
   }
   .intro {
     margin: 14px 16px 10px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .status {
@@ -241,7 +241,7 @@
     border-radius: 8px;
     border: 1px solid var(--fail);
     background: color-mix(in srgb, var(--fail) 15%, var(--surface));
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .row {
     display: flex;
@@ -259,7 +259,7 @@
   }
   .hint {
     margin: 0 0 8px;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .callout {
@@ -270,7 +270,7 @@
     border-radius: 8px;
     border: 1px solid color-mix(in srgb, var(--info) 60%, transparent);
     background: color-mix(in srgb, var(--info) 12%, var(--surface));
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--text);
   }
   .callout :global(svg) {
@@ -282,15 +282,15 @@
     align-items: center;
     gap: 8px;
     margin: 6px 0 2px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .help {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .help h3 {
     margin: 10px 0 2px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--text);
   }
   .help p {

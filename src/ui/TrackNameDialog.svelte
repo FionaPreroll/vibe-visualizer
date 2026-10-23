@@ -43,7 +43,7 @@
   let { track, onclose }: Props = $props();
 
   const player = usePlayer();
-  const app = player.store;
+  const { tracks } = player.parts;
   const heading = `track-name-${Math.random().toString(36).slice(2)}`;
   let dialog: HTMLDialogElement | undefined = $state();
   let coverInput: HTMLInputElement | undefined = $state();
@@ -70,9 +70,7 @@
   ];
 
   /** The track as it is now (its cover may come later than the dialog). */
-  const live = $derived(
-    track ? ($app.tracks.find((entry) => entry.id === track.id) ?? track) : null,
-  );
+  const live = $derived(track ? ($tracks.find((entry) => entry.id === track.id) ?? track) : null);
   const preview = $derived(
     cover === undefined ? live && shownCover(live) : cover === null ? live?.coverUrl : cover.url,
   );
@@ -397,7 +395,7 @@
   }
   h2 {
     margin: 0;
-    font-size: 18px;
+    font-size: var(--text-xl);
   }
   .close {
     padding: 4px;
@@ -414,7 +412,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   label span {
     color: var(--muted);
@@ -431,7 +429,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .cover .label {
     color: var(--muted);
@@ -468,7 +466,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .colors .label {
     color: var(--muted);
@@ -480,7 +478,7 @@
   .sources button {
     flex: 1;
     padding: 6px 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .sources button.on {
     border-color: var(--accent);
@@ -519,20 +517,20 @@
   }
   .preview .none {
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .problem {
     margin: 0;
     color: var(--fail);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .muted {
     margin: 0;
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .small {
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   footer {
     display: flex;

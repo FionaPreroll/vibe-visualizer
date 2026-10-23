@@ -1,4 +1,5 @@
-import type { TempoRangeId } from '../analysis/beat-grid';
+import * as v from 'valibot';
+import { TEMPO_RANGE_IDS } from '../analysis/beat-grid';
 import { NO_GRID_EDIT, type GridEdit } from '../analysis/grid-edit';
 import {
   DEFAULT_SOUND,
@@ -7,10 +8,11 @@ import {
   type SoundSettings,
 } from '../audio/dsp/sound-settings';
 import type { LiveSourceKind } from '../audio/live-input';
-import type { AspectRatio } from '../export/video-format';
+import { ASPECT_RATIOS } from '../export/video-format';
 import type { TrackColors } from '../render/cover-palette';
-import { DEFAULT_OVERLAY, type OverlaySettings } from '../render/overlay-settings';
-import { DEFAULT_AUTO_PRESETS, type AutoPresets } from '../render/preset-director';
+import { RENDER_SCALE_RANGE } from '../render/auto-quality';
+import { OVERLAY_SCHEMA } from '../render/overlay-settings';
+import { AUTO_PRESETS_SCHEMA } from '../render/preset-director';
 import {
   DEFAULT_KALEIDO,
   sanitizeKaleido,
@@ -25,6 +27,18 @@ import {
   sanitizeSettings,
   type LogoSpectrumSettings,
 } from '../render/visual-settings';
+import {
+  clamped,
+  defaults,
+  flag,
+  oneOf,
+  orNone,
+  record,
+  text,
+  trimmedText,
+  uniqueTexts,
+  type Infer,
+} from '../util/schema';
 
 /** Application state: the queue, what plays, and user settings. Pure data, no side effects. */
 
@@ -96,14 +110,25 @@ export function sanitizeTrackLook(value: unknown): TrackLook | null {
   return { mode, preset: preset.slice(0, 60) };
 }
 
-/** A title and artist the user gives a file, for the overlay and wherever the track is named. */
-export interface TrackEdit {
-  title: string;
-  artist: string | null;
-}
-
 /** Longest title or artist the user can give. */
 export const TRACK_TEXT_LENGTH = 200;
+
+/** A title or artist as the user gives it: trimmed, and cut to {@link TRACK_TEXT_LENGTH}. */
+function trackText(text: string): string {
+  return text.trim().slice(0, TRACK_TEXT_LENGTH);
+}
+
+/** A title or artist given; an empty one is none. */
+const TRACK_TEXT = v.pipe(v.string(), v.transform(trackText), v.minLength(1));
+
+/**
+ * A title and artist the user gives a file (LS-18), for the overlay and wherever the track is
+ * named; without a title, none.
+ */
+export const TRACK_EDIT_SCHEMA = orNone(
+  v.object({ title: TRACK_TEXT, artist: orNone(TRACK_TEXT) }),
+);
+export type TrackEdit = NonNullable<Infer<typeof TRACK_EDIT_SCHEMA>>;
 
 /** The title shown for `track`: the user's, or that of the file (its tags or its name). */
 export function shownTitle(track: Track): string {
@@ -125,8 +150,8 @@ export function shownCover(track: Track): string | null {
  * is just what the file has.
  */
 export function trackEdit(track: Track, title: string, artist: string): TrackEdit | null {
-  const cleanTitle = title.trim().slice(0, TRACK_TEXT_LENGTH) || track.title;
-  const cleanArtist = artist.trim().slice(0, TRACK_TEXT_LENGTH) || null;
+  const cleanTitle = trackText(title) || track.title;
+  const cleanArtist = trackText(artist) || null;
   if (cleanTitle === track.title && cleanArtist === track.artist) return null;
   return { title: cleanTitle, artist: cleanArtist };
 }
@@ -172,71 +197,6 @@ export const INPUT_GAIN_RANGE = { min: -24, max: 24 } as const;
  */
 export const SYNC_OFFSET_RANGE = { min: -200, max: 500 } as const;
 
-export interface Settings {
-  volume: number;
-  visualMode: VisualMode;
-  panel: PanelTab;
-  panelOpen: boolean;
-  /** Frame of the visuals (VE-09): the stage is letterboxed to it, and the export uses it. */
-  aspect: AspectRatio;
-  /** Shows the safe areas of the platforms over the stage. */
-  safeAreas: boolean;
-  /** The audio input used last ('' for the default one), and its name (ids can change). */
-  inputDevice: string;
-  inputDeviceLabel: string;
-  /** Gain of the live input in dB. */
-  inputGain: number;
-  /** Shows the detail waveform with the hot cues above the transport (TR-08). */
-  detailWaveform: boolean;
-  /** Plays the queue in random order (PL-04). */
-  shuffle: boolean;
-  /** At the end: stop, start the queue again, or repeat the track (PL-04). */
-  repeat: RepeatMode;
-  /** The visuals come this much later (ms), on top of the latency the browser reports (AN-06). */
-  syncOffset: number;
-  /** Markers and cues snap to the nearest beat when they are set (TR-06). */
-  quantize: boolean;
-  /**
-   * The lettering of the default logo, in the middle of the ring; the top bar shows it, and a
-   * double-click there changes it. The app's own name stays {@link APP_NAME}.
-   */
-  logoText: string;
-  /** How the waveforms are drawn (TR-10). */
-  waveformStyle: WaveformStyle;
-  /** The tempo range the beat grids are found in, for tracks without a tempo given (AN-12). */
-  bpmRange: TempoRangeId;
-  /** A DJ controller was connected (CTL-03): connect again at the start if MIDI is allowed. */
-  controller: boolean;
-  /** Share of the screen's resolution the live visuals draw at (VE-07). */
-  renderScale: number;
-  /** Draw at a lower resolution while the frame rate drops (VE-07). */
-  autoQuality: boolean;
-  /** Damp sudden jumps in brightness, live and in exports (VE-06). */
-  reduceFlashing: boolean;
-  /** The user chose {@link reduceFlashing}; until then, it follows the system (VE-06). */
-  reduceFlashingChosen: boolean;
-  /** The track's title and artist over the visuals, live and in exports (LS-18, LS-19). */
-  overlay: OverlaySettings;
-  /** The Logo Spectrum shows the cover art of the track playing as its logo (LS-15). */
-  coverLogo: boolean;
-  /** The visuals take the colours of the cover art of the track playing (VE-12). */
-  coverColors: boolean;
-  /** The visuals rest, to listen to the music only (DS-05): the stage draws nothing. */
-  visualsPaused: boolean;
-  /** A notification of the system when an export ends while the tab is in the background. */
-  exportNotify: boolean;
-  /** Automatic preset switching (PR-02), for the visual mode shown. */
-  autoPresets: AutoPresets;
-  /** Favourite presets by name, per visual mode (PR-03). */
-  favourites: Favourites;
-}
-
-/** Favourite presets by name, per visual mode (PR-03). */
-export interface Favourites {
-  logoSpectrum: string[];
-  kaleidoscope: string[];
-}
-
 /**
  * Waveform styles (TR-10): the three bands as layers, lows blue, mids orange and highs white
  * (as Rekordbox's "3Band"), or one shape as high as the peak, coloured by the bands.
@@ -251,6 +211,81 @@ export const LOGO_TEXT_LENGTH = 40;
 
 export type RepeatMode = 'off' | 'all' | 'one';
 export const REPEAT_MODES: readonly RepeatMode[] = ['off', 'all', 'one'];
+
+/** How narrow and how wide the side panel can be made, in pixels. */
+export const PANEL_WIDTH_RANGE = { min: 300, max: 560 } as const;
+
+/** Favourite presets by name, per visual mode (PR-03). */
+const FAVOURITES_SCHEMA = record({ logoSpectrum: uniqueTexts(), kaleidoscope: uniqueTexts() });
+
+export type Favourites = Infer<typeof FAVOURITES_SCHEMA>;
+
+/** The settings as they are stored: each with its check and its default. */
+export const SETTINGS_SCHEMA = record({
+  volume: clamped(0.8, 0, 1),
+  visualMode: oneOf(VISUAL_MODES, 'logoSpectrum'),
+  panel: oneOf(PANEL_TABS, 'queue'),
+  panelOpen: flag(true),
+  /** Width of the side panel in pixels: its left edge drags it. */
+  panelWidth: clamped(360, PANEL_WIDTH_RANGE.min, PANEL_WIDTH_RANGE.max, true),
+  /** Frame of the visuals (VE-09): the stage is letterboxed to it, and the export uses it. */
+  aspect: oneOf(
+    ASPECT_RATIOS.map((entry) => entry.id),
+    '16:9',
+  ),
+  /** Shows the safe areas of the platforms over the stage. */
+  safeAreas: flag(false),
+  /** The audio input used last ('' for the default one), and its name (ids can change). */
+  inputDevice: text(''),
+  inputDeviceLabel: text(''),
+  /** Gain of the live input in dB. */
+  inputGain: clamped(0, INPUT_GAIN_RANGE.min, INPUT_GAIN_RANGE.max),
+  /** Shows the detail waveform with the hot cues above the transport (TR-08). */
+  detailWaveform: flag(true),
+  /** Plays the queue in random order (PL-04). */
+  shuffle: flag(false),
+  /** At the end: stop, start the queue again, or repeat the track (PL-04). */
+  repeat: oneOf(REPEAT_MODES, 'off'),
+  /** The visuals come this much later (ms), on top of the latency the browser reports (AN-06). */
+  syncOffset: clamped(0, SYNC_OFFSET_RANGE.min, SYNC_OFFSET_RANGE.max),
+  /** Markers and cues snap to the nearest beat when they are set (TR-06). */
+  quantize: flag(true),
+  /**
+   * The lettering of the default logo, in the middle of the ring; the top bar shows it, and a
+   * double-click there changes it. The app's own name stays {@link APP_NAME}.
+   */
+  logoText: trimmedText(APP_NAME, LOGO_TEXT_LENGTH),
+  /** How the waveforms are drawn (TR-10). */
+  waveformStyle: oneOf(WAVEFORM_STYLES, 'bands'),
+  /** The tempo range the beat grids are found in, for tracks without a tempo given (AN-12). */
+  bpmRange: oneOf(TEMPO_RANGE_IDS, 'auto'),
+  /** A DJ controller was connected (CTL-03): connect again at the start if MIDI is allowed. */
+  controller: flag(false),
+  /** Share of the screen's resolution the live visuals draw at (VE-07). */
+  renderScale: clamped(1, RENDER_SCALE_RANGE.min, RENDER_SCALE_RANGE.max),
+  /** Draw at a lower resolution while the frame rate drops (VE-07). */
+  autoQuality: flag(true),
+  /** Damp sudden jumps in brightness, live and in exports (VE-06). */
+  reduceFlashing: flag(false),
+  /** The user chose whether to reduce flashing; until then, it follows the system (VE-06). */
+  reduceFlashingChosen: flag(false),
+  /** The track's title and artist over the visuals, live and in exports (LS-18, LS-19). */
+  overlay: OVERLAY_SCHEMA,
+  /** The Logo Spectrum shows the cover art of the track playing as its logo (LS-15). */
+  coverLogo: flag(false),
+  /** The visuals take the colours of the cover art of the track playing (VE-12). */
+  coverColors: flag(false),
+  /** The visuals rest, to listen to the music only (DS-05): the stage draws nothing. */
+  visualsPaused: flag(false),
+  /** A notification of the system when an export ends while the tab is in the background. */
+  exportNotify: flag(false),
+  /** Automatic preset switching (PR-02), for the visual mode shown. */
+  autoPresets: AUTO_PRESETS_SCHEMA,
+  /** Favourite presets by name, per visual mode (PR-03). */
+  favourites: FAVOURITES_SCHEMA,
+});
+
+export type Settings = Infer<typeof SETTINGS_SCHEMA>;
 
 /**
  * Live input (IN-01…04): music from an audio input or another app instead of the queue. The
@@ -382,37 +417,7 @@ export type AppAction =
   /** The tempo of the live input (TMP-06); null: automatic. */
   | { type: 'live/tempo'; tempo: number | null };
 
-export const DEFAULT_SETTINGS: Settings = {
-  volume: 0.8,
-  visualMode: 'logoSpectrum',
-  panel: 'queue',
-  panelOpen: true,
-  aspect: '16:9',
-  safeAreas: false,
-  inputDevice: '',
-  inputDeviceLabel: '',
-  inputGain: 0,
-  detailWaveform: true,
-  shuffle: false,
-  repeat: 'off',
-  syncOffset: 0,
-  quantize: true,
-  logoText: APP_NAME,
-  waveformStyle: 'bands',
-  bpmRange: 'auto',
-  controller: false,
-  renderScale: 1,
-  autoQuality: true,
-  reduceFlashing: false,
-  reduceFlashingChosen: false,
-  overlay: DEFAULT_OVERLAY,
-  coverLogo: false,
-  coverColors: false,
-  visualsPaused: false,
-  exportNotify: false,
-  autoPresets: DEFAULT_AUTO_PRESETS,
-  favourites: { logoSpectrum: [], kaleidoscope: [] },
-};
+export const DEFAULT_SETTINGS: Settings = defaults(SETTINGS_SCHEMA);
 
 export function initialState(
   settings: Settings = DEFAULT_SETTINGS,

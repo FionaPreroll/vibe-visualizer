@@ -18,7 +18,7 @@
   import { CUE_COLOURS, drawWaveform } from './waveform-draw';
 
   const player = usePlayer();
-  const app = player.store;
+  const { tracks, currentTrack, playing, settings, live: liveState } = player.parts;
   const analyses = player.analysis;
 
   const REPEAT_LABELS: Record<RepeatMode, string> = {
@@ -33,8 +33,8 @@
   let waveCanvas: HTMLCanvasElement | undefined = $state();
   let timelineWidth = $state(0);
 
-  const current = $derived($app.tracks.find((track) => track.id === $app.currentId) ?? null);
-  const live = $derived($app.live.status === 'on');
+  const current = $derived($currentTrack);
+  const live = $derived($liveState.status === 'on');
   const duration = $derived(current?.duration ?? 0);
   const shown = $derived(dragFraction !== null ? dragFraction * duration : position);
   const fraction = $derived(duration > 0 ? Math.min(1, shown / duration) : 0);
@@ -72,7 +72,7 @@
     return () => observer.disconnect();
   });
 
-  const waveformStyle = $derived($app.settings.waveformStyle);
+  const waveformStyle = $derived($settings.waveformStyle);
 
   // Redrawn when the analysis grows or the bar changes size; the played part is an overlay.
   $effect(() => {
@@ -154,7 +154,7 @@
     const direction = event.key === 'ArrowLeft' ? -1 : 1;
     const grid = analysis?.grid;
     let target = at + direction * 0.1;
-    if (grid && $app.settings.quantize) {
+    if (grid && $settings.quantize) {
       const index = beatBefore(grid, at + direction * 1e-3) + (direction > 0 ? 1 : 0);
       const beat = grid.beats[index];
       if (beat !== undefined) target = beat;
@@ -179,7 +179,7 @@
       <div class="cover-placeholder live"><Icon name="live" /></div>
       <div class="titles">
         <span class="title" data-testid="now-title">Live input</span>
-        <span class="artist">{$app.live.label}</span>
+        <span class="artist">{$liveState.label}</span>
       </div>
     {:else}
       {#if current && shownCover(current)}
@@ -222,11 +222,11 @@
           <button
             class="icon play"
             onclick={() => player.toggle()}
-            aria-label={$app.playing ? 'Pause' : 'Play'}
-            disabled={$app.tracks.length === 0}
+            aria-label={$playing ? 'Pause' : 'Play'}
+            disabled={$tracks.length === 0}
             data-testid="play-button"
           >
-            <Icon name={$app.playing ? 'pause' : 'play'} size={24} />
+            <Icon name={$playing ? 'pause' : 'play'} size={24} />
           </button>
           <button class="icon" onclick={() => player.next()} aria-label="Next" disabled={!current}>
             <Icon name="next" />
@@ -236,10 +236,10 @@
           </button>
           <button
             class="icon"
-            class:on={$app.settings.shuffle}
-            onclick={() => player.updateSettings({ shuffle: !$app.settings.shuffle })}
+            class:on={$settings.shuffle}
+            onclick={() => player.updateSettings({ shuffle: !$settings.shuffle })}
             aria-label="Shuffle"
-            aria-pressed={$app.settings.shuffle}
+            aria-pressed={$settings.shuffle}
             title="Shuffle: play the queue in random order"
             data-testid="shuffle"
           >
@@ -247,59 +247,60 @@
           </button>
           <button
             class="icon repeat"
-            class:on={$app.settings.repeat !== 'off'}
+            class:on={$settings.repeat !== 'off'}
             onclick={() =>
               player.updateSettings({
-                repeat: REPEAT_MODES[(REPEAT_MODES.indexOf($app.settings.repeat) + 1) % 3]!,
+                repeat: REPEAT_MODES[(REPEAT_MODES.indexOf($settings.repeat) + 1) % 3]!,
               })}
-            aria-label={REPEAT_LABELS[$app.settings.repeat]}
-            title={`${REPEAT_LABELS[$app.settings.repeat]} (click to change)`}
+            aria-label={REPEAT_LABELS[$settings.repeat]}
+            aria-pressed={$settings.repeat !== 'off'}
+            title={`${REPEAT_LABELS[$settings.repeat]} (click to change)`}
             data-testid="repeat"
-            data-mode={$app.settings.repeat}
+            data-mode={$settings.repeat}
           >
             <Icon name="repeat" />
-            {#if $app.settings.repeat === 'one'}<span class="one">1</span>{/if}
+            {#if $settings.repeat === 'one'}<span class="one">1</span>{/if}
           </button>
           <span class="divider"></span>
           <button
-            class="icon"
+            class="icon labelled"
             onclick={() => player.mark('in')}
             aria-label="Mark in"
             title="Mark in (I): the track starts here, and so does the export"
             disabled={!current}
           >
-            <Icon name="markIn" />
+            <Icon name="markIn" /><span class="label">In</span>
           </button>
           <button
-            class="icon"
+            class="icon labelled"
             onclick={() => player.mark('out')}
             aria-label="Mark out"
             title="Mark out (O): the queue moves on here, and the export ends"
             disabled={!current}
           >
-            <Icon name="markOut" />
+            <Icon name="markOut" /><span class="label">Out</span>
           </button>
           <button
-            class="icon"
-            class:on={$app.settings.quantize}
-            onclick={() => player.updateSettings({ quantize: !$app.settings.quantize })}
+            class="icon labelled"
+            class:on={$settings.quantize}
+            onclick={() => player.updateSettings({ quantize: !$settings.quantize })}
             aria-label="Snap to the beat"
-            aria-pressed={$app.settings.quantize}
+            aria-pressed={$settings.quantize}
             title="Snap markers and cues to the beat (Q)"
             data-testid="quantize"
           >
-            <Icon name="magnet" />
+            <Icon name="magnet" /><span class="label">Snap</span>
           </button>
           <button
-            class="icon"
-            class:on={$app.settings.detailWaveform}
-            onclick={() => player.updateSettings({ detailWaveform: !$app.settings.detailWaveform })}
+            class="icon labelled"
+            class:on={$settings.detailWaveform}
+            onclick={() => player.updateSettings({ detailWaveform: !$settings.detailWaveform })}
             aria-label="Detail waveform and hot cues"
-            aria-pressed={$app.settings.detailWaveform}
+            aria-pressed={$settings.detailWaveform}
             title="Detail waveform and hot cues (W)"
             data-testid="detail-toggle"
           >
-            <Icon name="wave" />
+            <Icon name="wave" /><span class="label">Wave</span>
           </button>
         </div>
         {#if marked}
@@ -407,7 +408,10 @@
           {/if}
           <div class="knob" style:left="{fraction * 100}%"></div>
         </div>
-        <span class="time" title={playEnd < duration ? 'Until the out marker' : undefined}>
+        <span
+          class="time remaining"
+          title={playEnd < duration ? 'Until the out marker' : undefined}
+        >
           -{formatDuration(Math.max(0, playEnd - shown))}
         </span>
       </div>
@@ -422,7 +426,7 @@
       min="0"
       max="1"
       step="0.01"
-      value={$app.settings.volume}
+      value={$settings.volume}
       oninput={(event) => player.updateSettings({ volume: Number(event.currentTarget.value) })}
       aria-label="Volume"
     />
@@ -472,7 +476,7 @@
   }
   .artist {
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .center {
     display: flex;
@@ -494,7 +498,7 @@
     border-radius: 999px;
     border: 1px solid var(--fail);
     color: #fff;
-    font: 600 12px var(--mono);
+    font: 600 var(--text-xs) var(--mono);
   }
   .badge .dot {
     width: 8px;
@@ -504,7 +508,7 @@
     box-shadow: 0 0 6px var(--fail);
   }
   .live-center .hint {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .live-center button {
@@ -539,8 +543,30 @@
   .icon:hover:not(:disabled) {
     background: var(--surface-2);
   }
+  /* A toggle that is on shows it by more than its colour. */
   .icon.on {
     color: var(--accent-2);
+    background: color-mix(in srgb, var(--accent-2) 16%, transparent);
+  }
+  .icon.on:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent-2) 26%, transparent);
+  }
+  /* Where the bar has room, the marker and view buttons say what they are. */
+  .label {
+    display: none;
+  }
+  @media (min-width: 1280px) {
+    .icon.labelled {
+      display: flex;
+      gap: 5px;
+      width: auto;
+      padding: 0 11px 0 8px;
+      border-radius: 18px;
+    }
+    .labelled .label {
+      display: inline;
+      font-size: var(--text-sm);
+    }
   }
   .repeat {
     position: relative;
@@ -549,7 +575,7 @@
     position: absolute;
     right: 5px;
     bottom: 5px;
-    font: 700 9px var(--mono);
+    font: 700 var(--text-2xs) var(--mono);
   }
   .icon.play {
     width: 44px;
@@ -566,12 +592,17 @@
     gap: 10px;
     width: 100%;
   }
+  /* The time played is looked at most; the time left stays quieter. */
   .time {
     font-family: var(--mono);
-    font-size: 12px;
-    color: var(--muted);
-    min-width: 52px;
+    font-size: var(--text-md);
+    color: var(--text);
+    min-width: 56px;
     text-align: center;
+  }
+  .time.remaining {
+    font-size: var(--text-sm);
+    color: var(--muted);
   }
   .timeline {
     position: relative;
@@ -610,7 +641,7 @@
     border-left: 2px solid var(--cue);
     background: color-mix(in srgb, var(--cue) 70%, black);
     color: #fff;
-    font: 600 9px/11px var(--mono);
+    font: 600 var(--text-2xs)/1.1 var(--mono);
     pointer-events: none;
   }
   /* A tempo change of the beat grid: a line with the new tempo at its foot. */
@@ -624,7 +655,7 @@
     border-radius: 0 3px 3px 0;
     background: color-mix(in srgb, var(--warning) 70%, black);
     color: #000;
-    font: 600 9px/11px var(--mono);
+    font: 600 var(--text-2xs)/1.1 var(--mono);
     pointer-events: none;
   }
   .tempo-change::before {
@@ -722,7 +753,7 @@
     gap: 4px;
     padding: 2px 8px;
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--text-xs);
     white-space: nowrap;
     color: var(--accent-2);
   }

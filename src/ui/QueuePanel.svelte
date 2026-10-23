@@ -18,7 +18,7 @@
   import TrackTempo from './TrackTempo.svelte';
 
   const player = usePlayer();
-  const app = player.store;
+  const { tracks, currentId, settings } = player.parts;
   const analyses = player.analysis;
 
   /**
@@ -30,13 +30,19 @@
     return grid && (gridTempo(grid) > 0 || track.tempo !== null) ? grid : null;
   }
 
+  /** The title and artist in full, and the file: a long title is cut short in the row. */
+  function fullName(track: Track): string {
+    const artist = shownArtist(track);
+    return `${shownTitle(track)}${artist ? ` – ${artist}` : ''}\n${track.fileName}`;
+  }
+
   /**
    * True while the grid is being computed anew for a corrected tempo (TMP-06) or another tempo
    * range (AN-12).
    */
   function regridding(track: Track): boolean {
     const state = track.fingerprint ? $analyses.get(track.fingerprint) : undefined;
-    const wanted = { tempo: track.tempo, range: $app.settings.bpmRange, fixed: track.fixedTempo };
+    const wanted = { tempo: track.tempo, range: $settings.bpmRange, fixed: track.fixedTempo };
     return state !== undefined && !sameGrid(state, wanted);
   }
 
@@ -50,13 +56,11 @@
   /** The track being named (LS-18). */
   let naming = $state<Track | null>(null);
 
-  const totalDuration = $derived(
-    $app.tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0),
-  );
+  const totalDuration = $derived($tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0));
 
   /** Entries of the last visit whose files are not readable yet (SRC-05). */
-  const locked = $derived($app.tracks.filter((track) => track.status === 'locked').length);
-  const missing = $derived($app.tracks.filter((track) => track.status === 'missing').length);
+  const locked = $derived($tracks.filter((track) => track.status === 'locked').length);
+  const missing = $derived($tracks.filter((track) => track.status === 'missing').length);
 
   function addFromInput() {
     if (fileInput.files) player.addFiles(fileInput.files);
@@ -159,8 +163,8 @@
     <div>
       <h2>Queue</h2>
       <span class="summary">
-        {$app.tracks.length}
-        {$app.tracks.length === 1 ? 'track' : 'tracks'}
+        {$tracks.length}
+        {$tracks.length === 1 ? 'track' : 'tracks'}
         {#if totalDuration > 0}· {formatDuration(totalDuration)}{/if}
       </span>
     </div>
@@ -180,7 +184,7 @@
       <button
         class="ghost"
         onclick={() => player.clear()}
-        disabled={$app.tracks.length === 0}
+        disabled={$tracks.length === 0}
         aria-label="Clear queue"
         title="Clear queue"
       >
@@ -229,7 +233,7 @@
     </div>
   {/if}
 
-  {#if $app.tracks.length === 0}
+  {#if $tracks.length === 0}
     <p class="empty">Drop audio files anywhere, or click “Add files”.</p>
   {:else}
     <ol
@@ -245,18 +249,18 @@
         if (dragIndex === null || event.target !== event.currentTarget) return;
         event.preventDefault();
         const last = list?.lastElementChild?.getBoundingClientRect();
-        if (last && event.clientY > last.bottom) dropIndex = $app.tracks.length;
+        if (last && event.clientY > last.bottom) dropIndex = $tracks.length;
       }}
-      ondrop={(event) => onDrop(event, dropIndex ?? $app.tracks.length)}
+      ondrop={(event) => onDrop(event, dropIndex ?? $tracks.length)}
       data-testid="queue-list"
     >
-      {#each $app.tracks as track, index (track.id)}
+      {#each $tracks as track, index (track.id)}
         <li
-          class:current={track.id === $app.currentId}
+          class:current={track.id === $currentId}
           class:unsupported={track.status === 'unsupported'}
           class:offline={track.status === 'locked' || track.status === 'missing'}
           class:drop-before={dropIndex === index && dragIndex !== null}
-          class:drop-after={dropIndex === index + 1 && index === $app.tracks.length - 1}
+          class:drop-after={dropIndex === index + 1 && index === $tracks.length - 1}
           draggable="true"
           ondragstart={(event) => onDragStart(event, index)}
           ondragover={(event) => onDragOver(event, index)}
@@ -266,14 +270,14 @@
           onkeydown={(event) => onKey(event, index, track)}
           tabindex="0"
           role="option"
-          aria-selected={track.id === $app.currentId}
+          aria-selected={track.id === $currentId}
           data-testid="queue-item"
           data-status={track.status}
           title={track.status === 'locked'
             ? 'Double-click to allow access and play'
             : track.status === 'missing'
               ? `Add ${track.fileName} again to play it`
-              : (track.reason ?? track.fileName)}
+              : (track.reason ?? fullName(track))}
         >
           <span class="grip" aria-hidden="true"><Icon name="grip" size={16} /></span>
           {#if shownCover(track)}
@@ -281,8 +285,37 @@
           {:else}
             <span class="cover-placeholder"><Icon name="music" size={16} /></span>
           {/if}
+          <!-- The title and the artist take the row; the duration ends the first line (the
+               buttons take its place while the pointer is on the row), the tempo the second. -->
           <span class="text">
             <span class="title">{shownTitle(track)}</span>
+            <span class="end">
+              <span class="duration" data-testid="queue-duration">
+                {track.status === 'probing'
+                  ? '…'
+                  : track.duration !== null
+                    ? formatDuration(track.duration)
+                    : ''}
+              </span>
+              <span class="actions">
+                <button
+                  class="rename ghost"
+                  onclick={() => (naming = track)}
+                  aria-label="Title, artist, cover, colours and look of {shownTitle(track)}"
+                  title="Title, artist, cover, colours and look (F2)"
+                  data-testid="queue-rename"
+                >
+                  <Icon name="pencil" size={15} />
+                </button>
+                <button
+                  class="remove ghost"
+                  onclick={() => player.remove(track.id)}
+                  aria-label="Remove {shownTitle(track)}"
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              </span>
+            </span>
             <span class="artist">
               {#if track.status === 'unsupported'}
                 <Icon name="alert" size={12} /> {track.reason}
@@ -291,38 +324,15 @@
               {:else if track.status === 'missing'}
                 <Icon name="alert" size={12} /> File not available
               {:else}
-                {shownArtist(track) ?? track.fileName}
+                {shownArtist(track) ?? ''}
               {/if}
             </span>
-          </span>
-          <span class="numbers">
-            <span class="duration" data-testid="queue-duration">
-              {track.status === 'probing'
-                ? '…'
-                : track.duration !== null
-                  ? formatDuration(track.duration)
-                  : ''}
-            </span>
             {#if gridOf(track)}
-              <TrackTempo {track} grid={gridOf(track)!} pending={regridding(track)} />
+              <span class="tempo">
+                <TrackTempo {track} grid={gridOf(track)!} pending={regridding(track)} />
+              </span>
             {/if}
           </span>
-          <button
-            class="rename ghost"
-            onclick={() => (naming = track)}
-            aria-label="Title, artist, cover, colours and look of {shownTitle(track)}"
-            title="Title, artist, cover, colours and look (F2)"
-            data-testid="queue-rename"
-          >
-            <Icon name="pencil" size={15} />
-          </button>
-          <button
-            class="remove ghost"
-            onclick={() => player.remove(track.id)}
-            aria-label="Remove {shownTitle(track)}"
-          >
-            <Icon name="close" size={16} />
-          </button>
         </li>
       {/each}
     </ol>
@@ -346,11 +356,11 @@
   }
   h2 {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--text-md);
   }
   .summary {
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .actions {
     display: flex;
@@ -374,7 +384,7 @@
   .empty {
     margin: 24px 16px;
     color: var(--muted);
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   ol {
     list-style: none;
@@ -385,7 +395,7 @@
   }
   li {
     display: grid;
-    grid-template-columns: 16px 36px 1fr auto 28px 28px;
+    grid-template-columns: 16px 36px minmax(0, 1fr);
     align-items: center;
     gap: 10px;
     padding: 6px 8px;
@@ -417,7 +427,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface-2);
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .notice span,
@@ -456,8 +466,10 @@
     color: var(--muted);
   }
   .text {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
     min-width: 0;
   }
   .title,
@@ -467,38 +479,52 @@
     text-overflow: ellipsis;
   }
   .title {
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .artist {
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
-  .numbers {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+  .end,
+  .tempo {
+    display: grid;
+    justify-items: end;
   }
+  /* The duration and the buttons share a place: the buttons show while the row is pointed at
+     or focused, without taking room from the title. */
+  .end > * {
+    grid-area: 1 / 1;
+  }
+  /* Never in the way of the buttons over it: hidden, it would still take their clicks. */
   .duration {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
+    pointer-events: none;
+  }
+  .actions {
+    display: flex;
+    gap: 2px;
+    margin: -4px -4px -4px 0;
+    opacity: 0;
+  }
+  li:hover .actions,
+  li:focus-within .actions {
+    opacity: 1;
+  }
+  li:hover .duration,
+  li:focus-within .duration {
+    opacity: 0;
   }
   .remove,
   .rename {
     display: grid;
     place-items: center;
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     padding: 0;
-    opacity: 0;
-  }
-  li:hover .remove,
-  li:focus-within .remove,
-  li:hover .rename,
-  li:focus-within .rename {
-    opacity: 1;
   }
 </style>
