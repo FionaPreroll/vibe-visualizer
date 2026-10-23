@@ -28,8 +28,8 @@
    * vinyl or key lock, the DJ filter, delay and reverb. Everything also applies to exports.
    */
   const player = usePlayer();
-  const app = player.store;
-  const sound = $derived($app.sound);
+  const { sound: soundState } = player.parts;
+  const sound = $derived($soundState);
   const limits = $derived(rateLimits(sound.tempoRange));
   const activePreset = $derived(
     SOUND_PRESETS.find((preset) => same(preset.settings, sound))?.name ?? null,

@@ -18,7 +18,7 @@
   let { open, onclose }: Props = $props();
 
   const player = usePlayer();
-  const app = player.store;
+  const { settings } = player.parts;
   const engine = player.engine;
   /** Seconds between the ticks, and how long a flash lasts. */
   const INTERVAL = 1;
@@ -103,7 +103,7 @@
   </div>
   <Slider
     label="Visuals later by"
-    value={$app.settings.syncOffset}
+    value={$settings.syncOffset}
     min={SYNC_OFFSET_RANGE.min}
     max={SYNC_OFFSET_RANGE.max}
     step={5}
@@ -112,8 +112,8 @@
     onchange={setOffset}
   />
   <div class="steps">
-    <button onclick={() => setOffset($app.settings.syncOffset - 10)}>−10 ms</button>
-    <button onclick={() => setOffset($app.settings.syncOffset + 10)}>+10 ms</button>
+    <button onclick={() => setOffset($settings.syncOffset - 10)}>−10 ms</button>
+    <button onclick={() => setOffset($settings.syncOffset + 10)}>+10 ms</button>
   </div>
   <p class="note" data-testid="sync-reported">
     {#if reportedMs === null}

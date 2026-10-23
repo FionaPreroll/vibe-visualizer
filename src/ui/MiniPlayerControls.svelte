@@ -12,10 +12,10 @@
   let { onback }: { onback: () => void } = $props();
 
   const player = usePlayer();
-  const app = player.store;
-  const current = $derived($app.tracks.find((track) => track.id === $app.currentId) ?? null);
-  const live = $derived($app.live.status === 'on');
-  const artist = $derived(live ? $app.live.label : current ? shownArtist(current) : undefined);
+  const { tracks, currentTrack, playing, live: liveState } = player.parts;
+  const current = $derived($currentTrack);
+  const live = $derived($liveState.status === 'on');
+  const artist = $derived(live ? $liveState.label : current ? shownArtist(current) : undefined);
   let fresh = $state(true);
 
   onMount(() => {
@@ -44,11 +44,11 @@
       <button
         class="icon play"
         onclick={() => player.toggle()}
-        aria-label={$app.playing ? 'Pause' : 'Play'}
-        disabled={$app.tracks.length === 0}
+        aria-label={$playing ? 'Pause' : 'Play'}
+        disabled={$tracks.length === 0}
         data-testid="mini-play"
       >
-        <Icon name={$app.playing ? 'pause' : 'play'} size={22} />
+        <Icon name={$playing ? 'pause' : 'play'} size={22} />
       </button>
       <button class="icon" onclick={() => player.next()} aria-label="Next" disabled={!current}>
         <Icon name="next" />

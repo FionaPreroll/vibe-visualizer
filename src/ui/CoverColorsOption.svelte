@@ -7,19 +7,19 @@
    * app setting, as the cover as the logo is: the looks and their presets keep their palettes.
    */
   const player = usePlayer();
-  const app = player.store;
+  const { settings } = player.parts;
 </script>
 
 <label class="option">
   <input
     type="checkbox"
-    checked={$app.settings.coverColors}
+    checked={$settings.coverColors}
     onchange={(event) => player.updateSettings({ coverColors: event.currentTarget.checked })}
     data-testid="cover-colors"
   />
   The colours of the track playing
 </label>
-{#if $app.settings.coverColors}
+{#if $settings.coverColors}
   <p class="hint" data-testid="cover-colors-hint">
     From its cover art, or as you set them with ✎ in the queue, instead of the palette; live and in
     videos. Tracks without either keep the palette.

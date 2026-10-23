@@ -43,7 +43,7 @@
   let { track, onclose }: Props = $props();
 
   const player = usePlayer();
-  const app = player.store;
+  const { tracks } = player.parts;
   const heading = `track-name-${Math.random().toString(36).slice(2)}`;
   let dialog: HTMLDialogElement | undefined = $state();
   let coverInput: HTMLInputElement | undefined = $state();
@@ -70,9 +70,7 @@
   ];
 
   /** The track as it is now (its cover may come later than the dialog). */
-  const live = $derived(
-    track ? ($app.tracks.find((entry) => entry.id === track.id) ?? track) : null,
-  );
+  const live = $derived(track ? ($tracks.find((entry) => entry.id === track.id) ?? track) : null);
   const preview = $derived(
     cover === undefined ? live && shownCover(live) : cover === null ? live?.coverUrl : cover.url,
   );

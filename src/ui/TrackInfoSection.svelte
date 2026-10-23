@@ -20,9 +20,9 @@
    * over the visuals, with its progress and time on request.
    */
   const player = usePlayer();
-  const app = player.store;
-  const overlay = $derived($app.settings.overlay);
-  const current = $derived($app.tracks.find((track) => track.id === $app.currentId) ?? null);
+  const { currentTrack, settings } = player.parts;
+  const overlay = $derived($settings.overlay);
+  const current = $derived($currentTrack);
   let naming = $state<Track | null>(null);
 
   const set = (changes: Partial<OverlaySettings>) =>

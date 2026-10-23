@@ -26,7 +26,7 @@
   type Action = 'analysis-unused' | 'analysis-all' | 'tracks' | 'exports' | 'everything';
 
   const player = usePlayer();
-  const app = player.store;
+  const { tracks: tracksState } = player.parts;
   const exporter = useExporter();
   let summary = $state.raw<StorageSummary | null>(null);
   let pending = $state<Action | null>(null);
@@ -42,7 +42,7 @@
   const exporting = $derived($exporter.status === 'running');
   /** The fingerprints of the tracks in the queue: what belongs to them stays. */
   const inQueue = $derived(
-    new Set($app.tracks.map((track) => track.fingerprint).filter((print) => print !== null)),
+    new Set($tracksState.map((track) => track.fingerprint).filter((print) => print !== null)),
   );
 
   const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
