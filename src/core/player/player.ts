@@ -40,6 +40,7 @@ import { TrackAnalyzer, type TrackAnalysisState } from '../library/track-analyze
 import { readCover, writeCover } from '../library/track-covers';
 import { sameTrackColors, sanitizeTrackColors, type TrackColors } from '../render/cover-palette';
 import { nextTrack, previousTrack, type PlayOrder } from './play-order';
+import { StateSync } from './state-sync';
 import {
   CUE_COUNT,
   initialState,
@@ -128,7 +129,8 @@ export class Player {
   private readonly ownCovers = new Map<string, Promise<string | null>>();
   /** Resolves once the queue of the last visit is back (it is saved only after that). */
   private readonly restored: Promise<void>;
-  private saveTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Stores the state as it changes. */
+  private readonly sync: StateSync;
   private unlocking: Promise<void> | null = null;
   private loadedId: string | null = null;
   /** The engine knows files by tokens: the heard one, and which track each token stands for. */
@@ -219,11 +221,9 @@ export class Player {
       ),
     );
     this.updateTrackerRange();
-    const { tracks, currentId, settings, visuals, kaleido, sound, live } = this.parts;
+    const { tracks, settings, sound, live } = this.parts;
     watch(live, () => this.updateTrackerRange());
     watch(tracks, (now, before) => {
-      this.scheduleSave();
-      this.storeTrackData(before, now);
       // The playing track's out marker may have moved: its stream stops somewhere else now.
       const was = before.find((track) => track.id === this.loadedId);
       const is = now.find((track) => track.id === this.loadedId);
@@ -231,16 +231,9 @@ export class Player {
       // The queue changed: the track that follows may be another one.
       this.planNext();
     });
-    watch(currentId, () => this.scheduleSave());
-    watch(sound, (now) => {
-      saveSound(now);
-      this.engine.sound = now;
-    });
-    watch(visuals, (now) => saveVisuals(now));
-    watch(kaleido, (now) => saveKaleido(now));
+    watch(sound, (now) => (this.engine.sound = now));
     watch(settings, (now, before) => {
       this.updateTrackerRange();
-      saveSettings(now);
       this.engine.volume = now.volume;
       this.engine.inputGainDecibels = now.inputGain;
       this.engine.syncOffset = now.syncOffset / 1000;
@@ -257,6 +250,12 @@ export class Player {
     this.restored = this.restore().catch((error: unknown) => {
       console.error('The queue of the last visit could not be restored', error);
     });
+    this.sync = new StateSync(
+      this.parts,
+      { saveSettings, saveSound, saveVisuals, saveKaleido, saveTrackData, saveQueue, flushWrites },
+      () => this.storedQueue(),
+      this.restored,
+    );
     window.addEventListener('pagehide', this.flushSave);
     // A tab in the background can be discarded without a pagehide (on phones above all).
     document.addEventListener('visibilitychange', this.flushSave);
@@ -695,22 +694,11 @@ export class Player {
     }
   }
 
-  /** Saves the queue soon (SRC-05): changes come in bursts. */
-  private scheduleSave(): void {
-    clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => void this.save(), 400);
-  }
+  private readonly flushSave = () => this.sync.flush();
 
-  private readonly flushSave = () => {
-    flushWrites();
-    if (this.saveTimer !== undefined) void this.save();
-  };
-
-  private async save(): Promise<void> {
-    clearTimeout(this.saveTimer);
-    this.saveTimer = undefined;
-    await this.restored;
-    const queue: StoredQueue = {
+  /** The queue as it is stored (SRC-05): each entry with what is known of its file. */
+  private storedQueue(): StoredQueue {
+    return {
       entries: this.state.tracks.map((track) => ({
         id: track.id,
         info: storedInfo(track),
@@ -718,7 +706,6 @@ export class Player {
       })),
       currentId: this.state.currentId,
     };
-    await saveQueue(queue);
   }
 
   /**
@@ -1453,46 +1440,11 @@ export class Player {
     this.dropUndo();
     window.removeEventListener('pagehide', this.flushSave);
     document.removeEventListener('visibilitychange', this.flushSave);
-    this.flushSave();
+    this.sync.dispose();
     if (this.liveInput) closeInput(this.liveInput.stream);
     this.probeClient.terminate();
     this.analysis.dispose();
     void this.engine.dispose();
-  }
-
-  /**
-   * Keeps the cues, markers, tempo, grid correction, names and colours of each file (TR-05), so
-   * they come back with it.
-   */
-  private storeTrackData(previous: readonly Track[], next: readonly Track[]): void {
-    const before = new Map(previous.map((track) => [track.id, track]));
-    for (const track of next) {
-      if (!track.fingerprint) continue;
-      const old = before.get(track.id);
-      const unchanged =
-        old?.fingerprint === track.fingerprint &&
-        old.cues === track.cues &&
-        old.marks === track.marks &&
-        old.tempo === track.tempo &&
-        old.fixedTempo === track.fixedTempo &&
-        old.gridEdit === track.gridEdit &&
-        old.edit === track.edit &&
-        old.colors === track.colors &&
-        old.look === track.look;
-      if (!unchanged) {
-        const { cues, marks, tempo, fixedTempo, gridEdit, edit, colors, look } = track;
-        saveTrackData(track.fingerprint, {
-          cues,
-          marks,
-          tempo,
-          fixedTempo,
-          gridEdit,
-          edit,
-          colors,
-          look,
-        });
-      }
-    }
   }
 
   /** Stops playing the loaded track and empties the engine (a newer load or seek is dropped). */
