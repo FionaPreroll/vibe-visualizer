@@ -17,6 +17,7 @@
   import { useCapture } from './stage-capture';
   import { StreamInfo } from './stream-info';
   import { useAssets } from './visuals-context';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * The visuals (Logo Spectrum or Kaleidoscope), drawn by the render worker at the canvas's
@@ -44,7 +45,9 @@
   const player = usePlayer();
   const assets = useAssets();
   const capture = useCapture();
-  const { tracks, settings, visuals, kaleido, sound } = player.parts;
+  const app = useAppState();
+  // The renderer follows these by subscription, outside the components' updates.
+  const { visuals, kaleido } = player.parts;
   let canvas: HTMLCanvasElement | undefined = $state();
   let renderer: Renderer | null = $state(null);
   let status = $state<'starting' | 'running' | 'failed'>('starting');
@@ -60,8 +63,8 @@
   // Render scale and auto-quality (VE-07).
   const quality = new AutoQuality();
   let autoScale = $state(1);
-  const autoQuality = $derived($settings.autoQuality);
-  const scale = $derived($settings.renderScale * (autoQuality ? autoScale : 1));
+  const autoQuality = $derived(app.settings.autoQuality);
+  const scale = $derived(app.settings.renderScale * (autoQuality ? autoScale : 1));
   /** Device pixels of the canvas box, before the scale. */
   let box: readonly [number, number] = [1, 1];
   const scaled = () =>
@@ -130,7 +133,7 @@
     return () => observer.disconnect();
   });
 
-  const reduceFlashing = $derived($settings.reduceFlashing);
+  const reduceFlashing = $derived(app.settings.reduceFlashing);
   $effect(() => {
     renderer?.setReduceFlashing(reduceFlashing);
   });
@@ -138,15 +141,15 @@
   // The track overlay (LS-18, LS-19), the cover art as the logo (LS-15) and its colours
   // (VE-12): the worker learns the tracks of the files in the stream, and shows the one the
   // music heard comes from.
-  const overlay = $derived($settings.overlay);
+  const overlay = $derived(app.settings.overlay);
   $effect(() => {
     renderer?.setOverlay(overlay);
   });
-  const coverLogo = $derived($settings.coverLogo);
+  const coverLogo = $derived(app.settings.coverLogo);
   $effect(() => {
     renderer?.setCoverLogo(coverLogo);
   });
-  const coverColors = $derived($settings.coverColors);
+  const coverColors = $derived(app.settings.coverColors);
   $effect(() => {
     renderer?.setCoverColors(coverColors);
   });
@@ -154,12 +157,12 @@
   const analyses = player.analysis;
   const streamInfo = $derived(renderer ? new StreamInfo(renderer) : null);
   $effect(() => {
-    streamInfo?.update($stream, $tracks, $sound.rate, coverLogo || coverColors, $analyses);
+    streamInfo?.update($stream, app.tracks, app.sound.rate, coverLogo || coverColors, $analyses);
   });
 
   // Automatic preset switching: its settings and the presets of each mode that take part.
-  const autoPresets = $derived($settings.autoPresets);
-  const favourites = $derived($settings.favourites);
+  const autoPresets = $derived(app.settings.autoPresets);
+  const favourites = $derived(app.settings.favourites);
   $effect(() => {
     const pool = autoPresets.pool;
     renderer?.setAutoPresets(

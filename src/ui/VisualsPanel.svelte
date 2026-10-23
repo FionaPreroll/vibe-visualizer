@@ -10,18 +10,19 @@
   import { liveScale } from './render-quality';
   import SyncCalibration from './SyncCalibration.svelte';
   import TrackInfoSection from './TrackInfoSection.svelte';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * The settings of the visual mode on the stage, and for all modes the track overlay (LS-18),
    * the display (VE-07) and the A/V sync (AN-06).
    */
   const player = usePlayer();
-  const { settings, visuals } = player.parts;
+  const app = useAppState();
   let calibrating = $state(false);
   /** In the Logo Spectrum: the Kaleidoscope behind it is being set up (VE-08). */
   let editBehind = $state(false);
   const layered = $derived(
-    $settings.visualMode === 'logoSpectrum' && $visuals.backgroundSource === 'kaleidoscope',
+    app.settings.visualMode === 'logoSpectrum' && app.visuals.backgroundSource === 'kaleidoscope',
   );
 </script>
 
@@ -46,9 +47,9 @@
     </button>
   </div>
 {/if}
-{#if $settings.visualMode === 'kaleidoscope'}
+{#if app.settings.visualMode === 'kaleidoscope'}
   <KaleidoPanel />
-{:else if $settings.visualMode === 'logoSpectrum'}
+{:else if app.settings.visualMode === 'logoSpectrum'}
   {#if layered && editBehind}
     <KaleidoPanel behind />
   {:else}
@@ -61,14 +62,14 @@
   </p>
 {/if}
 
-{#if $settings.visualMode !== 'analysis'}
+{#if app.settings.visualMode !== 'analysis'}
   <TrackInfoSection />
 {/if}
 
 <Section title="Display">
   <Slider
     label="Resolution"
-    value={$settings.renderScale}
+    value={app.settings.renderScale}
     min={RENDER_SCALE_RANGE.min}
     max={RENDER_SCALE_RANGE.max}
     step={0.05}
@@ -79,7 +80,7 @@
   <label class="check">
     <input
       type="checkbox"
-      checked={$settings.autoQuality}
+      checked={app.settings.autoQuality}
       onchange={(event) => player.updateSettings({ autoQuality: event.currentTarget.checked })}
       data-testid="auto-quality"
     />
@@ -88,7 +89,7 @@
   <label class="check">
     <input
       type="checkbox"
-      checked={$settings.reduceFlashing}
+      checked={app.settings.reduceFlashing}
       onchange={(event) =>
         player.updateSettings({
           reduceFlashing: event.currentTarget.checked,
@@ -100,7 +101,7 @@
   </label>
   <p class="hint">Damps sudden jumps in brightness, in exports too.</p>
   <p class="hint" data-testid="live-scale">
-    Drawn at {percent($liveScale)} of the screen's resolution{#if $settings.autoQuality && $liveScale < $settings.renderScale - 1e-6}
+    Drawn at {percent($liveScale)} of the screen's resolution{#if app.settings.autoQuality && $liveScale < app.settings.renderScale - 1e-6}
       (lowered, the frame rate dropped){/if}. Exports always render at their own resolution.
   </p>
 </Section>
@@ -108,7 +109,7 @@
 <Section title="A/V sync">
   <Slider
     label="Visuals later by"
-    value={$settings.syncOffset}
+    value={app.settings.syncOffset}
     min={SYNC_OFFSET_RANGE.min}
     max={SYNC_OFFSET_RANGE.max}
     step={5}

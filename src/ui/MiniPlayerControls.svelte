@@ -3,6 +3,7 @@
   import { shownArtist, shownTitle } from '../core/state/app-state';
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * The mini player's controls (DS-06), over the visuals at the bottom of its window: the track
@@ -12,10 +13,10 @@
   let { onback }: { onback: () => void } = $props();
 
   const player = usePlayer();
-  const { tracks, currentTrack, playing, live: liveState } = player.parts;
-  const current = $derived($currentTrack);
-  const live = $derived($liveState.status === 'on');
-  const artist = $derived(live ? $liveState.label : current ? shownArtist(current) : undefined);
+  const app = useAppState();
+  const current = $derived(app.currentTrack);
+  const live = $derived(app.live.status === 'on');
+  const artist = $derived(live ? app.live.label : current ? shownArtist(current) : undefined);
   let fresh = $state(true);
 
   onMount(() => {
@@ -44,11 +45,11 @@
       <button
         class="icon play"
         onclick={() => player.toggle()}
-        aria-label={$playing ? 'Pause' : 'Play'}
-        disabled={$tracks.length === 0}
+        aria-label={app.playing ? 'Pause' : 'Play'}
+        disabled={app.tracks.length === 0}
         data-testid="mini-play"
       >
-        <Icon name={$playing ? 'pause' : 'play'} size={22} />
+        <Icon name={app.playing ? 'pause' : 'play'} size={22} />
       </button>
       <button class="icon" onclick={() => player.next()} aria-label="Next" disabled={!current}>
         <Icon name="next" />

@@ -16,9 +16,10 @@
   import LiveTempo from './LiveTempo.svelte';
   import { usePlayer } from './player-context';
   import { CUE_COLOURS, drawWaveform } from './waveform-draw';
+  import { useAppState } from './app-state.svelte';
 
   const player = usePlayer();
-  const { tracks, currentTrack, playing, settings, live: liveState } = player.parts;
+  const app = useAppState();
   const analyses = player.analysis;
 
   const REPEAT_LABELS: Record<RepeatMode, string> = {
@@ -33,8 +34,8 @@
   let waveCanvas: HTMLCanvasElement | undefined = $state();
   let timelineWidth = $state(0);
 
-  const current = $derived($currentTrack);
-  const live = $derived($liveState.status === 'on');
+  const current = $derived(app.currentTrack);
+  const live = $derived(app.live.status === 'on');
   const duration = $derived(current?.duration ?? 0);
   const shown = $derived(dragFraction !== null ? dragFraction * duration : position);
   const fraction = $derived(duration > 0 ? Math.min(1, shown / duration) : 0);
@@ -72,7 +73,7 @@
     return () => observer.disconnect();
   });
 
-  const waveformStyle = $derived($settings.waveformStyle);
+  const waveformStyle = $derived(app.settings.waveformStyle);
 
   // Redrawn when the analysis grows or the bar changes size; the played part is an overlay.
   $effect(() => {
@@ -154,7 +155,7 @@
     const direction = event.key === 'ArrowLeft' ? -1 : 1;
     const grid = analysis?.grid;
     let target = at + direction * 0.1;
-    if (grid && $settings.quantize) {
+    if (grid && app.settings.quantize) {
       const index = beatBefore(grid, at + direction * 1e-3) + (direction > 0 ? 1 : 0);
       const beat = grid.beats[index];
       if (beat !== undefined) target = beat;
@@ -179,7 +180,7 @@
       <div class="cover-placeholder live"><Icon name="live" /></div>
       <div class="titles">
         <span class="title" data-testid="now-title">Live input</span>
-        <span class="artist">{$liveState.label}</span>
+        <span class="artist">{app.live.label}</span>
       </div>
     {:else}
       {#if current && shownCover(current)}
@@ -222,11 +223,11 @@
           <button
             class="icon play"
             onclick={() => player.toggle()}
-            aria-label={$playing ? 'Pause' : 'Play'}
-            disabled={$tracks.length === 0}
+            aria-label={app.playing ? 'Pause' : 'Play'}
+            disabled={app.tracks.length === 0}
             data-testid="play-button"
           >
-            <Icon name={$playing ? 'pause' : 'play'} size={24} />
+            <Icon name={app.playing ? 'pause' : 'play'} size={24} />
           </button>
           <button class="icon" onclick={() => player.next()} aria-label="Next" disabled={!current}>
             <Icon name="next" />
@@ -236,10 +237,10 @@
           </button>
           <button
             class="icon"
-            class:on={$settings.shuffle}
-            onclick={() => player.updateSettings({ shuffle: !$settings.shuffle })}
+            class:on={app.settings.shuffle}
+            onclick={() => player.updateSettings({ shuffle: !app.settings.shuffle })}
             aria-label="Shuffle"
-            aria-pressed={$settings.shuffle}
+            aria-pressed={app.settings.shuffle}
             title="Shuffle: play the queue in random order"
             data-testid="shuffle"
           >
@@ -247,19 +248,19 @@
           </button>
           <button
             class="icon repeat"
-            class:on={$settings.repeat !== 'off'}
+            class:on={app.settings.repeat !== 'off'}
             onclick={() =>
               player.updateSettings({
-                repeat: REPEAT_MODES[(REPEAT_MODES.indexOf($settings.repeat) + 1) % 3]!,
+                repeat: REPEAT_MODES[(REPEAT_MODES.indexOf(app.settings.repeat) + 1) % 3]!,
               })}
-            aria-label={REPEAT_LABELS[$settings.repeat]}
-            aria-pressed={$settings.repeat !== 'off'}
-            title={`${REPEAT_LABELS[$settings.repeat]} (click to change)`}
+            aria-label={REPEAT_LABELS[app.settings.repeat]}
+            aria-pressed={app.settings.repeat !== 'off'}
+            title={`${REPEAT_LABELS[app.settings.repeat]} (click to change)`}
             data-testid="repeat"
-            data-mode={$settings.repeat}
+            data-mode={app.settings.repeat}
           >
             <Icon name="repeat" />
-            {#if $settings.repeat === 'one'}<span class="one">1</span>{/if}
+            {#if app.settings.repeat === 'one'}<span class="one">1</span>{/if}
           </button>
           <span class="divider"></span>
           <button
@@ -282,10 +283,10 @@
           </button>
           <button
             class="icon labelled"
-            class:on={$settings.quantize}
-            onclick={() => player.updateSettings({ quantize: !$settings.quantize })}
+            class:on={app.settings.quantize}
+            onclick={() => player.updateSettings({ quantize: !app.settings.quantize })}
             aria-label="Snap to the beat"
-            aria-pressed={$settings.quantize}
+            aria-pressed={app.settings.quantize}
             title="Snap markers and cues to the beat (Q)"
             data-testid="quantize"
           >
@@ -293,10 +294,10 @@
           </button>
           <button
             class="icon labelled"
-            class:on={$settings.detailWaveform}
-            onclick={() => player.updateSettings({ detailWaveform: !$settings.detailWaveform })}
+            class:on={app.settings.detailWaveform}
+            onclick={() => player.updateSettings({ detailWaveform: !app.settings.detailWaveform })}
             aria-label="Detail waveform and hot cues"
-            aria-pressed={$settings.detailWaveform}
+            aria-pressed={app.settings.detailWaveform}
             title="Detail waveform and hot cues (W)"
             data-testid="detail-toggle"
           >
@@ -426,7 +427,7 @@
       min="0"
       max="1"
       step="0.01"
-      value={$settings.volume}
+      value={app.settings.volume}
       oninput={(event) => player.updateSettings({ volume: Number(event.currentTarget.value) })}
       aria-label="Volume"
     />

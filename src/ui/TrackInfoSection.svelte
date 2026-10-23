@@ -14,15 +14,16 @@
   import Slider from './controls/Slider.svelte';
   import { usePlayer } from './player-context';
   import { trackNameDialog } from './later.svelte';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * The track overlay (LS-18, LS-19), for both modes: the title and artist of the track playing
    * over the visuals, with its progress and time on request.
    */
   const player = usePlayer();
-  const { currentTrack, settings } = player.parts;
-  const overlay = $derived($settings.overlay);
-  const current = $derived($currentTrack);
+  const app = useAppState();
+  const overlay = $derived(app.settings.overlay);
+  const current = $derived(app.currentTrack);
   let naming = $state<Track | null>(null);
   $effect(() => {
     if (naming) void trackNameDialog.load();

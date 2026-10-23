@@ -36,6 +36,7 @@
   import { kaleidoPresets, logoSpectrumPresets } from './preset-store';
   import { lookSettings } from './track-look';
   import { useAssets } from './visuals-context';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * The export (EX-03…06): format, range and quality, one track or several (EX-05) with fades
@@ -50,7 +51,7 @@
   let { open, onclose }: Props = $props();
 
   const player = usePlayer();
-  const { tracks, currentId, settings, visuals, kaleido, sound: soundState } = player.parts;
+  const app = useAppState();
   const exporter = useExporter();
   const assets = useAssets();
 
@@ -66,14 +67,14 @@
 
   $effect(() => saveExportOptions($state.snapshot(choices.options)));
 
-  const aspect = $derived($settings.aspect);
+  const aspect = $derived(app.settings.aspect);
   const fitted = $derived(fitOptions(choices.options, aspect));
   const format = $derived(resolveFormat(fitted, aspect));
-  const mode = $derived($settings.visualMode);
-  const sound = $derived($soundState);
+  const mode = $derived(app.settings.visualMode);
+  const sound = $derived(app.sound);
   const plan = $derived(
     exportPlan(
-      { tracks: $tracks, currentId: $currentId },
+      { tracks: app.tracks, currentId: app.currentId },
       fitted,
       choices.skipped,
       sound,
@@ -117,10 +118,10 @@
       return;
     }
     // The track overlay names each track over the part the video plays (LS-18, LS-19).
-    const overlay = $settings.overlay;
+    const overlay = app.settings.overlay;
     // The cover art as the logo (LS-15), and its colours (VE-12).
-    const coverLogo = !soundOnly && mode === 'logoSpectrum' && $settings.coverLogo;
-    const coverColors = !soundOnly && $settings.coverColors;
+    const coverLogo = !soundOnly && mode === 'logoSpectrum' && app.settings.coverLogo;
+    const coverColors = !soundOnly && app.settings.coverColors;
     const visuals: ExportVisuals = {
       ...visualsOf(mode === 'kaleidoscope' ? 'kaleidoscope' : 'logoSpectrum'),
       overlay: overlay.on ? overlay : undefined,
@@ -193,8 +194,8 @@
 
   /** The visuals of the video: the current settings, and the preset switching if it is on. */
   function visualsOf(mode: 'logoSpectrum' | 'kaleidoscope'): ExportVisuals {
-    const config = $settings.autoPresets;
-    const favourites = $settings.favourites;
+    const config = app.settings.autoPresets;
+    const favourites = app.settings.favourites;
     if (mode === 'kaleidoscope') {
       const presets = switchingPool(
         BUILT_IN_KALEIDO_PRESETS,
@@ -204,9 +205,9 @@
       );
       return {
         mode,
-        settings: $kaleido,
+        settings: app.kaleido,
         auto: config.on ? { config, presets } : undefined,
-        reduceFlashing: $settings.reduceFlashing,
+        reduceFlashing: app.settings.reduceFlashing,
       };
     }
     const presets = switchingPool(
@@ -216,14 +217,14 @@
       config.pool,
     );
     // The Kaleidoscope behind (VE-08), if a look of the video shows it.
-    const looks = config.on ? [$visuals, ...presets] : [$visuals];
+    const looks = config.on ? [app.visuals, ...presets] : [app.visuals];
     const layered = looks.some((look) => look.backgroundSource === 'kaleidoscope');
     return {
       mode,
-      settings: $visuals,
+      settings: app.visuals,
       auto: config.on ? { config, presets } : undefined,
-      reduceFlashing: $settings.reduceFlashing,
-      layer: layered ? $kaleido : undefined,
+      reduceFlashing: app.settings.reduceFlashing,
+      layer: layered ? app.kaleido : undefined,
     };
   }
 
@@ -236,7 +237,7 @@
     if (!manifest.progress.audioDone) {
       // The audio pass starts again: it needs the files of the tracks, from the queue.
       files = manifest.parts.map(({ source }) => {
-        const match = $tracks.find(
+        const match = app.tracks.find(
           (entry) => entry.fileName === source.name && entry.size === source.size,
         );
         return match ? player.fileFor(match.id) : null;

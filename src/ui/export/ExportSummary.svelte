@@ -15,6 +15,7 @@
   import { askForNotifications, notificationsAvailable } from '../export-notify';
   import { usePlayer } from '../player-context';
   import { codecLabel, hasColors, soundSummary, switchingSummary } from './export-words';
+  import { useAppState } from '../app-state.svelte';
 
   /**
    * What the export will make, before it starts: the tracks, the visuals, the format and the
@@ -40,7 +41,7 @@
   } = $props();
 
   const player = usePlayer();
-  const { settings } = player.parts;
+  const app = useAppState();
   const { track, range: choice, chosen, perTrack, soundOnly, seconds } = $derived(plan);
   /** What the export makes, in the dialog's sentences. */
   const what = $derived(soundOnly ? 'sound' : 'video');
@@ -83,23 +84,23 @@
         Switch to Logo Spectrum or Kaleidoscope first
       {:else}
         {mode === 'kaleidoscope' ? 'Kaleidoscope' : 'Logo Spectrum'}, with the current settings
-        {#if $settings.autoPresets.on}
-          <span data-testid="export-switching">({switchingSummary($settings.autoPresets)})</span>
+        {#if app.settings.autoPresets.on}
+          <span data-testid="export-switching">({switchingSummary(app.settings.autoPresets)})</span>
         {/if}
-        {#if $settings.reduceFlashing}
+        {#if app.settings.reduceFlashing}
           <span data-testid="export-calm">(flashing reduced)</span>
         {/if}
-        {#if $settings.overlay.on}
+        {#if app.settings.overlay.on}
           <span data-testid="export-overlay"
             >({chosen.length > 1 ? 'with the titles' : "with the track's title"})</span
           >
         {/if}
-        {#if mode === 'logoSpectrum' && $settings.coverLogo && chosen.some(shownCover)}
+        {#if mode === 'logoSpectrum' && app.settings.coverLogo && chosen.some(shownCover)}
           <span data-testid="export-cover"
             >({chosen.length > 1 ? 'the cover art as the logo' : 'its cover art as the logo'})</span
           >
         {/if}
-        {#if $settings.coverColors && chosen.some(hasColors)}
+        {#if app.settings.coverColors && chosen.some(hasColors)}
           <span data-testid="export-cover-colors"
             >({chosen.length > 1 ? 'in the colours of the tracks' : "in the track's colours"})</span
           >
@@ -145,7 +146,7 @@
   <label class="notify">
     <input
       type="checkbox"
-      checked={$settings.exportNotify}
+      checked={app.settings.exportNotify}
       onchange={setNotify}
       data-testid="export-notify"
     />

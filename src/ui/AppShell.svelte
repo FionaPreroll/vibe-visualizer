@@ -51,6 +51,7 @@
   import type { KaleidoSettings } from '../core/render/kaleido-settings';
   import type { LogoSpectrumSettings } from '../core/render/visual-settings';
   import { provideAssets } from './visuals-context';
+  import { AppStateView, provideAppState } from './app-state.svelte';
 
   const player = new Player();
   providePlayer(player);
@@ -63,7 +64,9 @@
   const capture = new StageCapture();
   provideCapture(capture);
   const captureReady = capture.ready;
-  const { tracks, currentTrack, settings, sound, live, error, undo } = player.parts;
+  // The state for the components: each depends on the parts it reads (#57).
+  const app = new AppStateView(player.store);
+  provideAppState(app);
   let exportOpen = $state(false);
   let helpOpen = $state(false);
   let controllerOpen = $state(false);
@@ -79,12 +82,12 @@
     if (settingsOpen) void settingsDialog.load();
     if (helpOpen) void helpDialog.load();
     if (controllerOpen) void controllerDialog.load();
-    if ($settings.visualMode === 'analysis') void analysisView.load();
+    if (app.settings.visualMode === 'analysis') void analysisView.load();
   });
 
   /** While the side panel's edge is dragged: the panel's width, stored when it is let go. */
   let dragWidth = $state<number | null>(null);
-  const panelWidth = $derived(dragWidth ?? $settings.panelWidth);
+  const panelWidth = $derived(dragWidth ?? app.settings.panelWidth);
   /** In a narrow window the side panel lies over the stage instead of beside it. */
   const panelOver = new MediaQuery('max-width: 1099px');
   /** In fullscreen, the mouse cursor hides after a moment without movement (DS-01). */
@@ -94,7 +97,7 @@
   // The lettering of the default logo in the ring, which the user can change; the app's own
   // name, in the title and the notices, is always APP_NAME. Derived, so that the logo is drawn
   // again when the lettering changes, not with every change of the state (that takes a while).
-  const logoText = $derived($settings.logoText);
+  const logoText = $derived(app.settings.logoText);
   /** How an export ends while the tab is in the background: the title and a notification. */
   const exportWatch = new ExportWatch();
   // The title says what an export is doing, so that it shows in the tab while the user works
@@ -107,13 +110,13 @@
   // A track with a look of its own (PR-06): the visuals take it when it starts, or when the
   // look is given to the track playing. In the analysis, only the mode's settings change.
   const currentLook = $derived.by(() => {
-    const track = $currentTrack;
+    const track = app.currentTrack;
     return track?.look ? `${track.id}|${track.look.mode}|${track.look.preset}` : null;
   });
   $effect(() => {
     if (!currentLook) return;
     untrack(() => {
-      const track = $currentTrack;
+      const track = app.currentTrack;
       const look = lookSettings(track?.look ?? null);
       if (!track?.look || !look) return;
       if (track.look.mode === 'logoSpectrum') {
@@ -121,7 +124,7 @@
       } else {
         player.replaceKaleido(look as KaleidoSettings);
       }
-      const mode = $settings.visualMode;
+      const mode = app.settings.visualMode;
       if (mode !== 'analysis' && mode !== track.look.mode) {
         player.updateSettings({ visualMode: track.look.mode });
       }
@@ -129,7 +132,7 @@
   });
   $effect(() => {
     const notice = exportWatch.follow($exporter, document.visibilityState === 'visible');
-    if (notice && untrack(() => $settings.exportNotify)) {
+    if (notice && untrack(() => app.settings.exportNotify)) {
       notifyExportEnd(APP_NAME, notice.title, notice.body);
     }
   });
@@ -152,6 +155,7 @@
     outside.dispose();
     controllers.dispose();
     exporter.dispose();
+    app.dispose();
     player.dispose();
   }
 
@@ -214,7 +218,7 @@
 
   /** Over the stage, the side panel closes with Escape or a click on the stage beside it. */
   function closePanelOver() {
-    if (panelOver.current && $settings.panelOpen) player.updateSettings({ panelOpen: false });
+    if (panelOver.current && app.settings.panelOpen) player.updateSettings({ panelOpen: false });
   }
 
   function onPointerMove() {
@@ -261,13 +265,13 @@
    */
   let lastScene: SceneKind = 'logoSpectrum';
   const stageMode = $derived.by(() => {
-    const mode = $settings.visualMode;
+    const mode = app.settings.visualMode;
     if (mode !== 'analysis') lastScene = mode;
     return lastScene;
   });
 
   function toggleMiniPlayer() {
-    outside.toggleMini($settings.aspect, title);
+    outside.toggleMini(app.settings.aspect, title);
   }
 
   function toggleSecondScreen() {
@@ -276,7 +280,7 @@
 
   /** Saves the picture on the stage as a PNG (EX-10); not while an export renders. */
   function takePicture() {
-    if (!$captureReady || $exporter.status === 'running' || $settings.visualsPaused) return;
+    if (!$captureReady || $exporter.status === 'running' || app.settings.visualsPaused) return;
     savePicture(player, capture).catch((error: unknown) =>
       player.reportError(`The picture could not be saved: ${errorMessage(error)}`),
     );
@@ -327,7 +331,7 @@
 
 <div
   class="shell"
-  class:panel-open={$settings.panelOpen}
+  class:panel-open={app.settings.panelOpen}
   class:panel-over={panelOver.current}
   style:--panel-width="{panelWidth}px"
 >
@@ -355,25 +359,25 @@
     }}
   >
     <Guard where="The visuals">
-      {#if $settings.visualMode === 'analysis' && analysisView.component}
+      {#if app.settings.visualMode === 'analysis' && analysisView.component}
         <analysisView.component />
       {/if}
       <!-- The mini player's (DS-06) or the second screen's window (DS-03) takes the stage, also
            while the tab shows the Analysis. -->
-      {#if $settings.visualMode !== 'analysis' || outside.view}
+      {#if app.settings.visualMode !== 'analysis' || outside.view}
         <div class="stage-host" use:portal={outside.slot}>
           <VisualStage
             mode={stageMode}
-            aspect={$settings.aspect}
-            safeAreas={$settings.safeAreas}
-            paused={$exporter.status === 'running' || $settings.visualsPaused}
-            resting={$settings.visualsPaused}
+            aspect={app.settings.aspect}
+            safeAreas={app.settings.safeAreas}
+            paused={$exporter.status === 'running' || app.settings.visualsPaused}
+            resting={app.settings.visualsPaused}
             view={outside.view ?? window}
           />
         </div>
       {/if}
     </Guard>
-    {#if outside.view && $settings.visualMode !== 'analysis'}
+    {#if outside.view && app.settings.visualMode !== 'analysis'}
       {@const mini = outside.kind === 'mini'}
       <div class="mini-note" data-testid={mini ? 'mini-note' : 'screen-note'}>
         <div class="card">
@@ -394,7 +398,7 @@
       </div>
     {/if}
     <!-- With the visuals in another window, the note says where they are; the queue says the rest. -->
-    {#if $tracks.length === 0 && $live.status === 'off' && !outside.view}
+    {#if app.tracks.length === 0 && app.live.status === 'off' && !outside.view}
       <div class="welcome" data-testid="empty-hint">
         <div class="card">
           <h1>Drop your music here</h1>
@@ -406,9 +410,9 @@
     <div class="notes">
       <ProblemNotice />
       <NewVersionNotice />
-      {#if $undo}
+      {#if app.undo}
         <div class="undo" role="status" data-testid="undo-toast">
-          <span>{$undo}</span>
+          <span>{app.undo}</span>
           <button onclick={() => player.undo()} title="Undo (Ctrl+Z)" data-testid="undo">
             Undo
           </button>
@@ -427,10 +431,10 @@
         </button>
       {/if}
     </div>
-    {#if $error}
+    {#if app.error}
       <div class="error" role="alert" data-testid="app-error">
         <Icon name="alert" size={18} />
-        <span>{$error}</span>
+        <span>{app.error}</span>
         <button onclick={() => player.dismissError()} aria-label="Dismiss">
           <Icon name="close" size={16} />
         </button>
@@ -438,7 +442,7 @@
     {/if}
   </main>
 
-  {#if $settings.panelOpen}
+  {#if app.settings.panelOpen}
     <aside class="panel">
       <!-- The panel's edge: dragged, or moved with the arrow keys, it makes the panel wider or
            narrower; a double-click gives it its usual width. A focusable separator with a value
@@ -466,42 +470,42 @@
       <div class="tabs" role="tablist" aria-label="Side panel">
         <button
           role="tab"
-          aria-selected={$settings.panel === 'queue'}
+          aria-selected={app.settings.panel === 'queue'}
           onclick={() => player.updateSettings({ panel: 'queue' })}
         >
           <Icon name="music" size={16} /> Queue
         </button>
         <button
           role="tab"
-          aria-selected={$settings.panel === 'sound'}
+          aria-selected={app.settings.panel === 'sound'}
           onclick={() => player.updateSettings({ panel: 'sound' })}
         >
           <Icon name="knob" size={16} /> Sound
-          {#if !isClean($sound)}<span class="sound-dot" aria-label="(changed)"></span>{/if}
+          {#if !isClean(app.sound)}<span class="sound-dot" aria-label="(changed)"></span>{/if}
         </button>
         <button
           role="tab"
-          aria-selected={$settings.panel === 'visuals'}
+          aria-selected={app.settings.panel === 'visuals'}
           onclick={() => player.updateSettings({ panel: 'visuals' })}
         >
           <Icon name="sliders" size={16} /> Visuals
         </button>
         <button
           role="tab"
-          aria-selected={$settings.panel === 'live'}
+          aria-selected={app.settings.panel === 'live'}
           onclick={() => player.updateSettings({ panel: 'live' })}
         >
           <Icon name="live" size={16} /> Live
-          {#if $live.status === 'on'}<span class="live-dot" aria-label="(on)"></span>{/if}
+          {#if app.live.status === 'on'}<span class="live-dot" aria-label="(on)"></span>{/if}
         </button>
       </div>
       <div class="panel-body" role="tabpanel">
         <Guard where="The side panel">
-          {#if $settings.panel === 'queue'}
+          {#if app.settings.panel === 'queue'}
             <QueuePanel />
-          {:else if $settings.panel === 'sound'}
+          {:else if app.settings.panel === 'sound'}
             <SoundPanel />
-          {:else if $settings.panel === 'visuals'}
+          {:else if app.settings.panel === 'visuals'}
             <VisualsPanel />
           {:else}
             <LivePanel />
@@ -513,7 +517,7 @@
 
   <!-- Also before a track plays, so switching it on shows where it goes; not for live input,
        which has no waveform of its own. -->
-  {#if $settings.detailWaveform && $live.status === 'off'}
+  {#if app.settings.detailWaveform && app.live.status === 'off'}
     <div class="detail-row">
       <Guard where="The waveform"><DetailWaveform /></Guard>
     </div>

@@ -16,9 +16,10 @@
   import { usePlayer } from './player-context';
   import { trackNameDialog } from './later.svelte';
   import TrackTempo from './TrackTempo.svelte';
+  import { useAppState } from './app-state.svelte';
 
   const player = usePlayer();
-  const { tracks, currentId, settings } = player.parts;
+  const app = useAppState();
   const analyses = player.analysis;
 
   /**
@@ -42,7 +43,7 @@
    */
   function regridding(track: Track): boolean {
     const state = track.fingerprint ? $analyses.get(track.fingerprint) : undefined;
-    const wanted = { tempo: track.tempo, range: $settings.bpmRange, fixed: track.fixedTempo };
+    const wanted = { tempo: track.tempo, range: app.settings.bpmRange, fixed: track.fixedTempo };
     return state !== undefined && !sameGrid(state, wanted);
   }
 
@@ -59,11 +60,11 @@
     if (naming) void trackNameDialog.load();
   });
 
-  const totalDuration = $derived($tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0));
+  const totalDuration = $derived(app.tracks.reduce((sum, track) => sum + (track.duration ?? 0), 0));
 
   /** Entries of the last visit whose files are not readable yet (SRC-05). */
-  const locked = $derived($tracks.filter((track) => track.status === 'locked').length);
-  const missing = $derived($tracks.filter((track) => track.status === 'missing').length);
+  const locked = $derived(app.tracks.filter((track) => track.status === 'locked').length);
+  const missing = $derived(app.tracks.filter((track) => track.status === 'missing').length);
 
   function addFromInput() {
     if (fileInput.files) player.addFiles(fileInput.files);
@@ -166,8 +167,8 @@
     <div>
       <h2>Queue</h2>
       <span class="summary">
-        {$tracks.length}
-        {$tracks.length === 1 ? 'track' : 'tracks'}
+        {app.tracks.length}
+        {app.tracks.length === 1 ? 'track' : 'tracks'}
         {#if totalDuration > 0}· {formatDuration(totalDuration)}{/if}
       </span>
     </div>
@@ -187,7 +188,7 @@
       <button
         class="ghost"
         onclick={() => player.clear()}
-        disabled={$tracks.length === 0}
+        disabled={app.tracks.length === 0}
         aria-label="Clear queue"
         title="Clear queue"
       >
@@ -236,7 +237,7 @@
     </div>
   {/if}
 
-  {#if $tracks.length === 0}
+  {#if app.tracks.length === 0}
     <p class="empty">Drop audio files anywhere, or click “Add files”.</p>
   {:else}
     <ol
@@ -252,18 +253,18 @@
         if (dragIndex === null || event.target !== event.currentTarget) return;
         event.preventDefault();
         const last = list?.lastElementChild?.getBoundingClientRect();
-        if (last && event.clientY > last.bottom) dropIndex = $tracks.length;
+        if (last && event.clientY > last.bottom) dropIndex = app.tracks.length;
       }}
-      ondrop={(event) => onDrop(event, dropIndex ?? $tracks.length)}
+      ondrop={(event) => onDrop(event, dropIndex ?? app.tracks.length)}
       data-testid="queue-list"
     >
-      {#each $tracks as track, index (track.id)}
+      {#each app.tracks as track, index (track.id)}
         <li
-          class:current={track.id === $currentId}
+          class:current={track.id === app.currentId}
           class:unsupported={track.status === 'unsupported'}
           class:offline={track.status === 'locked' || track.status === 'missing'}
           class:drop-before={dropIndex === index && dragIndex !== null}
-          class:drop-after={dropIndex === index + 1 && index === $tracks.length - 1}
+          class:drop-after={dropIndex === index + 1 && index === app.tracks.length - 1}
           draggable="true"
           ondragstart={(event) => onDragStart(event, index)}
           ondragover={(event) => onDragOver(event, index)}
@@ -273,7 +274,7 @@
           onkeydown={(event) => onKey(event, index, track)}
           tabindex="0"
           role="option"
-          aria-selected={track.id === $currentId}
+          aria-selected={track.id === app.currentId}
           data-testid="queue-item"
           data-status={track.status}
           title={track.status === 'locked'
