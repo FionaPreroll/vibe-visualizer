@@ -1,8 +1,9 @@
 <script lang="ts">
   import { flushSync, getAllContexts, mount, onDestroy, onMount, unmount, untrack } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { isClean } from '../core/audio/dsp/sound-settings';
   import { ControllerService } from '../core/control/controller-service';
-  import { APP_NAME } from '../core/state/app-state';
+  import { APP_NAME, DEFAULT_SETTINGS, PANEL_WIDTH_RANGE } from '../core/state/app-state';
   import { errorMessage } from '../core/util/format';
   import { isSoundFile } from '../core/export/export-job';
   import { Exporter, type ExportState } from '../core/export/exporter';
@@ -73,6 +74,11 @@
   let helpSection = $state('getting-started');
   let welcomeOpen = $state(false);
   let stage: HTMLElement;
+  /** While the side panel's edge is dragged: the panel's width, stored when it is let go. */
+  let dragWidth = $state<number | null>(null);
+  const panelWidth = $derived(dragWidth ?? $app.settings.panelWidth);
+  /** In a narrow window the side panel lies over the stage instead of beside it. */
+  const panelOver = new MediaQuery('max-width: 1099px');
   /** In fullscreen, the mouse cursor hides after a moment without movement (DS-01). */
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -182,6 +188,52 @@
   });
 
   onDestroy(teardown);
+
+  /** Where the panel's edge was taken hold of, and the panel's width then. */
+  let resizing: { x: number; width: number } | null = null;
+
+  function withinPanelRange(width: number): number {
+    return Math.round(Math.min(PANEL_WIDTH_RANGE.max, Math.max(PANEL_WIDTH_RANGE.min, width)));
+  }
+
+  function startResize(event: PointerEvent) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    resizing = { x: event.clientX, width: panelWidth };
+  }
+
+  function resize(event: PointerEvent) {
+    if (!resizing) return;
+    // The edge is the panel's left one: to the left, the panel gets wider.
+    dragWidth = withinPanelRange(resizing.width + resizing.x - event.clientX);
+  }
+
+  function endResize() {
+    if (!resizing) return;
+    resizing = null;
+    if (dragWidth !== null) player.updateSettings({ panelWidth: dragWidth });
+    dragWidth = null;
+  }
+
+  /** The arrow keys move the edge (with Shift, further); Home and End: narrowest and widest. */
+  function resizeByKey(event: KeyboardEvent) {
+    const step = event.shiftKey ? 60 : 20;
+    const width = {
+      ArrowLeft: panelWidth + step,
+      ArrowRight: panelWidth - step,
+      Home: PANEL_WIDTH_RANGE.min,
+      End: PANEL_WIDTH_RANGE.max,
+    }[event.key];
+    if (width === undefined) return;
+    event.preventDefault();
+    player.updateSettings({ panelWidth: withinPanelRange(width) });
+  }
+
+  /** Over the stage, the side panel closes with Escape or a click on the stage beside it. */
+  function closePanelOver() {
+    if (panelOver.current && $app.settings.panelOpen) player.updateSettings({ panelOpen: false });
+  }
 
   function onPointerMove() {
     idle = false;
@@ -376,7 +428,9 @@
         'textarea, select, input:not([type="range"], [type="checkbox"], [type="radio"], [type="color"], [type="file"])',
       ) !== null;
     if (typing) return true;
-    if (target.closest('input[type="range"], [role="slider"]')) return SLIDER_KEYS.has(key);
+    if (target.closest('input[type="range"], [role="slider"], [role="separator"]')) {
+      return SLIDER_KEYS.has(key);
+    }
     if (target.matches('input[type="checkbox"]')) return key === ' ';
     if (target.matches('input[type="radio"]')) return key === ' ' || key.startsWith('Arrow');
     return false;
@@ -413,6 +467,7 @@
    * second screen's.
    */
   function onKey(event: KeyboardEvent) {
+    if (event.key === 'Escape' && !document.querySelector('dialog[open]')) closePanelOver();
     const shortcut = shortcutFor(event);
     if (!shortcut) return;
     if (ownsKey(event.target, event.key)) return;
@@ -474,7 +529,12 @@
   }}
 />
 
-<div class="shell" class:panel-open={$app.settings.panelOpen}>
+<div
+  class="shell"
+  class:panel-open={$app.settings.panelOpen}
+  class:panel-over={panelOver.current}
+  style:--panel-width="{panelWidth}px"
+>
   <TopBar
     onFullscreen={() => toggleFullscreen()}
     onPicture={takePicture}
@@ -494,6 +554,9 @@
     bind:this={stage}
     aria-label="Visual stage"
     onpointermove={onPointerMove}
+    onpointerdown={(event) => {
+      if (!(event.target as Element).closest('button, a, input, select')) closePanelOver();
+    }}
   >
     <Guard where="The visuals">
       {#if $app.settings.visualMode === 'analysis'}
@@ -581,6 +644,29 @@
 
   {#if $app.settings.panelOpen}
     <aside class="panel">
+      <!-- The panel's edge: dragged, or moved with the arrow keys, it makes the panel wider or
+           narrower; a double-click gives it its usual width. A focusable separator with a value
+           is a widget (the window splitter of the ARIA practices), which Svelte does not know. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+      <div
+        class="edge"
+        class:dragging={dragWidth !== null}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Width of the side panel"
+        aria-valuemin={PANEL_WIDTH_RANGE.min}
+        aria-valuemax={PANEL_WIDTH_RANGE.max}
+        aria-valuenow={panelWidth}
+        tabindex="0"
+        title="Drag to make the panel wider or narrower; a double-click gives it its usual width"
+        onpointerdown={startResize}
+        onpointermove={resize}
+        onpointerup={endResize}
+        onpointercancel={endResize}
+        ondblclick={() => player.updateSettings({ panelWidth: DEFAULT_SETTINGS.panelWidth })}
+        onkeydown={resizeByKey}
+        data-testid="panel-edge"
+      ></div>
       <div class="tabs" role="tablist" aria-label="Side panel">
         <button
           role="tab"
@@ -686,7 +772,18 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .shell.panel-open {
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: minmax(0, 1fr) var(--panel-width);
+  }
+  /* A narrow window: the panel lies over the stage on the right, and the stage keeps its width. */
+  .shell.panel-over {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .shell.panel-over .panel {
+    grid-column: 1;
+    justify-self: end;
+    width: min(var(--panel-width), 100%);
+    z-index: 5;
+    box-shadow: -12px 0 32px rgb(0 0 0 / 0.55);
   }
   .shell > :global(.topbar),
   .shell > :global(.transport),
@@ -697,7 +794,10 @@
   .shell > :global(.transport) {
     grid-row: 4;
   }
+  /* The stage and the panel by their places: over the stage, the panel shares its cell. */
   .stage {
+    grid-row: 2;
+    grid-column: 1;
     position: relative;
     overflow: hidden;
     background: radial-gradient(ellipse at 50% 40%, #16162a 0%, var(--bg) 70%);
@@ -737,11 +837,44 @@
     color: var(--muted);
   }
   .panel {
+    grid-row: 2;
+    grid-column: 2;
+    position: relative;
     min-height: 0;
     display: flex;
     flex-direction: column;
     background: var(--surface);
     border-left: 1px solid var(--border);
+  }
+  .edge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -5px;
+    z-index: 1;
+    width: 9px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  /* A line along the edge where it can be taken hold of, and while it is dragged or focused. */
+  .edge::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 4px;
+    width: 2px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .edge:hover::after,
+  .edge:focus-visible::after,
+  .edge.dragging::after {
+    opacity: 1;
+  }
+  .edge:focus-visible {
+    outline: none;
   }
   .tabs {
     display: flex;
