@@ -19,6 +19,7 @@
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
   import { useAssets } from './visuals-context';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * The first look (VE-05, UI-10): what the app does in three steps, that it is a work in
@@ -28,7 +29,7 @@
   let { open = $bindable(false), onhelp }: { open?: boolean; onhelp?: () => void } = $props();
 
   const player = usePlayer();
-  const { settings } = player.parts;
+  const app = useAppState();
   const assets = useAssets();
   let dialog: HTMLDialogElement | undefined = $state();
   let logo = $state<string | null>(null);
@@ -138,7 +139,7 @@
           <label class="calm">
             <input
               type="checkbox"
-              checked={$settings.reduceFlashing}
+              checked={app.settings.reduceFlashing}
               onchange={(event) =>
                 player.updateSettings({
                   reduceFlashing: event.currentTarget.checked,

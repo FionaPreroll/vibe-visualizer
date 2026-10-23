@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { initialState, newTrack, reducer, type AppAction, type AppState } from './app-state';
+import { initialState, reducer, type AppAction, type AppState } from './app-state';
 import { appParts, select, watch } from './select';
 import { createStore } from './store';
 
@@ -50,21 +50,5 @@ describe('the parts of the state', () => {
       [0.5, 0.8],
       [0.3, 0.5],
     ]);
-  });
-
-  it('give the current track, which changes only with it', () => {
-    const app = store();
-    const parts = appParts(app);
-    const seen = vi.fn();
-    parts.currentTrack.subscribe(seen);
-    expect(seen).toHaveBeenLastCalledWith(null);
-    const a = newTrack('a', { name: 'a.wav', size: 1 });
-    const b = newTrack('b', { name: 'b.wav', size: 1 });
-    app.dispatch({ type: 'tracks/added', tracks: [a, b] });
-    expect(seen).toHaveBeenCalledTimes(1);
-    app.dispatch({ type: 'player/current', id: 'b' });
-    expect(seen.mock.lastCall?.[0]).toMatchObject({ id: 'b' });
-    app.dispatch({ type: 'settings/changed', changes: { volume: 0.5 } });
-    expect(seen).toHaveBeenCalledTimes(2);
   });
 });

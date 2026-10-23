@@ -5,6 +5,7 @@
   import Icon from './Icon.svelte';
   import { onFrame } from './frame-clock';
   import { usePlayer } from './player-context';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * Calibrates the A/V sync (AN-06): a tick every second, and a flash when the visuals take it
@@ -18,7 +19,7 @@
   let { open, onclose }: Props = $props();
 
   const player = usePlayer();
-  const { settings } = player.parts;
+  const app = useAppState();
   const engine = player.engine;
   /** Seconds between the ticks, and how long a flash lasts. */
   const INTERVAL = 1;
@@ -103,7 +104,7 @@
   </div>
   <Slider
     label="Visuals later by"
-    value={$settings.syncOffset}
+    value={app.settings.syncOffset}
     min={SYNC_OFFSET_RANGE.min}
     max={SYNC_OFFSET_RANGE.max}
     step={5}
@@ -112,8 +113,8 @@
     onchange={setOffset}
   />
   <div class="steps">
-    <button onclick={() => setOffset($settings.syncOffset - 10)}>−10 ms</button>
-    <button onclick={() => setOffset($settings.syncOffset + 10)}>+10 ms</button>
+    <button onclick={() => setOffset(app.settings.syncOffset - 10)}>−10 ms</button>
+    <button onclick={() => setOffset(app.settings.syncOffset + 10)}>+10 ms</button>
   </div>
   <p class="note" data-testid="sync-reported">
     {#if reportedMs === null}

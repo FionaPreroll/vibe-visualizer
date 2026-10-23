@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './test';
-import { expectMotion, measure } from './pixels';
+import { expectMotion, measure, type RegionStats } from './pixels';
 import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';
 
@@ -89,7 +89,6 @@ test('the spin turns a round picture: no edge of a frame-shaped buffer turns int
   await page.getByRole('slider', { name: 'Spin', exact: true }).focus();
   await page.keyboard.press('End');
   await page.getByTestId('play-button').click();
-  await page.waitForTimeout(2000);
 
   // Left and right of the core, where the Vortex's strands reach. A buffer of the frame's shape
   // (wider than high) left both black whenever the spin turned it upright.
@@ -97,14 +96,18 @@ test('the spin turns a round picture: no edge of a frame-shaped buffer turns int
     { x: 0.06, y: 0.35, width: 0.12, height: 0.3 },
     { x: 0.82, y: 0.35, width: 0.12, height: 0.3 },
   ];
+  const level = ({ mean }: RegionStats) => (mean[0] + mean[1] + mean[2]) / 3;
+  const levels = async () => (await measure(page, await stage.screenshot(), sides)).map(level);
+  // From when the visuals draw there: a machine without a GPU takes a while to start them.
+  await expect
+    .poll(async () => Math.max(...(await levels())), { timeout: 15_000 })
+    .toBeGreaterThan(1);
   const seen: string[] = [];
   const start = Date.now();
   while (Date.now() - start < 6000) {
-    const [left, right] = await measure(page, await stage.screenshot(), sides);
-    const level = (region: typeof left) =>
-      (region!.mean[0] + region!.mean[1] + region!.mean[2]) / 3;
-    seen.push(`${level(left).toFixed(1)}/${level(right).toFixed(1)}`);
-    expect(Math.max(level(left), level(right)), seen.join(' ')).toBeGreaterThan(1);
+    const [left, right] = await levels();
+    seen.push(`${left!.toFixed(1)}/${right!.toFixed(1)}`);
+    expect(Math.max(left!, right!), seen.join(' ')).toBeGreaterThan(1);
     await page.waitForTimeout(150);
   }
   expect(errors).toEqual([]);

@@ -3,6 +3,7 @@
   import { F } from '../core/analysis/features';
   import { usePlayer } from './player-context';
   import TempoMenu from './TempoMenu.svelte';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * The tempo of the live input, from the live beat tracking, correctable (TMP-06): double,
@@ -10,7 +11,7 @@
    * that tempo until it is set to automatic again. The tempo range (AN-12) applies too.
    */
   const player = usePlayer();
-  const { live } = player.parts;
+  const app = useAppState();
   /** Beats less sure than this show no tempo. */
   const SURE = 0.3;
 
@@ -27,7 +28,7 @@
     return () => clearInterval(timer);
   });
 
-  const manual = $derived($live.tempo);
+  const manual = $derived(app.live.tempo);
 </script>
 
 <TempoMenu

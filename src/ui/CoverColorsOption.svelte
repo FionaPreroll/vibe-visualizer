@@ -1,5 +1,6 @@
 <script lang="ts">
   import { usePlayer } from './player-context';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * The switch for the colours of the track (VE-12): those of the track playing's cover art, or
@@ -7,19 +8,19 @@
    * app setting, as the cover as the logo is: the looks and their presets keep their palettes.
    */
   const player = usePlayer();
-  const { settings } = player.parts;
+  const app = useAppState();
 </script>
 
 <label class="option">
   <input
     type="checkbox"
-    checked={$settings.coverColors}
+    checked={app.settings.coverColors}
     onchange={(event) => player.updateSettings({ coverColors: event.currentTarget.checked })}
     data-testid="cover-colors"
   />
   The colours of the track playing
 </label>
-{#if $settings.coverColors}
+{#if app.settings.coverColors}
   <p class="hint" data-testid="cover-colors-hint">
     From its cover art, or as you set them with ✎ in the queue, instead of the palette; live and in
     videos. Tracks without either keep the palette.

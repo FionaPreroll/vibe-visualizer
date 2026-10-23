@@ -9,6 +9,7 @@
   import MoreMenu, { type MoreMenuItem } from './MoreMenu.svelte';
   import { usePlayer } from './player-context';
   import { useCapture } from './stage-capture';
+  import { useAppState } from './app-state.svelte';
 
   interface Props {
     onFullscreen: () => void;
@@ -39,7 +40,7 @@
   }: Props = $props();
 
   const player = usePlayer();
-  const { settings } = player.parts;
+  const app = useAppState();
   const exporter = useExporter();
   const captureReady = useCapture().ready;
   const controllers = useControllers();
@@ -60,7 +61,7 @@
   });
 
   function startRenaming() {
-    draft = $settings.logoText;
+    draft = app.settings.logoText;
     renaming = true;
   }
 
@@ -108,25 +109,25 @@
     {
       label: 'Safe areas',
       icon: 'safe',
-      checked: $settings.safeAreas,
+      checked: app.settings.safeAreas,
       title: 'Where the platforms put their buttons and captions',
       testid: 'safe-areas-toggle',
-      onselect: () => player.updateSettings({ safeAreas: !$settings.safeAreas }),
+      onselect: () => player.updateSettings({ safeAreas: !app.settings.safeAreas }),
     },
     {
       label: 'Only the music',
       icon: 'visualsOff',
       key: 'B',
-      checked: $settings.visualsPaused,
+      checked: app.settings.visualsPaused,
       title: 'Pause the visuals; the music plays on',
       testid: 'visuals-pause',
-      onselect: () => player.updateSettings({ visualsPaused: !$settings.visualsPaused }),
+      onselect: () => player.updateSettings({ visualsPaused: !app.settings.visualsPaused }),
     },
     {
       label: 'Save the picture as a PNG',
       icon: 'camera',
       key: 'C',
-      disabled: !$captureReady || $exporter.status === 'running' || $settings.visualsPaused,
+      disabled: !$captureReady || $exporter.status === 'running' || app.settings.visualsPaused,
       title: 'The picture on the stage, e.g. as a thumbnail',
       testid: 'picture-button',
       onselect: onPicture,
@@ -183,7 +184,7 @@
         title="The lettering in the ring: double-click to change it"
         data-testid="logo-text"
       >
-        {$settings.logoText}
+        {app.settings.logoText}
       </button>
     {/if}
   </div>
@@ -192,8 +193,8 @@
       {#each MODES as mode (mode.id)}
         <button
           class="toggle"
-          class:on={$settings.visualMode === mode.id}
-          aria-pressed={$settings.visualMode === mode.id}
+          class:on={app.settings.visualMode === mode.id}
+          aria-pressed={app.settings.visualMode === mode.id}
           onclick={() => player.updateSettings({ visualMode: mode.id })}
           title={mode.title}
         >
@@ -204,7 +205,7 @@
     </div>
     <select
       class="aspect"
-      value={$settings.aspect}
+      value={app.settings.aspect}
       onchange={(event) => {
         const aspect = event.currentTarget.value;
         if (isAspectRatio(aspect)) player.updateSettings({ aspect });
@@ -224,9 +225,9 @@
     </button>
     <button
       class="toggle"
-      class:on={$settings.panelOpen}
-      onclick={() => player.updateSettings({ panelOpen: !$settings.panelOpen })}
-      aria-pressed={$settings.panelOpen}
+      class:on={app.settings.panelOpen}
+      onclick={() => player.updateSettings({ panelOpen: !app.settings.panelOpen })}
+      aria-pressed={app.settings.panelOpen}
       title="Side panel"
     >
       <Icon name="panel" size={18} />

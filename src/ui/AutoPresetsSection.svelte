@@ -10,6 +10,7 @@
   import Section from './controls/Section.svelte';
   import Slider from './controls/Slider.svelte';
   import { usePlayer } from './player-context';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * Automatic preset switching (PR-02) for the visual mode shown: every so many seconds, bars
@@ -17,10 +18,12 @@
    * way.
    */
   const player = usePlayer();
-  const { settings } = player.parts;
-  const auto = $derived($settings.autoPresets);
-  const mode = $derived($settings.visualMode === 'kaleidoscope' ? 'kaleidoscope' : 'logoSpectrum');
-  const favourites = $derived($settings.favourites[mode].length);
+  const app = useAppState();
+  const auto = $derived(app.settings.autoPresets);
+  const mode = $derived(
+    app.settings.visualMode === 'kaleidoscope' ? 'kaleidoscope' : 'logoSpectrum',
+  );
+  const favourites = $derived(app.settings.favourites[mode].length);
 
   const set = (changes: Partial<AutoPresets>) =>
     player.updateSettings({ autoPresets: { ...auto, ...changes } });

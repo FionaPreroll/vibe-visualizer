@@ -32,6 +32,7 @@
   import { usePlayer } from './player-context';
   import { logoSpectrumPresets } from './preset-store';
   import { useAssets } from './visuals-context';
+  import { useAppState } from './app-state.svelte';
 
   /** Controls of the Logo Spectrum mode (LS-*) and its presets (PR-01). */
   interface Props {
@@ -42,8 +43,8 @@
 
   const player = usePlayer();
   const assets = useAssets();
-  const { settings, visuals } = player.parts;
-  const v = $derived($visuals);
+  const app = useAppState();
+  const v = $derived(app.visuals);
 
   let imageError = $state<string | null>(null);
 
@@ -131,9 +132,9 @@
     store={logoSpectrumPresets}
     current={v}
     onapply={(settings) => player.replaceVisuals(settings)}
-    favourites={$settings.favourites.logoSpectrum}
+    favourites={app.settings.favourites.logoSpectrum}
     onfavourites={(names) =>
-      player.updateSettings({ favourites: { ...$settings.favourites, logoSpectrum: names } })}
+      player.updateSettings({ favourites: { ...app.settings.favourites, logoSpectrum: names } })}
     sanitize={sanitizeSettings}
   />
   <AutoPresetsSection />
@@ -271,13 +272,13 @@
     <label class="option">
       <input
         type="checkbox"
-        checked={$settings.coverLogo}
+        checked={app.settings.coverLogo}
         onchange={(event) => player.updateSettings({ coverLogo: event.currentTarget.checked })}
         data-testid="cover-logo"
       />
       Show the cover art of the track playing
     </label>
-    {#if $settings.coverLogo}
+    {#if app.settings.coverLogo}
       <p class="hint" data-testid="cover-logo-hint">
         Tracks without cover art show the logo image. Zoom and position apply to the logo image.
       </p>
