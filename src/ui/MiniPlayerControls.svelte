@@ -101,10 +101,10 @@
   }
   .title {
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .artist {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .buttons {

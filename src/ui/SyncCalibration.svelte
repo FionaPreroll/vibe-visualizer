@@ -150,7 +150,7 @@
   }
   h2 {
     margin: 0;
-    font-size: 20px;
+    font-size: var(--text-xl);
   }
   .close {
     padding: 4px;
@@ -158,7 +158,7 @@
     border-color: transparent;
   }
   p {
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .stage {
     display: grid;
@@ -182,7 +182,7 @@
   }
   .note {
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   footer {
     display: flex;

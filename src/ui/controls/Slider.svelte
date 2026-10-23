@@ -53,7 +53,7 @@
     min-height: 30px;
   }
   label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
     user-select: none;
   }
@@ -62,7 +62,7 @@
     accent-color: var(--accent);
   }
   output {
-    font: 12px var(--mono);
+    font: var(--text-xs) var(--mono);
     text-align: right;
     color: var(--muted);
   }

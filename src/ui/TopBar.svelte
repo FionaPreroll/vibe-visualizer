@@ -291,7 +291,7 @@
     background: transparent;
     color: var(--text);
     font: inherit;
-    font-size: 16px;
+    font-size: var(--text-md);
   }
   /* A long name (up to 40 characters) must not push the buttons out of the bar. */
   button.name {
@@ -346,7 +346,7 @@
   .aspect {
     margin-right: 2px;
     padding: 4px 6px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .export {
     display: flex;

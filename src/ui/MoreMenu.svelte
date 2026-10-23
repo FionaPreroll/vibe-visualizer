@@ -239,7 +239,7 @@
     border-radius: 5px;
     background: transparent;
     color: var(--text);
-    font-size: 13px;
+    font-size: var(--text-sm);
     text-align: left;
     white-space: nowrap;
   }
@@ -255,7 +255,7 @@
   }
   .check,
   .note {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--accent-2);
   }
   .check {
@@ -267,7 +267,7 @@
     padding: 0 4px;
     border: 1px solid var(--border);
     border-radius: 4px;
-    font: 11px var(--mono);
+    font: var(--text-xs) var(--mono);
     color: var(--muted);
     text-align: center;
   }

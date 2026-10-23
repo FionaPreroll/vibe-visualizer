@@ -94,7 +94,7 @@
   .hint {
     flex: 1 1 240px;
     margin: 0;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   button {

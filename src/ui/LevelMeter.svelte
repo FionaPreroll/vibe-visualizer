@@ -106,7 +106,7 @@
   .clip {
     padding: 1px 6px;
     border-radius: 4px;
-    font: 600 11px var(--mono);
+    font: 600 var(--text-xs) var(--mono);
     color: var(--muted);
     border: 1px solid var(--border);
   }
@@ -118,7 +118,7 @@
   .scale {
     position: relative;
     height: 14px;
-    font: 10px var(--mono);
+    font: var(--text-2xs) var(--mono);
     color: var(--muted);
   }
   .scale span {

@@ -193,7 +193,7 @@
   }
   h2 {
     margin: 0;
-    font-size: 20px;
+    font-size: var(--text-xl);
   }
   .close {
     padding: 4px;
@@ -259,7 +259,7 @@
   }
   details p {
     margin-top: 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .actions {
     display: flex;
@@ -275,7 +275,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface-2);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .monitor li {
     display: flex;
@@ -283,6 +283,6 @@
   }
   .monitor code {
     min-width: 7.5em;
-    font: 12px var(--mono);
+    font: var(--text-xs) var(--mono);
   }
 </style>

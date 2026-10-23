@@ -444,15 +444,15 @@
     gap: 8px;
   }
   .rate {
-    font: 600 22px var(--mono);
+    font: 600 var(--text-xl) var(--mono);
   }
   .bpm {
-    font: 13px var(--mono);
+    font: var(--text-sm) var(--mono);
     color: var(--muted);
   }
   .bpm small {
     margin-left: 4px;
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .fader {
     width: 100%;
@@ -486,7 +486,7 @@
     flex: 1;
     padding: 6px 0;
     text-align: center;
-    font-size: 13px;
+    font-size: var(--text-sm);
     cursor: pointer;
     color: var(--muted);
   }
@@ -505,7 +505,7 @@
   }
   .nudge span {
     flex: 1;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .nudge button.held {
@@ -513,7 +513,7 @@
   }
   .hint {
     margin: 4px 0;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .check {
@@ -521,11 +521,11 @@
     align-items: center;
     gap: 8px;
     margin: 4px 0;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .note {
     margin: 12px 16px 16px;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
 </style>

@@ -444,7 +444,7 @@
     height: 26px;
     padding: 0;
     border-radius: 5px;
-    font: 600 11px var(--mono);
+    font: 600 var(--text-xs) var(--mono);
     color: var(--muted);
     border-color: color-mix(in srgb, var(--cue) 40%, var(--border));
   }
@@ -465,7 +465,7 @@
     align-items: center;
     gap: 12px;
     height: 22px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .strip button {
@@ -498,7 +498,7 @@
     place-items: center;
     margin: 0;
     padding: 0 12px;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
     text-align: center;
     pointer-events: none;
@@ -526,7 +526,7 @@
   [data-testid='detail-span'] {
     min-width: 3.5em;
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--text-xs);
     text-align: center;
   }
   .look {

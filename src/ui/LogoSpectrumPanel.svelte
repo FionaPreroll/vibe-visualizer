@@ -460,7 +460,7 @@
     border-radius: 8px;
     border: 1px solid var(--fail);
     background: color-mix(in srgb, var(--fail) 18%, var(--surface));
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .palettes {
     display: grid;
@@ -486,7 +486,7 @@
     border-radius: 4px;
   }
   .palettes .name {
-    font-size: 12px;
+    font-size: var(--text-xs);
     text-transform: capitalize;
   }
   .colors {
@@ -513,7 +513,7 @@
   }
   .color-row label,
   .color-row .label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .color-row .quick {
@@ -527,7 +527,7 @@
     min-height: 32px;
   }
   .choice .label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .choice .quick {
@@ -547,7 +547,7 @@
   .quick button {
     flex: 1;
     padding: 4px 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     background: transparent;
   }
   .quick button.on {
@@ -559,7 +559,7 @@
     align-items: center;
     gap: 8px;
     min-height: 32px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .footer {
     display: flex;
@@ -570,14 +570,14 @@
   }
   .group {
     margin: 10px 0 2px;
-    font-size: 12px;
+    font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--muted);
   }
   .hint {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
 </style>

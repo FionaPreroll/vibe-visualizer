@@ -294,7 +294,7 @@
     align-items: center;
     padding: 8px 0;
     border-bottom: 1px solid var(--border);
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .what {
     display: flex;
@@ -302,7 +302,7 @@
   }
   .size {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
     text-align: right;
   }
@@ -317,10 +317,10 @@
   .muted {
     margin: 0;
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .small {
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .danger {
     border-color: var(--fail);
@@ -341,7 +341,7 @@
   .message {
     margin: 0;
     color: var(--muted);
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .message.error {
     color: var(--fail);

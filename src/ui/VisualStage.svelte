@@ -387,7 +387,7 @@
   .rest p {
     margin: 0;
     color: var(--text);
-    font-size: 15px;
+    font-size: var(--text-md);
   }
   .failed {
     position: absolute;

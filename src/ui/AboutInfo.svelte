@@ -22,7 +22,7 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     background: var(--surface-2);
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   dt {
     color: var(--muted);

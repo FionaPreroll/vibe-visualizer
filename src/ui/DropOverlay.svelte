@@ -72,7 +72,7 @@
     padding: 40px 64px;
     border: 2px dashed var(--accent);
     border-radius: 16px;
-    font-size: 20px;
+    font-size: var(--text-xl);
     color: var(--text);
     background: var(--surface);
   }

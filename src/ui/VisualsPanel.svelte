@@ -134,7 +134,7 @@
   }
   .edit button {
     padding: 6px 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     background: transparent;
   }
   .edit button.on {
@@ -144,18 +144,18 @@
   .note {
     margin: 16px;
     color: var(--muted);
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .hint {
     margin: 4px 0 10px;
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .check {
     display: flex;
     align-items: center;
     gap: 8px;
     min-height: 32px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
 </style>

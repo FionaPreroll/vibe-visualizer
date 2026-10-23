@@ -31,6 +31,6 @@
     border: 1px solid var(--fail);
     border-radius: 10px;
     background: color-mix(in srgb, var(--fail) 22%, var(--surface));
-    font-size: 14px;
+    font-size: var(--text-md);
   }
 </style>

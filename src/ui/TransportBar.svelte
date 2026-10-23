@@ -476,7 +476,7 @@
   }
   .artist {
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .center {
     display: flex;
@@ -498,7 +498,7 @@
     border-radius: 999px;
     border: 1px solid var(--fail);
     color: #fff;
-    font: 600 12px var(--mono);
+    font: 600 var(--text-xs) var(--mono);
   }
   .badge .dot {
     width: 8px;
@@ -508,7 +508,7 @@
     box-shadow: 0 0 6px var(--fail);
   }
   .live-center .hint {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .live-center button {
@@ -565,7 +565,7 @@
     }
     .labelled .label {
       display: inline;
-      font-size: 13px;
+      font-size: var(--text-sm);
     }
   }
   .repeat {
@@ -575,7 +575,7 @@
     position: absolute;
     right: 5px;
     bottom: 5px;
-    font: 700 9px var(--mono);
+    font: 700 var(--text-2xs) var(--mono);
   }
   .icon.play {
     width: 44px;
@@ -595,13 +595,13 @@
   /* The time played is looked at most; the time left stays quieter. */
   .time {
     font-family: var(--mono);
-    font-size: 15px;
+    font-size: var(--text-md);
     color: var(--text);
     min-width: 56px;
     text-align: center;
   }
   .time.remaining {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .timeline {
@@ -641,7 +641,7 @@
     border-left: 2px solid var(--cue);
     background: color-mix(in srgb, var(--cue) 70%, black);
     color: #fff;
-    font: 600 9px/11px var(--mono);
+    font: 600 var(--text-2xs)/1.1 var(--mono);
     pointer-events: none;
   }
   /* A tempo change of the beat grid: a line with the new tempo at its foot. */
@@ -655,7 +655,7 @@
     border-radius: 0 3px 3px 0;
     background: color-mix(in srgb, var(--warning) 70%, black);
     color: #000;
-    font: 600 9px/11px var(--mono);
+    font: 600 var(--text-2xs)/1.1 var(--mono);
     pointer-events: none;
   }
   .tempo-change::before {
@@ -753,7 +753,7 @@
     gap: 4px;
     padding: 2px 8px;
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--text-xs);
     white-space: nowrap;
     color: var(--accent-2);
   }

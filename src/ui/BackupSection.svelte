@@ -133,7 +133,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .actions {
     display: flex;
@@ -157,7 +157,7 @@
   .message {
     margin: 0;
     color: var(--muted);
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .message.error {
     color: var(--fail);

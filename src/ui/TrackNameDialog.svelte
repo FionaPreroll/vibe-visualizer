@@ -397,7 +397,7 @@
   }
   h2 {
     margin: 0;
-    font-size: 18px;
+    font-size: var(--text-xl);
   }
   .close {
     padding: 4px;
@@ -414,7 +414,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   label span {
     color: var(--muted);
@@ -431,7 +431,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .cover .label {
     color: var(--muted);
@@ -468,7 +468,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .colors .label {
     color: var(--muted);
@@ -480,7 +480,7 @@
   .sources button {
     flex: 1;
     padding: 6px 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .sources button.on {
     border-color: var(--accent);
@@ -519,20 +519,20 @@
   }
   .preview .none {
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .problem {
     margin: 0;
     color: var(--fail);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .muted {
     margin: 0;
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .small {
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   footer {
     display: flex;

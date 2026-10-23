@@ -227,17 +227,17 @@
   .hello {
     margin: 0;
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
   h2 {
     margin: 2px 0 4px;
-    font-size: 30px;
+    font-size: var(--text-3xl);
     line-height: 1.2;
   }
   h2.script {
-    font-size: 36px;
+    font-size: calc(var(--text-3xl) * 1.2);
     font-weight: normal;
     background: linear-gradient(90deg, var(--accent-2), var(--accent));
     background-clip: text;
@@ -277,7 +277,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .steps span {
     color: var(--muted);
@@ -288,7 +288,7 @@
     margin: 0 0 20px;
     padding: 0;
     list-style: none;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .notes strong {
