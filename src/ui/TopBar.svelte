@@ -6,9 +6,9 @@
   import { useExporter } from './exporter-context';
   import Icon, { type IconName } from './Icon.svelte';
   import { supportsMiniPlayer } from './mini-player';
+  import MoreMenu, { type MoreMenuItem } from './MoreMenu.svelte';
   import { usePlayer } from './player-context';
   import { useCapture } from './stage-capture';
-  import TopBarMenu, { type TopBarMenuItem } from './TopBarMenu.svelte';
 
   interface Props {
     onFullscreen: () => void;
@@ -83,7 +83,7 @@
   const canMiniPlayer = supportsMiniPlayer();
 
   /** The actions used now and then, in the ⋯ menu. */
-  const menuItems = $derived<TopBarMenuItem[]>([
+  const menuItems = $derived<MoreMenuItem[]>([
     ...(canMiniPlayer
       ? [
           {
@@ -94,7 +94,7 @@
             title: 'The visuals in a small window of their own, on top of other tabs and apps',
             testid: 'mini-player',
             onselect: onMiniPlayer,
-          } satisfies TopBarMenuItem,
+          } satisfies MoreMenuItem,
         ]
       : []),
     {
@@ -231,7 +231,11 @@
     >
       <Icon name="panel" size={18} />
     </button>
-    <TopBarMenu items={menuItems} dot={controllerOn} />
+    <MoreMenu
+      items={menuItems}
+      dot={controllerOn}
+      title="More: safe areas, only the music, the picture, the DJ controller"
+    />
     <button class="primary export" onclick={onExport} data-testid="export-button">
       <Icon name="export" size={18} />
       {#if $exporter.status === 'running'}

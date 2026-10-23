@@ -1,8 +1,8 @@
 <script lang="ts" module>
   import type { IconName } from './Icon.svelte';
 
-  /** An entry of the top bar's menu: an action, or a switch (with `checked`). */
-  export interface TopBarMenuItem {
+  /** An entry of a ⋯ menu: an action, or a switch (with `checked`). */
+  export interface MoreMenuItem {
     label: string;
     icon: IconName;
     /** The key that does the same, shown at the right. */
@@ -22,17 +22,26 @@
   import Icon from './Icon.svelte';
 
   /**
-   * The ⋯ menu of the top bar: the actions used now and then, so that the bar fits narrower
-   * windows. Opens below its button; closes on a choice, Escape, a click elsewhere, a resize or
-   * a scroll. The arrow keys move between the entries.
+   * A ⋯ menu: the actions used now and then, behind one button, so that the top bar fits narrower
+   * windows and the presets leave room for the settings. Opens below its button, and follows it
+   * when what holds it scrolls; closes on a choice, Escape, a click elsewhere, a resize, or when
+   * its button scrolls out of sight. The arrow keys move between the entries.
    */
   let {
     items,
     dot = false,
+    label = 'More',
+    title,
+    testid = 'more',
   }: {
-    items: readonly TopBarMenuItem[];
+    items: readonly MoreMenuItem[];
     /** A green dot on the button: a DJ controller is connected. */
     dot?: boolean;
+    /** The name of the button and its menu. */
+    label?: string;
+    title: string;
+    /** The button is `<testid>-button`, its menu `<testid>-menu`. */
+    testid?: string;
   } = $props();
 
   let open = $state(false);
@@ -42,10 +51,33 @@
 
   function toggle() {
     if (open) return close();
-    const rect = button.getBoundingClientRect();
-    position = { top: rect.bottom + 6, right: window.innerWidth - rect.right };
+    place();
     open = true;
     queueMicrotask(() => menu?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
+  }
+
+  /** Puts the menu below its button. */
+  function place() {
+    const rect = button.getBoundingClientRect();
+    position = { top: rect.bottom + 6, right: window.innerWidth - rect.right };
+  }
+
+  /** The menu stays with its button while the side panel scrolls, until the button is hidden. */
+  function follow() {
+    if (!open) return;
+    if (inSight(button)) place();
+    else close();
+  }
+
+  /** Whether `element` shows in each box around it that scrolls or clips, and in the window. */
+  function inSight(element: HTMLElement): boolean {
+    const rect = element.getBoundingClientRect();
+    for (let box = element.parentElement; box; box = box.parentElement) {
+      if (getComputedStyle(box).overflowY === 'visible') continue;
+      const { top, bottom } = box.getBoundingClientRect();
+      if (rect.bottom <= top || rect.top >= bottom) return false;
+    }
+    return rect.bottom > 0 && rect.top < window.innerHeight;
   }
 
   function close() {
@@ -56,7 +88,7 @@
    * Does what the entry says. From the keyboard (a click without a count), the ⋯ takes the focus
    * back first, so that a dialog the entry opens can take it and give it back to the ⋯.
    */
-  function choose(item: TopBarMenuItem, event: MouseEvent) {
+  function choose(item: MoreMenuItem, event: MouseEvent) {
     close();
     if (event.detail === 0) button.focus();
     item.onselect();
@@ -104,7 +136,7 @@
   }
 </script>
 
-<svelte:window onpointerdown={onOutside} onresize={close} onscrollcapture={close} />
+<svelte:window onpointerdown={onOutside} onresize={close} onscrollcapture={follow} />
 
 <span class="more" role="presentation" onkeydown={onKey} onfocusout={onFocusOut}>
   <button
@@ -114,9 +146,9 @@
     onclick={toggle}
     aria-haspopup="menu"
     aria-expanded={open}
-    aria-label="More"
-    title="More: safe areas, only the music, the picture, the DJ controller"
-    data-testid="more-button"
+    aria-label={label}
+    {title}
+    data-testid="{testid}-button"
   >
     <Icon name="more" size={18} />
     {#if dot}<span class="dot" data-testid="more-dot"></span>{/if}
@@ -127,10 +159,10 @@
       class="menu"
       role="menu"
       tabindex="-1"
-      aria-label="More"
+      aria-label={label}
       style:top="{position.top}px"
       style:right="{position.right}px"
-      data-testid="more-menu"
+      data-testid="{testid}-menu"
     >
       {#each items as item (item.testid)}
         <button
