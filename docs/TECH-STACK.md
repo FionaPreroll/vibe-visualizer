@@ -133,8 +133,9 @@ src/
                  stored analysis replay, job storage in the Origin Private File System, Exporter
                  facade
     control/     DJ controllers in the app: deck 1 of the DDJ-FLX2 on the player, its lights
-    player/      Player: connects the state with the engine; the play order (shuffle, repeat); the
-                 storing of the state as it changes
+    player/      Player, the UI's face of its parts: the transport (play, seek, scrub, the gapless
+                 plan), the queue's files, live input, the beat grid edits, the storing of the
+                 state, undo; the play order (shuffle, repeat)
     state/       store with timestamped actions, app state, persistence, backups
     env/         what the app needs of the browser, the system check, the build's version
     util/
