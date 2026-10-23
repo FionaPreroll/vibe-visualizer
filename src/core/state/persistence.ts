@@ -1,5 +1,6 @@
-import { TEMPO_HINT_RANGE, TEMPO_RANGE_IDS } from '../analysis/beat-grid';
-import { clampShift, isGridEdited, NO_GRID_EDIT, type GridEdit } from '../analysis/grid-edit';
+import * as v from 'valibot';
+import { TEMPO_HINT_RANGE } from '../analysis/beat-grid';
+import { clampShift, isGridEdited } from '../analysis/grid-edit';
 import { sanitizeSound, type SoundSettings } from '../audio/dsp/sound-settings';
 import {
   sanitizeKaleido,
@@ -11,27 +12,16 @@ import {
   type LogoSpectrumSettings,
   type VisualPreset,
 } from '../render/visual-settings';
-import { isAspectRatio, sanitizeExportOptions, type ExportOptions } from '../export/video-format';
-import { RENDER_SCALE_RANGE } from '../render/auto-quality';
+import { sanitizeExportOptions, type ExportOptions } from '../export/video-format';
 import { sanitizeTrackColors } from '../render/cover-palette';
-import { sanitizeOverlay } from '../render/overlay-settings';
-import { sanitizeAutoPresets } from '../render/preset-director';
+import { defaults, flag, orNone, readWith, record, sanitize } from '../util/schema';
 import {
   CUE_COUNT,
-  DEFAULT_SETTINGS,
-  INPUT_GAIN_RANGE,
-  LOGO_TEXT_LENGTH,
-  PANEL_TABS,
-  REPEAT_MODES,
   sanitizeTrackLook,
-  SYNC_OFFSET_RANGE,
-  TRACK_TEXT_LENGTH,
-  VISUAL_MODES,
-  WAVEFORM_STYLES,
-  type Favourites,
+  SETTINGS_SCHEMA,
+  TRACK_EDIT_SCHEMA,
   type Settings,
   type TrackData,
-  type TrackEdit,
 } from './app-state';
 
 /** What all keys of the app in localStorage start with. */
@@ -59,75 +49,57 @@ export function setSaving(on: boolean): void {
   }
 }
 
-/** A time within the track, or null. */
-function time(value: unknown, duration: number): number | null {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= duration
-    ? value
-    : null;
-}
+/** A time in seconds, or none; whether it lies in the file is checked against its duration. */
+const TIME = orNone(v.pipe(v.number(), v.finite()));
 
-/** A tempo the user can give (TMP-06), or null. */
-function tempo(value: unknown): number | null {
-  return typeof value === 'number' && value >= TEMPO_HINT_RANGE.min && value <= TEMPO_HINT_RANGE.max
-    ? value
-    : null;
-}
-
-/** A correction of the beat grid (TR-11), or none. */
-function gridEdit(value: unknown, duration: number): GridEdit {
-  if (!value || typeof value !== 'object') return NO_GRID_EDIT;
-  const { shift, downbeat } = value as { shift?: unknown; downbeat?: unknown };
-  // The first beat of a grid can lie just before the start of the file.
-  const anchor =
-    typeof downbeat === 'number' && downbeat >= -1 && downbeat <= duration + 1 ? downbeat : null;
-  return {
-    shift: typeof shift === 'number' && Number.isFinite(shift) ? clampShift(shift) : 0,
-    downbeat: anchor,
-  };
-}
-
-/** A title and artist the user gave a file (LS-18), or none. */
-function trackEdit(value: unknown): TrackEdit | null {
-  if (!value || typeof value !== 'object') return null;
-  const { title, artist } = value as { title?: unknown; artist?: unknown };
-  if (typeof title !== 'string' || !title.trim()) return null;
-  return {
-    title: title.trim().slice(0, TRACK_TEXT_LENGTH),
-    artist:
-      typeof artist === 'string' && artist.trim()
-        ? artist.trim().slice(0, TRACK_TEXT_LENGTH)
-        : null,
-  };
-}
+/**
+ * What is kept per file (TR-05), as {@link saveTrackData} stores it; its times are checked
+ * against the file's duration where it is read.
+ */
+const STORED_TRACK_SCHEMA = record({
+  cues: v.fallback(v.array(TIME), (): (number | null)[] => []),
+  marks: record({ in: TIME, out: TIME }),
+  /** A tempo the user gave (TMP-06). */
+  tempo: orNone(
+    v.pipe(v.number(), v.minValue(TEMPO_HINT_RANGE.min), v.maxValue(TEMPO_HINT_RANGE.max)),
+  ),
+  fixed: flag(false),
+  /** A correction of the beat grid (TR-11). */
+  grid: record({
+    shift: v.fallback(v.pipe(v.number(), v.finite(), v.transform(clampShift)), 0),
+    downbeat: TIME,
+  }),
+  edit: TRACK_EDIT_SCHEMA,
+  colors: readWith(sanitizeTrackColors),
+  look: readWith(sanitizeTrackLook),
+});
 
 /**
  * The cues, markers, tempo (fixed or not), grid correction, names and colours stored for a file
  * (TR-05), validated against its duration.
  */
 export function loadTrackData(fingerprint: string, duration: number): TrackData | null {
-  const stored = read(TRACK_PREFIX + fingerprint) as {
-    cues?: unknown;
-    marks?: { in?: unknown; out?: unknown };
-    tempo?: unknown;
-    fixed?: unknown;
-    grid?: unknown;
-    edit?: unknown;
-    colors?: unknown;
-    look?: unknown;
-  } | null;
+  const stored = read(TRACK_PREFIX + fingerprint);
   if (!stored || typeof stored !== 'object') return null;
-  const cues = Array.isArray(stored.cues) ? stored.cues : [];
-  const marks = { in: time(stored.marks?.in, duration), out: time(stored.marks?.out, duration) };
+  const data = sanitize(STORED_TRACK_SCHEMA, stored);
+  const inFile = (time: number | null) =>
+    time !== null && time >= 0 && time <= duration ? time : null;
+  const marks = { in: inFile(data.marks.in), out: inFile(data.marks.out) };
   if (marks.in !== null && marks.out !== null && marks.out <= marks.in) marks.out = null;
+  const { shift, downbeat } = data.grid;
   return {
-    cues: Array.from({ length: CUE_COUNT }, (_, index) => time(cues[index], duration)),
+    cues: Array.from({ length: CUE_COUNT }, (_, index) => inFile(data.cues[index] ?? null)),
     marks,
-    tempo: tempo(stored.tempo),
-    fixedTempo: stored.fixed === true,
-    gridEdit: gridEdit(stored.grid, duration),
-    edit: trackEdit(stored.edit),
-    colors: sanitizeTrackColors(stored.colors),
-    look: sanitizeTrackLook(stored.look),
+    tempo: data.tempo,
+    fixedTempo: data.fixed,
+    gridEdit: {
+      shift,
+      // The first beat of a grid can lie just before the start of the file.
+      downbeat: downbeat !== null && downbeat >= -1 && downbeat <= duration + 1 ? downbeat : null,
+    },
+    edit: data.edit,
+    colors: data.colors,
+    look: data.look,
   };
 }
 
@@ -247,57 +219,27 @@ function write(key: string, value: unknown): void {
   }
 }
 
-/** Stored settings merged over the defaults; unknown or mistyped values are ignored. */
+/** Stored settings over the defaults (see SETTINGS_SCHEMA); unknown or invalid values are not. */
 export function loadSettings(): Settings {
-  const settings = { ...DEFAULT_SETTINGS };
+  let stored: Record<string, unknown>;
   try {
-    const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Record<
-      string,
-      unknown
-    >;
-    for (const key of Object.keys(settings) as (keyof Settings)[]) {
-      const value = stored[key];
-      if (typeof value === typeof DEFAULT_SETTINGS[key]) {
-        (settings as Record<keyof Settings, unknown>)[key] = value;
-      }
-    }
-    if (!PANEL_TABS.includes(settings.panel)) settings.panel = DEFAULT_SETTINGS.panel;
-    if (!VISUAL_MODES.includes(settings.visualMode))
-      settings.visualMode = DEFAULT_SETTINGS.visualMode;
-    settings.volume = Math.max(0, Math.min(1, settings.volume));
-    if (!isAspectRatio(settings.aspect)) settings.aspect = DEFAULT_SETTINGS.aspect;
-    if (!REPEAT_MODES.includes(settings.repeat)) settings.repeat = DEFAULT_SETTINGS.repeat;
-    if (!WAVEFORM_STYLES.includes(settings.waveformStyle)) {
-      settings.waveformStyle = DEFAULT_SETTINGS.waveformStyle;
-    }
-    if (!TEMPO_RANGE_IDS.includes(settings.bpmRange)) settings.bpmRange = DEFAULT_SETTINGS.bpmRange;
-    settings.inputGain = Number.isFinite(settings.inputGain)
-      ? Math.max(INPUT_GAIN_RANGE.min, Math.min(INPUT_GAIN_RANGE.max, settings.inputGain))
-      : DEFAULT_SETTINGS.inputGain;
-    // The lettering in the ring was the app's name, which the user could change, before.
-    if (typeof stored['logoText'] !== 'string' && typeof stored['appName'] === 'string') {
-      settings.logoText = stored['appName'];
-    }
-    settings.logoText =
-      settings.logoText.trim().slice(0, LOGO_TEXT_LENGTH) || DEFAULT_SETTINGS.logoText;
-    settings.syncOffset = Number.isFinite(settings.syncOffset)
-      ? Math.max(SYNC_OFFSET_RANGE.min, Math.min(SYNC_OFFSET_RANGE.max, settings.syncOffset))
-      : DEFAULT_SETTINGS.syncOffset;
-    settings.renderScale = Number.isFinite(settings.renderScale)
-      ? Math.max(RENDER_SCALE_RANGE.min, Math.min(RENDER_SCALE_RANGE.max, settings.renderScale))
-      : DEFAULT_SETTINGS.renderScale;
-    // Until the user chooses, flashing is reduced where the system asks for less motion (VE-06).
-    // Settings stored before the choice was kept had it on only if the user turned it on.
-    if (typeof stored['reduceFlashingChosen'] !== 'boolean') {
-      settings.reduceFlashingChosen = stored['reduceFlashing'] === true;
-    }
-    if (!settings.reduceFlashingChosen) settings.reduceFlashing = prefersReducedMotion();
-    settings.autoPresets = sanitizeAutoPresets(stored['autoPresets']);
-    settings.overlay = sanitizeOverlay(stored['overlay']);
-    settings.favourites = sanitizeFavourites(stored['favourites']);
+    const parsed: unknown = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}');
+    stored = typeof parsed === 'object' && parsed !== null ? { ...parsed } : {};
   } catch {
     // Unreadable storage: defaults.
+    return defaults(SETTINGS_SCHEMA);
   }
+  // The lettering in the ring was the app's name, which the user could change, before.
+  if (typeof stored['logoText'] !== 'string' && typeof stored['appName'] === 'string') {
+    stored['logoText'] = stored['appName'];
+  }
+  const settings = sanitize(SETTINGS_SCHEMA, stored);
+  // Until the user chooses, flashing is reduced where the system asks for less motion (VE-06).
+  // Settings stored before the choice was kept had it on only if the user turned it on.
+  if (typeof stored['reduceFlashingChosen'] !== 'boolean') {
+    settings.reduceFlashingChosen = stored['reduceFlashing'] === true;
+  }
+  if (!settings.reduceFlashingChosen) settings.reduceFlashing = prefersReducedMotion();
   return settings;
 }
 
@@ -308,19 +250,6 @@ function prefersReducedMotion(): boolean {
   } catch {
     return false;
   }
-}
-
-/** Favourite preset names per mode: strings only, each once. */
-function sanitizeFavourites(value: unknown): Favourites {
-  const input = (typeof value === 'object' && value !== null ? value : {}) as Record<
-    string,
-    unknown
-  >;
-  const names = (list: unknown) =>
-    Array.isArray(list)
-      ? [...new Set(list.filter((name): name is string => typeof name === 'string'))]
-      : [];
-  return { logoSpectrum: names(input['logoSpectrum']), kaleidoscope: names(input['kaleidoscope']) };
 }
 
 export function saveSettings(settings: Settings): void {

@@ -1,3 +1,5 @@
+import { defaults, flag, oneOf, record, sanitize, type Infer } from '../util/schema';
+
 /**
  * Video formats for the export (EX-03) and the stage (VE-09): aspect ratios, platform presets,
  * custom sizes and frame rates, bitrates by quality, the H.264 level a format needs, and the
@@ -54,35 +56,31 @@ export const EXPORT_PRESETS: readonly {
 export const FADE_CHOICES = [0, 1, 2, 3, 5] as const;
 export type FadeSeconds = (typeof FADE_CHOICES)[number];
 
-/** What the export dialog remembers. */
-export interface ExportOptions {
-  preset: PresetId | 'custom';
+/** What the export dialog remembers: each with its check and its default. */
+export const EXPORT_OPTIONS_SCHEMA = record({
+  preset: oneOf([...EXPORT_PRESETS.map((entry) => entry.id), 'custom'], 'youtube-1080p60'),
   /** Custom format; its aspect ratio is the stage's. */
-  resolution: Resolution;
-  fps: FrameRate;
-  quality: Quality;
+  resolution: oneOf(RESOLUTIONS, 1080),
+  fps: oneOf(FRAME_RATES, 60),
+  quality: oneOf(
+    QUALITIES.map((entry) => entry.id),
+    'standard',
+  ),
   /**
    * The whole track, its in/out range when a marker is set (TR-09), or tracks of the queue as
    * one video, each between its markers (EX-05).
    */
-  range: 'track' | 'marks' | 'tracks';
+  range: oneOf(['track', 'marks', 'tracks'], 'marks'),
   /** Tracks of the queue as a video of each, not one video (EX-09). */
-  perTrack: boolean;
-  fade: FadeSeconds;
+  perTrack: flag(false),
+  fade: oneOf(FADE_CHOICES, 0),
   /** A video, or only its sound as a WAV file (EX-11). */
-  content: 'video' | 'sound';
-}
+  content: oneOf(['video', 'sound'], 'video'),
+});
 
-export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
-  preset: 'youtube-1080p60',
-  resolution: 1080,
-  fps: 60,
-  quality: 'standard',
-  range: 'marks',
-  perTrack: false,
-  fade: 0,
-  content: 'video',
-};
+export type ExportOptions = Infer<typeof EXPORT_OPTIONS_SCHEMA>;
+
+export const DEFAULT_EXPORT_OPTIONS: ExportOptions = defaults(EXPORT_OPTIONS_SCHEMA);
 
 /** A concrete video format. */
 export interface VideoFormat {
@@ -215,34 +213,7 @@ export function avcCodecString(
 
 /** Valid export options from whatever is stored. */
 export function sanitizeExportOptions(value: unknown): ExportOptions {
-  const input = (typeof value === 'object' && value !== null ? value : {}) as Record<
-    string,
-    unknown
-  >;
-  const pick = <T>(candidate: unknown, allowed: readonly T[], fallback: T): T =>
-    allowed.includes(candidate as T) ? (candidate as T) : fallback;
-  return {
-    preset: pick(
-      input['preset'],
-      [...EXPORT_PRESETS.map((entry) => entry.id), 'custom'] as const,
-      DEFAULT_EXPORT_OPTIONS.preset,
-    ),
-    resolution: pick(input['resolution'], RESOLUTIONS, DEFAULT_EXPORT_OPTIONS.resolution),
-    fps: pick(input['fps'], FRAME_RATES, DEFAULT_EXPORT_OPTIONS.fps),
-    quality: pick(
-      input['quality'],
-      QUALITIES.map((entry) => entry.id),
-      DEFAULT_EXPORT_OPTIONS.quality,
-    ),
-    range: pick(
-      input['range'],
-      ['track', 'marks', 'tracks'] as const,
-      DEFAULT_EXPORT_OPTIONS.range,
-    ),
-    perTrack: input['perTrack'] === true,
-    fade: pick(input['fade'], FADE_CHOICES, DEFAULT_EXPORT_OPTIONS.fade),
-    content: pick(input['content'], ['video', 'sound'] as const, DEFAULT_EXPORT_OPTIONS.content),
-  };
+  return sanitize(EXPORT_OPTIONS_SCHEMA, value);
 }
 
 export function isAspectRatio(value: unknown): value is AspectRatio {

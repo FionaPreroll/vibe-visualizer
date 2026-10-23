@@ -1,5 +1,6 @@
 import { F } from '../analysis/features';
 import { Prng } from '../util/prng';
+import { clamped, defaults, flag, oneOf, record, sanitize, type Infer } from '../util/schema';
 
 /**
  * Automatic preset switching (PR-02): every so many seconds of music, every so many bars, or on
@@ -10,67 +11,35 @@ import { Prng } from '../util/prng';
 export type AutoTrigger = 'seconds' | 'bars' | 'drops';
 export const AUTO_TRIGGERS: readonly AutoTrigger[] = ['seconds', 'bars', 'drops'];
 
-export interface AutoPresets {
-  on: boolean;
-  trigger: AutoTrigger;
-  /** Seconds of music between switches. */
-  seconds: number;
-  /** Bars (of four beats) between switches. */
-  bars: number;
-  /** Length of the morph, in seconds (0: a cut). */
-  transition: number;
-  /** The next preset: the one after it, or any other. */
-  order: 'sequence' | 'random';
-  /** Which presets take part: all of the mode, or the favourites. */
-  pool: 'all' | 'favourites';
-}
-
-export const DEFAULT_AUTO_PRESETS: AutoPresets = {
-  on: false,
-  trigger: 'bars',
-  seconds: 30,
-  bars: 16,
-  transition: 2,
-  order: 'sequence',
-  pool: 'all',
-};
-
 export const AUTO_RANGES = {
   seconds: [5, 300],
   bars: [1, 64],
   transition: [0, 10],
-} as const satisfies Partial<Record<keyof AutoPresets, readonly [number, number]>>;
+} as const satisfies Record<string, readonly [number, number]>;
+
+/** The settings of the switching: each with its check and its default. */
+export const AUTO_PRESETS_SCHEMA = record({
+  on: flag(false),
+  trigger: oneOf(AUTO_TRIGGERS, 'bars'),
+  /** Seconds of music between switches. */
+  seconds: clamped(30, ...AUTO_RANGES.seconds),
+  /** Bars (of four beats) between switches. */
+  bars: clamped(16, ...AUTO_RANGES.bars, true),
+  /** Length of the morph, in seconds (0: a cut). */
+  transition: clamped(2, ...AUTO_RANGES.transition),
+  /** The next preset: the one after it, or any other. */
+  order: oneOf(['sequence', 'random'], 'sequence'),
+  /** Which presets take part: all of the mode, or the favourites. */
+  pool: oneOf(['all', 'favourites'], 'all'),
+});
+
+export type AutoPresets = Infer<typeof AUTO_PRESETS_SCHEMA>;
+
+export const DEFAULT_AUTO_PRESETS: AutoPresets = defaults(AUTO_PRESETS_SCHEMA);
 
 /** Valid settings from whatever is stored. */
 export function sanitizeAutoPresets(value: unknown): AutoPresets {
-  const input = (typeof value === 'object' && value !== null ? value : {}) as Record<
-    string,
-    unknown
-  >;
-  const number = (key: keyof typeof AUTO_RANGES, integer = false) => {
-    const stored = input[key];
-    if (typeof stored !== 'number' || !Number.isFinite(stored)) return DEFAULT_AUTO_PRESETS[key];
-    const [min, max] = AUTO_RANGES[key];
-    const clamped = Math.min(max, Math.max(min, stored));
-    return integer ? Math.round(clamped) : clamped;
-  };
-  return {
-    on: typeof input['on'] === 'boolean' ? input['on'] : DEFAULT_AUTO_PRESETS.on,
-    trigger: AUTO_TRIGGERS.includes(input['trigger'] as AutoTrigger)
-      ? (input['trigger'] as AutoTrigger)
-      : DEFAULT_AUTO_PRESETS.trigger,
-    seconds: number('seconds'),
-    bars: number('bars', true),
-    transition: number('transition'),
-    order:
-      input['order'] === 'random' || input['order'] === 'sequence'
-        ? input['order']
-        : DEFAULT_AUTO_PRESETS.order,
-    pool:
-      input['pool'] === 'favourites' || input['pool'] === 'all'
-        ? input['pool']
-        : DEFAULT_AUTO_PRESETS.pool,
-  };
+  return sanitize(AUTO_PRESETS_SCHEMA, value);
 }
 
 /**

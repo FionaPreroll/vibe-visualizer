@@ -1,3 +1,5 @@
+import { clamped, defaults, flag, oneOf, record, sanitize, type Infer } from '../../util/schema';
+
 /**
  * Settings of the sound: tempo (TMP-01, TMP-02), DJ filter (FX-06), delay (FX-02), reverb
  * (FX-01), and the one-click presets for popular edits (FX-10). Plain data: the same settings
@@ -5,7 +7,8 @@
  */
 
 /** Vinyl: pitch follows the speed. Key lock: the pitch stays (time-stretching). */
-export type TempoMode = 'vinyl' | 'keylock';
+export const TEMPO_MODES = ['vinyl', 'keylock'] as const;
+export type TempoMode = (typeof TEMPO_MODES)[number];
 
 /** Ranges of the tempo fader, in percent. */
 export const TEMPO_RANGES = [8, 16, 50] as const;
@@ -17,65 +20,6 @@ export const DELAY_DIVISIONS = ['1/16', '1/8', '1/4', '1/2', '1/1'] as const;
 export type DelayDivision = (typeof DELAY_DIVISIONS)[number];
 export const DELAY_FEELS = ['straight', 'dotted', 'triplet'] as const;
 export type DelayFeel = (typeof DELAY_FEELS)[number];
-
-export interface SoundSettings {
-  /** Playback speed: 0.5…1.5 (−50 % … +50 %). */
-  rate: number;
-  tempoMode: TempoMode;
-  /** Range of the tempo fader in percent. */
-  tempoRange: TempoRange;
-  /** DJ filter: −1 low-pass … 0 off … +1 high-pass. */
-  filter: number;
-  /** Resonance of the DJ filter, 0…1. */
-  filterResonance: number;
-  delayOn: boolean;
-  /** Delay time from the tempo (a note value) instead of milliseconds. */
-  delaySync: boolean;
-  delayDivision: DelayDivision;
-  delayFeel: DelayFeel;
-  delayMs: number;
-  /** 0…0.95 */
-  delayFeedback: number;
-  /** Filter in the feedback path: −1 darker … 0 neutral … +1 thinner. */
-  delayTone: number;
-  delayPingPong: boolean;
-  /** 0 dry … 1 wet. */
-  delayMix: number;
-  reverbOn: boolean;
-  /** Room size, 0…1. */
-  reverbSize: number;
-  /** Decay time in seconds. */
-  reverbDecay: number;
-  /** Pre-delay in milliseconds. */
-  reverbPreDelay: number;
-  /** High-frequency damping of the tail, 0…1. */
-  reverbDamping: number;
-  /** 0 dry … 1 wet. */
-  reverbMix: number;
-}
-
-export const DEFAULT_SOUND: SoundSettings = {
-  rate: 1,
-  tempoMode: 'vinyl',
-  tempoRange: 8,
-  filter: 0,
-  filterResonance: 0.3,
-  delayOn: false,
-  delaySync: true,
-  delayDivision: '1/8',
-  delayFeel: 'dotted',
-  delayMs: 350,
-  delayFeedback: 0.35,
-  delayTone: 0,
-  delayPingPong: true,
-  delayMix: 0.3,
-  reverbOn: false,
-  reverbSize: 0.6,
-  reverbDecay: 2.5,
-  reverbPreDelay: 20,
-  reverbDamping: 0.5,
-  reverbMix: 0.25,
-};
 
 export const SOUND_RANGES = {
   rate: [0.5, 1.5],
@@ -90,7 +34,48 @@ export const SOUND_RANGES = {
   reverbPreDelay: [0, 200],
   reverbDamping: [0, 1],
   reverbMix: [0, 1],
-} as const satisfies Partial<Record<keyof SoundSettings, readonly [number, number]>>;
+} as const satisfies Record<string, readonly [number, number]>;
+
+/** The settings of the sound: each with its check and its default. */
+export const SOUND_SCHEMA = record({
+  /** Playback speed: 0.5…1.5 (−50 % … +50 %). */
+  rate: clamped(1, ...SOUND_RANGES.rate),
+  tempoMode: oneOf(TEMPO_MODES, 'vinyl'),
+  /** Range of the tempo fader in percent. */
+  tempoRange: oneOf(TEMPO_RANGES, 8),
+  /** DJ filter: −1 low-pass … 0 off … +1 high-pass. */
+  filter: clamped(0, ...SOUND_RANGES.filter),
+  /** Resonance of the DJ filter, 0…1. */
+  filterResonance: clamped(0.3, ...SOUND_RANGES.filterResonance),
+  delayOn: flag(false),
+  /** Delay time from the tempo (a note value) instead of milliseconds. */
+  delaySync: flag(true),
+  delayDivision: oneOf(DELAY_DIVISIONS, '1/8'),
+  delayFeel: oneOf(DELAY_FEELS, 'dotted'),
+  delayMs: clamped(350, ...SOUND_RANGES.delayMs),
+  /** 0…0.95 */
+  delayFeedback: clamped(0.35, ...SOUND_RANGES.delayFeedback),
+  /** Filter in the feedback path: −1 darker … 0 neutral … +1 thinner. */
+  delayTone: clamped(0, ...SOUND_RANGES.delayTone),
+  delayPingPong: flag(true),
+  /** 0 dry … 1 wet. */
+  delayMix: clamped(0.3, ...SOUND_RANGES.delayMix),
+  reverbOn: flag(false),
+  /** Room size, 0…1. */
+  reverbSize: clamped(0.6, ...SOUND_RANGES.reverbSize),
+  /** Decay time in seconds. */
+  reverbDecay: clamped(2.5, ...SOUND_RANGES.reverbDecay),
+  /** Pre-delay in milliseconds. */
+  reverbPreDelay: clamped(20, ...SOUND_RANGES.reverbPreDelay),
+  /** High-frequency damping of the tail, 0…1. */
+  reverbDamping: clamped(0.5, ...SOUND_RANGES.reverbDamping),
+  /** 0 dry … 1 wet. */
+  reverbMix: clamped(0.25, ...SOUND_RANGES.reverbMix),
+});
+
+export type SoundSettings = Infer<typeof SOUND_SCHEMA>;
+
+export const DEFAULT_SOUND: SoundSettings = defaults(SOUND_SCHEMA);
 
 export interface SoundPreset {
   name: string;
@@ -155,31 +140,7 @@ export function isClean(settings: SoundSettings): boolean {
 
 /** Valid settings from whatever is stored; defaults for anything missing or invalid. */
 export function sanitizeSound(value: unknown): SoundSettings {
-  const input = (typeof value === 'object' && value !== null ? value : {}) as Record<
-    string,
-    unknown
-  >;
-  const result = { ...DEFAULT_SOUND } as Record<string, unknown>;
-  for (const [key, fallback] of Object.entries(DEFAULT_SOUND)) {
-    const stored = input[key];
-    if (typeof stored !== typeof fallback) continue;
-    const range = (SOUND_RANGES as Record<string, readonly [number, number]>)[key];
-    if (typeof stored === 'number') {
-      if (!Number.isFinite(stored)) continue;
-      result[key] = range ? Math.min(range[1], Math.max(range[0], stored)) : stored;
-    } else {
-      result[key] = stored;
-    }
-  }
-  const settings = result as unknown as SoundSettings;
-  if (!(['vinyl', 'keylock'] as const).includes(settings.tempoMode)) {
-    settings.tempoMode = DEFAULT_SOUND.tempoMode;
-  }
-  if (!TEMPO_RANGES.includes(settings.tempoRange)) settings.tempoRange = DEFAULT_SOUND.tempoRange;
-  if (!DELAY_DIVISIONS.includes(settings.delayDivision)) {
-    settings.delayDivision = DEFAULT_SOUND.delayDivision;
-  }
-  if (!DELAY_FEELS.includes(settings.delayFeel)) settings.delayFeel = DEFAULT_SOUND.delayFeel;
+  const settings = sanitize(SOUND_SCHEMA, value);
   // The fader cannot reach a rate outside its range: widen the range instead of losing the rate.
   const range = TEMPO_RANGES.find((candidate) => {
     const [low, high] = rateLimits(candidate);

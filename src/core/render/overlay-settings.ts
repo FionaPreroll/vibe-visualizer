@@ -1,3 +1,14 @@
+import {
+  clamped,
+  color,
+  defaults,
+  flag,
+  oneOf,
+  record,
+  sanitize,
+  type Infer,
+} from '../util/schema';
+
 /**
  * The track info over the visuals (LS-18, LS-19): the title and artist of the track playing, and
  * on request a bar of its progress and its time. It fades in at the start of each track's part
@@ -38,74 +49,38 @@ export const OVERLAY_POSITIONS: readonly OverlayPosition[] = [
   'bottom-right',
 ];
 
-export interface OverlaySettings {
-  /** Shows the title and artist of the track playing (LS-18). */
-  on: boolean;
-  font: OverlayFont;
-  /** Size of the letters, relative to the default. */
-  size: number;
-  position: OverlayPosition;
-  color: string;
-  /** Seconds the text takes to fade in at the start of a track, and to fade out. */
-  fade: number;
-  /** Seconds it stays before it fades out; 0: as long as the track plays. */
-  hold: number;
-  /** A bar of the track's progress under the text (LS-19). */
-  progress: boolean;
-  /** The time played and the length of the track (LS-19). */
-  time: boolean;
-}
-
-export const DEFAULT_OVERLAY: OverlaySettings = {
-  on: false,
-  font: 'sans',
-  size: 1,
-  position: 'bottom-left',
-  color: '#ffffff',
-  fade: 1.5,
-  hold: 0,
-  progress: false,
-  time: false,
-};
-
 export const OVERLAY_RANGES = {
   size: [0.5, 2],
   fade: [0, 5],
   hold: [0, 60],
 } as const satisfies Record<string, readonly [number, number]>;
 
-const COLOR = /^#[0-9a-f]{6}$/i;
+/** The overlay's settings: each with its check and its default. */
+export const OVERLAY_SCHEMA = record({
+  /** Shows the title and artist of the track playing (LS-18). */
+  on: flag(false),
+  font: oneOf(OVERLAY_FONTS, 'sans'),
+  /** Size of the letters, relative to the default. */
+  size: clamped(1, ...OVERLAY_RANGES.size),
+  position: oneOf(OVERLAY_POSITIONS, 'bottom-left'),
+  color: color('#ffffff'),
+  /** Seconds the text takes to fade in at the start of a track, and to fade out. */
+  fade: clamped(1.5, ...OVERLAY_RANGES.fade),
+  /** Seconds it stays before it fades out; 0: as long as the track plays. */
+  hold: clamped(0, ...OVERLAY_RANGES.hold),
+  /** A bar of the track's progress under the text (LS-19). */
+  progress: flag(false),
+  /** The time played and the length of the track (LS-19). */
+  time: flag(false),
+});
+
+export type OverlaySettings = Infer<typeof OVERLAY_SCHEMA>;
+
+export const DEFAULT_OVERLAY: OverlaySettings = defaults(OVERLAY_SCHEMA);
 
 /** Stored overlay settings over the defaults: unknown or mistyped values are dropped. */
 export function sanitizeOverlay(value: unknown): OverlaySettings {
-  const input = (typeof value === 'object' && value !== null ? value : {}) as Record<
-    string,
-    unknown
-  >;
-  const result = { ...DEFAULT_OVERLAY };
-  const flag = (key: 'on' | 'progress' | 'time') => {
-    if (typeof input[key] === 'boolean') result[key] = input[key];
-  };
-  flag('on');
-  flag('progress');
-  flag('time');
-  const font = input['font'];
-  if (typeof font === 'string' && (OVERLAY_FONTS as string[]).includes(font)) {
-    result.font = font as OverlayFont;
-  }
-  const position = input['position'];
-  if (typeof position === 'string' && (OVERLAY_POSITIONS as string[]).includes(position)) {
-    result.position = position as OverlayPosition;
-  }
-  const color = input['color'];
-  if (typeof color === 'string' && COLOR.test(color)) result.color = color;
-  for (const key of Object.keys(OVERLAY_RANGES) as (keyof typeof OVERLAY_RANGES)[]) {
-    const number = input[key];
-    if (typeof number !== 'number' || !Number.isFinite(number)) continue;
-    const [min, max] = OVERLAY_RANGES[key];
-    result[key] = Math.min(max, Math.max(min, number));
-  }
-  return result;
+  return sanitize(OVERLAY_SCHEMA, value);
 }
 
 /** A track as the overlay shows it. */

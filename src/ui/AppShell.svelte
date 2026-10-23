@@ -2,7 +2,7 @@
   import { flushSync, getAllContexts, mount, onDestroy, onMount, unmount, untrack } from 'svelte';
   import { isClean } from '../core/audio/dsp/sound-settings';
   import { ControllerService } from '../core/control/controller-service';
-  import { APP_NAME, REPEAT_MODES } from '../core/state/app-state';
+  import { APP_NAME } from '../core/state/app-state';
   import { errorMessage } from '../core/util/format';
   import { isSoundFile } from '../core/export/export-job';
   import { Exporter, type ExportState } from '../core/export/exporter';
@@ -39,7 +39,7 @@
   import ProblemNotice from './ProblemNotice.svelte';
   import QueuePanel from './QueuePanel.svelte';
   import SettingsDialog from './SettingsDialog.svelte';
-  import { nextVisualMode, stepPreset } from './shortcuts';
+  import { releasedShortcut, shortcutFor, type ShortcutActions } from './shortcuts';
   import { provideCapture, StageCapture } from './stage-capture';
   import SoundPanel from './SoundPanel.svelte';
   import TopBar from './TopBar.svelte';
@@ -396,121 +396,33 @@
     control.blur();
   }
 
-  /** The keyboard shortcuts (UI-04), in the tab and in the mini player's or second screen's. */
+  /** What the keyboard shortcuts act on, besides the player. */
+  const shortcutActions: ShortcutActions = {
+    player,
+    toggleFullscreen,
+    toggleMiniPlayer,
+    takePicture,
+    openHelp: (section) => {
+      helpSection = section;
+      helpOpen = true;
+    },
+  };
+
+  /**
+   * The keyboard shortcuts (UI-04, in shortcuts.ts), in the tab and in the mini player's or
+   * second screen's.
+   */
   function onKey(event: KeyboardEvent) {
-    // Ctrl+Z (Cmd+Z) undoes a removal or deletion; text fields keep their own undo.
-    const command = event.metaKey || event.ctrlKey;
-    if (command && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z') {
-      if (ownsKey(event.target, event.key) || document.querySelector('dialog[open]')) return;
-      if (player.state.undo) {
-        player.undo();
-        event.preventDefault();
-      }
-      return;
-    }
-    // Brackets need AltGr or Option on some layouts (German, for one).
-    const bracket = event.key === '[' || event.key === ']';
-    if (event.metaKey || ((event.ctrlKey || event.altKey) && !bracket)) return;
+    const shortcut = shortcutFor(event);
+    if (!shortcut) return;
     if (ownsKey(event.target, event.key)) return;
     // A modal dialog (the export) has the keyboard to itself.
     if (document.querySelector('dialog[open]')) return;
-    // Hot cues (TR-04): 1–8 jump to a cue or set an empty one; with Shift they are deleted.
-    // By key position, so Shift works on every keyboard layout.
-    const digit = /^Digit([1-8])$/.exec(event.code);
-    if (digit) {
-      const index = Number(digit[1]) - 1;
-      if (event.shiftKey) player.setCue(index, null);
-      else void player.cue(index);
-      event.preventDefault();
-      return;
-    }
-    const step = event.shiftKey ? 30 : 5;
-    switch (event.key) {
-      case ' ':
-        void player.toggle();
-        break;
-      case 'ArrowLeft':
-        void player.seek(player.position - step);
-        break;
-      case 'ArrowRight':
-        void player.seek(player.position + step);
-        break;
-      case 'n':
-        void player.next();
-        break;
-      case 'p':
-        void player.previous();
-        break;
-      case 'f':
-        toggleFullscreen(event.view ?? window);
-        break;
-      case 'm':
-        toggleMiniPlayer();
-        break;
-      case 'c':
-        takePicture();
-        break;
-      case 'w':
-        player.updateSettings({ detailWaveform: !player.state.settings.detailWaveform });
-        break;
-      case 's':
-        player.updateSettings({ shuffle: !player.state.settings.shuffle });
-        break;
-      case 'q':
-        player.updateSettings({ quantize: !player.state.settings.quantize });
-        break;
-      case 'r': {
-        const index = REPEAT_MODES.indexOf(player.state.settings.repeat);
-        player.updateSettings({ repeat: REPEAT_MODES[(index + 1) % REPEAT_MODES.length]! });
-        break;
-      }
-      case 'v':
-        nextVisualMode(player);
-        break;
-      case 'b':
-        player.updateSettings({ visualsPaused: !player.state.settings.visualsPaused });
-        break;
-      case '[':
-        stepPreset(player, -1);
-        break;
-      case ']':
-        stepPreset(player, 1);
-        break;
-      case '?':
-        helpSection = 'keyboard-shortcuts';
-        helpOpen = true;
-        break;
-      // In/out markers of the export range (TR-09); with Shift they are cleared.
-      case 'i':
-      case 'I':
-        player.mark('in', event.shiftKey ? null : player.position);
-        break;
-      case 'o':
-      case 'O':
-        player.mark('out', event.shiftKey ? null : player.position);
-        break;
-      // Tempo in fine steps, and nudging while the key is held (TMP-03).
-      case '-':
-        player.stepTempo(-1);
-        break;
-      case '+':
-      case '=':
-        player.stepTempo(1);
-        break;
-      case ',':
-        if (!event.repeat) player.nudge(-1);
-        break;
-      case '.':
-        if (!event.repeat) player.nudge(1);
-        break;
-      default:
-        return;
-    }
-    event.preventDefault();
+    if (shortcut.run?.(shortcutActions, event) !== false) event.preventDefault();
   }
 
   function onKeyUp(event: KeyboardEvent) {
-    if (event.key === ',' || event.key === '.') player.nudge(0);
+    releasedShortcut(event)?.release?.(shortcutActions);
   }
 
   /** A nudge held with a key ends when the window loses the keyboard. */

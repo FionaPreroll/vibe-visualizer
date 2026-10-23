@@ -9,9 +9,9 @@
     <section>
       <h3>{group.title}</h3>
       <dl>
-        {#each group.keys as [keys, action] (action)}
+        {#each group.shortcuts as shortcut (shortcut.label)}
           <dt>
-            {#each keys as combination (combination)}
+            {#each shortcut.keys as combination (combination)}
               <span class="combination">
                 {#each combination.split(' + ') as key, index (index)}
                   {#if index > 0}<span class="joint">+</span>{/if}
@@ -20,7 +20,7 @@
               </span>
             {/each}
           </dt>
-          <dd>{action}</dd>
+          <dd>{shortcut.label}</dd>
         {/each}
       </dl>
     </section>
