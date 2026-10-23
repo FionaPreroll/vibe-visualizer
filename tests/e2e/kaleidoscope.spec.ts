@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './test';
 import { expectMotion, measure } from './pixels';
 import { createPng } from './png';
 import { createTaggedWav, createWav } from './wav';

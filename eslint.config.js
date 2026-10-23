@@ -36,4 +36,22 @@ export default defineConfig(
     files: ['*.config.{js,ts}', 'vite-plugins/**', 'tests/**', 'scripts/**'],
     languageOptions: { globals: globals.node },
   },
+  {
+    // The end-to-end tests take `test` from tests/e2e/test.ts, which also takes their coverage.
+    files: ['tests/e2e/**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@playwright/test',
+              importNames: ['test', 'expect'],
+              message: 'Import them from ./test, which also takes the coverage.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

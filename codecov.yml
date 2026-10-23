@@ -1,5 +1,11 @@
-# Codecov: the unit tests' coverage of the app's code, sent by CI (pnpm test:coverage). It
-# informs: its checks on a pull request never fail, and it comments only when coverage changes.
+# Codecov: the coverage of the app's code by the unit tests (flag `unit`, pnpm test:coverage) and
+# by the end-to-end tests in Chromium (flag `e2e`, tests/e2e/coverage.ts), sent by CI; the badge
+# shows them together. It informs: its checks on a pull request never fail, and it comments only
+# when coverage changes. It waits for all nine uploads, the unit tests' and those of the eight
+# end-to-end jobs (ci.yml), so that it does not compare a part with the whole.
+codecov:
+  notify:
+    after_n_builds: 9
 coverage:
   status:
     project:
@@ -11,3 +17,4 @@ coverage:
 comment:
   layout: 'condensed_header, condensed_files, condensed_footer'
   require_changes: true
+  after_n_builds: 9

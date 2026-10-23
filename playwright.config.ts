@@ -6,6 +6,8 @@ const executablePath = process.env['PW_CHROMIUM_PATH'] || undefined;
 
 export default defineConfig({
   testDir: 'tests/e2e',
+  // With E2E_COVERAGE set, the coverage of the run (tests/e2e/coverage.ts).
+  globalSetup: './tests/e2e/coverage-global.ts',
   timeout: 120_000,
   fullyParallel: false,
   // On CI (few cores, no GPU) one test at a time: the software-rendered exports would otherwise
