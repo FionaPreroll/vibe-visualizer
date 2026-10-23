@@ -39,11 +39,12 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm test:coverage
-      # The unit tests' coverage, for the badge in the README. An upload that fails does not
-      # fail the checks.
+      # The unit tests' coverage, for the badge in the README, with that of the end-to-end tests
+      # (codecov.yml). An upload that fails does not fail the checks.
       - uses: codecov/codecov-action@v7
         with:
-          files: coverage/lcov.info
+          files: coverage/unit/lcov.info
+          flags: unit
           use_oidc: true
 
   # The end-to-end tests in Chromium, in eight jobs at once. Each runner draws in software and
@@ -52,11 +53,15 @@ jobs:
   # export.spec.ts, and in the fourth job the export tests without one. The slowest of all,
   # the export resumed after a reload, has a job of its own. The other files run in four
   # parts (in three, one part got most of their slow tests). So every test runs once, also one
-  # added or renamed.
+  # added or renamed. Each job sends the coverage of its tests to Codecov, which waits for all
+  # eight and the unit tests' (codecov.yml).
   e2e:
     name: e2e (${{ matrix.part }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -87,9 +92,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e ${{ matrix.args }}
+        env:
+          # Their coverage (tests/e2e/coverage.ts); the build has source maps for it.
+          E2E_COVERAGE: '1'
       # When a test fails, the log shows what its page showed.
       - if: failure()
         run: find test-results -name error-context.md -print -exec cat {} \;
+      - uses: codecov/codecov-action@v7
+        with:
+          files: coverage/e2e/lcov.info
+          flags: e2e
+          use_oidc: true
 
   # The check main requires (with firefox): the types, the unit and the end-to-end tests.
   check:

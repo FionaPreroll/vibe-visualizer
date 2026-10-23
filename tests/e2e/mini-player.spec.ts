@@ -1,4 +1,5 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
+import { expect, test } from './test';
 import { expectMotion } from './pixels';
 import { moreAction, openMore } from './topbar';
 import { createWav } from './wav';

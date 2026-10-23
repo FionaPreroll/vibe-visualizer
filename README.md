@@ -67,8 +67,8 @@ Then open http://localhost:5173 in Chrome or Firefox. The dev server sends the c
 | `pnpm check` | Type check (Svelte and TypeScript) |
 | `pnpm lint`, `pnpm format` | ESLint, Prettier |
 | `pnpm test` | Unit tests (Vitest) |
-| `pnpm test:coverage` | Unit tests with their coverage (`coverage/lcov.info`; CI sends it to Codecov for the badge) |
-| `pnpm test:e2e` | End-to-end tests in Chromium (Playwright) |
+| `pnpm test:coverage` | Unit tests with their coverage (`coverage/unit/lcov.info`; CI sends it to Codecov for the badge, with that of the end-to-end tests) |
+| `pnpm test:e2e` | End-to-end tests in Chromium (Playwright); with `E2E_COVERAGE=1`, also their coverage of the page and its workers (`coverage/e2e/lcov.info`) |
 | `pnpm test:e2e:firefox` | The main paths in Firefox, the end-to-end tests tagged `@firefox` |
 | `pnpm test:soak` | The soak test: plays for 30 minutes (`SOAK_MINUTES`), and the memory must stay flat |
 | `pnpm test:perf`, `pnpm perf:report` | Performance measurements while the app plays and exports (frame times, the time of each live part per frame, how evenly the playhead moves, long frames, memory, the export's speed), with a Chromium trace of each scenario in `perf-results`; then their report. The Perf workflow compares a pull request with its base (run it by hand, or give the pull request the label `perf`). Open the app with `?perf` to measure it yourself |
