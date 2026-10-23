@@ -310,7 +310,7 @@
     border-bottom: 1px solid var(--border);
   }
   label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .row {
@@ -342,7 +342,7 @@
   }
   .message {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
 </style>

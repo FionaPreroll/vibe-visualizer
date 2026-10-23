@@ -35,7 +35,7 @@
   }
   h3 {
     margin: 12px 0 6px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -59,7 +59,7 @@
   }
   dd {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   kbd {
     min-width: 22px;
@@ -68,11 +68,11 @@
     border-bottom-width: 2px;
     border-radius: 5px;
     background: var(--surface-2);
-    font: 12px var(--mono);
+    font: var(--text-xs) var(--mono);
     text-align: center;
   }
   .joint {
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
 </style>

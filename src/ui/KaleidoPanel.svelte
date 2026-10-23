@@ -181,7 +181,7 @@
   }
   .scenes button {
     padding: 6px 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     line-height: 1.25;
     text-wrap: balance;
     background: transparent;
@@ -214,7 +214,7 @@
     border-radius: 4px;
   }
   .palettes .label {
-    font-size: 12px;
+    font-size: var(--text-xs);
     text-transform: capitalize;
   }
   .footer {
@@ -225,7 +225,7 @@
     padding: 14px 16px 20px;
   }
   .hint {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
 </style>

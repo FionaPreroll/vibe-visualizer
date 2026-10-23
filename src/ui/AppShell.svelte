@@ -833,7 +833,7 @@
     color: var(--text);
   }
   .mini-note p.sub {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .panel {
@@ -887,7 +887,7 @@
     align-items: center;
     gap: 5px;
     padding: 6px 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     border: 1px solid transparent;
     border-bottom: none;
     border-radius: 8px 8px 0 0;
@@ -936,7 +936,7 @@
   }
   .welcome h1 {
     margin: 0 0 6px;
-    font-size: 26px;
+    font-size: var(--text-2xl);
   }
   .welcome p {
     margin: 0;
@@ -944,7 +944,7 @@
   }
   .welcome p + p {
     margin-top: 4px;
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   /* In a low window, with the detail waveform below the stage too, a smaller card stays below
      the logo; the notes still fit under it. */
@@ -957,14 +957,14 @@
     }
     .welcome h1 {
       margin-bottom: 2px;
-      font-size: 20px;
+      font-size: var(--text-xl);
     }
     .welcome p {
-      font-size: 14px;
+      font-size: var(--text-md);
     }
     .welcome p + p {
       margin-top: 2px;
-      font-size: 13px;
+      font-size: var(--text-sm);
     }
   }
   .notes {
@@ -985,7 +985,7 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     background: var(--surface);
-    font-size: 14px;
+    font-size: var(--text-md);
     white-space: nowrap;
   }
   .undo button {

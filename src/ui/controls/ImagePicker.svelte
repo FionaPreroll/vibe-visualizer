@@ -81,7 +81,7 @@
     border-radius: 8px;
     border: 1px solid var(--border);
     background: var(--surface-2);
-    font-size: 11px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .preview.round {
@@ -101,14 +101,14 @@
     gap: 2px;
   }
   .label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .name {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .buttons {
     display: flex;
@@ -120,7 +120,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .ghost {
     background: transparent;

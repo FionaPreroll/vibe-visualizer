@@ -32,11 +32,11 @@
     align-items: center;
     gap: 8px;
     min-height: 32px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .hint {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
 </style>

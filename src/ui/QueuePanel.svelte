@@ -358,11 +358,11 @@
   }
   h2 {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--text-md);
   }
   .summary {
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .actions {
     display: flex;
@@ -386,7 +386,7 @@
   .empty {
     margin: 24px 16px;
     color: var(--muted);
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   ol {
     list-style: none;
@@ -429,7 +429,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     background: var(--surface-2);
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .notice span,
@@ -481,13 +481,13 @@
     text-overflow: ellipsis;
   }
   .title {
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .artist {
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .end,
@@ -503,7 +503,7 @@
   /* Never in the way of the buttons over it: hidden, it would still take their clicks. */
   .duration {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
     pointer-events: none;
   }

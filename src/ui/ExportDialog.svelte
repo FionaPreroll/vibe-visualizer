@@ -1058,7 +1058,7 @@
   }
   h2 {
     margin: 0;
-    font-size: 20px;
+    font-size: var(--text-xl);
   }
   .close {
     padding: 4px;
@@ -1072,7 +1072,7 @@
   }
   legend {
     margin-bottom: 6px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .choices {
@@ -1108,7 +1108,7 @@
     font-weight: 600;
   }
   .detail {
-    font-size: 12px;
+    font-size: var(--text-xs);
     color: var(--muted);
   }
   .custom {
@@ -1124,14 +1124,14 @@
   }
   .aspects button {
     padding: 4px 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .aspects button.on {
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 20%, var(--surface-2));
   }
   label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   label select {
@@ -1150,7 +1150,7 @@
     align-items: center;
     gap: 6px;
     margin: 10px 0 6px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .tracks-head span {
@@ -1158,7 +1158,7 @@
   }
   .tracks-head button {
     padding: 2px 10px;
-    font-size: 12px;
+    font-size: var(--text-xs);
   }
   .tracks {
     max-height: 180px;
@@ -1193,7 +1193,7 @@
     overflow: auto;
     border-radius: 8px;
     background: var(--surface-2);
-    font-size: 13px;
+    font-size: var(--text-sm);
     white-space: pre-wrap;
     user-select: text;
   }
@@ -1237,14 +1237,14 @@
   .button.small {
     flex: none;
     padding: 3px 10px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .summary {
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 4px 14px;
     margin: 0 0 12px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .summary dt {
     color: var(--muted);
@@ -1278,7 +1278,7 @@
     display: flex;
     gap: 16px;
     margin-bottom: 12px;
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .content label {
     display: flex;
@@ -1293,11 +1293,11 @@
     align-items: center;
     gap: 8px;
     margin-top: 12px;
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .hint {
     margin: 8px 0 0;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .problem {
@@ -1306,7 +1306,7 @@
     border-radius: 8px;
     border: 1px solid var(--fail);
     background: color-mix(in srgb, var(--fail) 15%, var(--surface));
-    font-size: 14px;
+    font-size: var(--text-md);
   }
   .preview {
     display: block;
@@ -1318,7 +1318,7 @@
   }
   .file {
     margin: 10px 0 8px;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
     word-break: break-word;
   }
@@ -1338,11 +1338,11 @@
     justify-content: space-between;
     gap: 12px;
     margin: 8px 0 0;
-    font-size: 13px;
+    font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
   .big {
     margin: 0;
-    font-size: 17px;
+    font-size: var(--text-lg);
   }
 </style>

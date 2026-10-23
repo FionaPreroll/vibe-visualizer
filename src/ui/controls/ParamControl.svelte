@@ -93,11 +93,11 @@
     align-items: center;
     gap: 8px;
     min-height: 32px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .row label,
   .label {
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: var(--muted);
   }
   .check {

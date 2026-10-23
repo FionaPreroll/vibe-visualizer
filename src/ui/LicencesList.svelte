@@ -115,27 +115,27 @@
   .version,
   .license {
     color: var(--muted);
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   .license {
     font-family: var(--mono);
   }
   .head a {
     margin-left: auto;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   a {
     color: var(--accent-2);
   }
   .note {
     margin: 8px 0 0;
-    font-size: 13px;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--text) 85%, var(--muted));
     overflow-wrap: anywhere;
   }
   details {
     margin-top: 6px;
-    font-size: 13px;
+    font-size: var(--text-sm);
   }
   summary {
     cursor: pointer;
@@ -148,7 +148,7 @@
     overflow: auto;
     border-radius: 8px;
     background: var(--surface);
-    font: 12px/1.45 var(--mono);
+    font: var(--text-xs)/1.45 var(--mono);
     white-space: pre-wrap;
   }
 </style>
