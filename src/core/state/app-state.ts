@@ -212,6 +212,9 @@ export const LOGO_TEXT_LENGTH = 40;
 export type RepeatMode = 'off' | 'all' | 'one';
 export const REPEAT_MODES: readonly RepeatMode[] = ['off', 'all', 'one'];
 
+/** How narrow and how wide the side panel can be made, in pixels. */
+export const PANEL_WIDTH_RANGE = { min: 300, max: 560 } as const;
+
 /** Favourite presets by name, per visual mode (PR-03). */
 const FAVOURITES_SCHEMA = record({ logoSpectrum: uniqueTexts(), kaleidoscope: uniqueTexts() });
 
@@ -223,6 +226,8 @@ export const SETTINGS_SCHEMA = record({
   visualMode: oneOf(VISUAL_MODES, 'logoSpectrum'),
   panel: oneOf(PANEL_TABS, 'queue'),
   panelOpen: flag(true),
+  /** Width of the side panel in pixels: its left edge drags it. */
+  panelWidth: clamped(360, PANEL_WIDTH_RANGE.min, PANEL_WIDTH_RANGE.max, true),
   /** Frame of the visuals (VE-09): the stage is letterboxed to it, and the export uses it. */
   aspect: oneOf(
     ASPECT_RATIOS.map((entry) => entry.id),

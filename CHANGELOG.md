@@ -4,6 +4,7 @@ What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with th
 
 ## 23 October 2026
 
+- **A side panel as wide as you like:** drag its left edge (300 to 560 pixels; a double-click gives it its usual width), and it keeps that width. In a narrow window, below about 1100 pixels, it lies over the stage, which keeps its full width, and **Escape** or a click on the stage closes it.
 - **The Visuals tab starts with the settings:** the Kaleidoscope's scenes are buttons in one row (what each shows is its tooltip), and saving, exporting and importing presets moved into the **⋯** next to the presets (**Save as…** asks for the name). On a laptop screen the first slider shows without scrolling.
 
 ## 22 October 2026
