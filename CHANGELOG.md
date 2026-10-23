@@ -2,6 +2,10 @@
 
 What changed in FibeStation, newest first. Until 1.0, the version is 0.9 with the day and the time of the build, such as 0.9.20261003.1432 (**About** shows yours), so the changes are listed by the day they came out.
 
+## 23 October 2026
+
+- **The Visuals tab starts with the settings:** the Kaleidoscope's scenes are buttons in one row (what each shows is its tooltip), and saving, exporting and importing presets moved into the **⋯** next to the presets (**Save as…** asks for the name). On a laptop screen the first slider shows without scrolling.
+
 ## 22 October 2026
 
 - **The bar at the bottom:** where the window is wide enough (1280 pixels or more), the buttons for the markers and the detail waveform say what they are: *In*, *Out*, *Snap*, *Wave*. A switch that is on (shuffle, repeat, snap, the detail waveform) shows it with a filled background as well as its colour. The time played is larger and brighter; the time left stays quieter.
