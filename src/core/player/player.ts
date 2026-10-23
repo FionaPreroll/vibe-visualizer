@@ -5,14 +5,6 @@ import {
   TEMPO_RANGES,
   type BeatGrid,
 } from '../analysis/beat-grid';
-import {
-  clampShift,
-  downbeatAt,
-  NO_GRID_EDIT,
-  sameGridEdit,
-  shiftBars,
-  type GridEdit,
-} from '../analysis/grid-edit';
 import type { TrackLoudness } from '../analysis/track-loudness';
 import { rateLimits, TEMPO_STEP, type SoundSettings } from '../audio/dsp/sound-settings';
 import { AudioEngine, type NextFile } from '../audio/engine/audio-engine';
@@ -39,6 +31,7 @@ import {
 import { TrackAnalyzer, type TrackAnalysisState } from '../library/track-analyzer';
 import { readCover, writeCover } from '../library/track-covers';
 import { sameTrackColors, sanitizeTrackColors, type TrackColors } from '../render/cover-palette';
+import { GridEditor } from './grid-editor';
 import { nextTrack, previousTrack, type PlayOrder } from './play-order';
 import { StateSync } from './state-sync';
 import {
@@ -131,6 +124,8 @@ export class Player {
   private readonly restored: Promise<void>;
   /** Stores the state as it changes. */
   private readonly sync: StateSync;
+  /** The beat grids as the user wants them: tempo, one tempo throughout, corrections. */
+  private readonly grids: GridEditor;
   private unlocking: Promise<void> | null = null;
   private loadedId: string | null = null;
   /** The engine knows files by tokens: the heard one, and which track each token stands for. */
@@ -202,6 +197,12 @@ export class Player {
       reducer,
     );
     this.parts = appParts(this.store);
+    this.grids = new GridEditor(
+      this.store,
+      this.analysis,
+      (id) => this.files.get(id),
+      () => this.position,
+    );
     this.engine.volume = this.state.settings.volume;
     this.engine.inputGainDecibels = this.state.settings.inputGain;
     this.engine.syncOffset = this.state.settings.syncOffset / 1000;
@@ -410,7 +411,7 @@ export class Player {
     this.notePlayed(id);
     const fingerprint = this.currentTrack?.fingerprint;
     const file = this.files.get(id);
-    if (fingerprint && file) this.requestAnalysis(fingerprint, file, true);
+    if (fingerprint && file) this.grids.analyse(fingerprint, file, true);
     // What follows this file: the stream waits for the answer at its end.
     this.planNext();
   }
@@ -602,7 +603,7 @@ export class Player {
     });
     this.loadOwnCover(result.fingerprint);
     // Waveform and beat grid in the background; the track that plays first.
-    this.requestAnalysis(result.fingerprint, file, id === this.state.currentId);
+    this.grids.analyse(result.fingerprint, file, id === this.state.currentId);
     return result;
   }
 
@@ -708,62 +709,16 @@ export class Player {
     };
   }
 
-  /**
-   * Sets the tempo (BPM) of the beat grid of track `id` and of every other entry of its file
-   * (TMP-06), e.g. double the tempo found; null lets the grid find the tempo again. The grid is
-   * computed anew in the background; tempos outside {@link TEMPO_HINT_RANGE} are ignored.
-   */
+  /** The tempo of the beat grid of a file (TMP-06); null: found again (see {@link GridEditor}). */
   setTempo(id: string, bpm: number | null): void {
-    const track = this.state.tracks.find((entry) => entry.id === id);
-    const fingerprint = track?.fingerprint;
-    if (!fingerprint) return;
-    if (bpm !== null && !(bpm >= TEMPO_HINT_RANGE.min && bpm <= TEMPO_HINT_RANGE.max)) return;
-    const tempo = bpm === null ? null : Math.round(bpm * 100) / 100;
-    if (tempo === track.tempo) return;
-    this.dispatch({ type: 'tracks/tempo', fingerprint, tempo });
-    const entry = this.state.tracks.find(
-      (other) => other.fingerprint === fingerprint && this.files.has(other.id),
-    );
-    const file = entry ? this.files.get(entry.id) : undefined;
-    if (file) this.requestAnalysis(fingerprint, file, id === this.state.currentId);
+    this.grids.setTempo(id, bpm);
   }
 
-  /**
-   * The waveform and beat grid of a file: analysed in the background (the one that plays
-   * first), with the tempo given for it (TMP-06) or in the tempo range (AN-12), and its grid
-   * corrected as the user did (TR-11).
-   */
-  private requestAnalysis(fingerprint: string, file: File, first: boolean): void {
-    const track = this.state.tracks.find((entry) => entry.fingerprint === fingerprint);
-    this.analysis.setEdit(fingerprint, track?.gridEdit ?? NO_GRID_EDIT);
-    this.analysis.request(fingerprint, file, first, {
-      tempo: track?.tempo ?? null,
-      range: this.state.settings.bpmRange,
-      fixed: track?.fixedTempo ?? false,
-    });
-  }
-
-  /**
-   * One tempo throughout for track `id` and every other entry of its file (TR-12), or not: its
-   * beat grid is computed anew, straight from the start to the end, with bars that keep their
-   * place.
-   */
+  /** One tempo throughout for a file (TR-12), or not. */
   setFixedTempo(id: string, fixed: boolean): void {
-    const track = this.state.tracks.find((entry) => entry.id === id);
-    const fingerprint = track?.fingerprint;
-    if (!fingerprint || track.fixedTempo === fixed) return;
-    this.dispatch({ type: 'tracks/fixed', fingerprint, fixed });
-    const entry = this.state.tracks.find(
-      (other) => other.fingerprint === fingerprint && this.files.has(other.id),
-    );
-    const file = entry ? this.files.get(entry.id) : undefined;
-    if (file) this.requestAnalysis(fingerprint, file, id === this.state.currentId);
+    this.grids.setFixedTempo(id, fixed);
   }
 
-  /**
-   * Gives the file of track `id` colours for the visuals (VE-12), for every entry of that file:
-   * its cover's, colours of the user's own, or the look's; null: its cover's, as found.
-   */
   /** The look the visuals take when the track starts (PR-06); null: none. */
   setTrackLook(id: string, look: TrackLook | null): void {
     const track = this.state.tracks.find((entry) => entry.id === id);
@@ -774,6 +729,10 @@ export class Player {
     this.dispatch({ type: 'tracks/look', fingerprint, look: next });
   }
 
+  /**
+   * Gives the file of track `id` colours for the visuals (VE-12), for every entry of that file:
+   * its cover's, colours of the user's own, or the look's; null: its cover's, as found.
+   */
   setTrackColors(id: string, colors: TrackColors | null): void {
     const track = this.state.tracks.find((entry) => entry.id === id);
     const fingerprint = track?.fingerprint;
@@ -781,63 +740,29 @@ export class Player {
     this.dispatch({ type: 'tracks/colors', fingerprint, colors: sanitizeTrackColors(colors) });
   }
 
-  /** New grids in the new tempo range (AN-12) for the files without a tempo given. */
-  private regridAll(): void {
-    const done = new Set<string>();
-    const current = this.currentTrack;
-    const tracks = current ? [current, ...this.state.tracks] : this.state.tracks;
-    for (const track of tracks) {
-      const file = this.files.get(track.id);
-      if (!track.fingerprint || !file || done.has(track.fingerprint)) continue;
-      done.add(track.fingerprint);
-      if (track.tempo === null) this.requestAnalysis(track.fingerprint, file, track === current);
-    }
-  }
-
-  /**
-   * Corrects the beat grid of the current track (TR-11), for every entry of its file: `change`
-   * gives the new correction from the corrected grid and the correction so far. With `commit`
-   * false only the grid follows (while the grid is dragged); the correction is kept once it is
-   * committed.
-   */
-  private editGrid(change: (grid: BeatGrid, edit: GridEdit) => GridEdit, commit = true): void {
-    const track = this.currentTrack;
-    const fingerprint = track?.fingerprint;
-    const grid = this.analysisOf(track)?.grid;
-    if (!track || !fingerprint || !grid) return;
-    const edit = change(grid, track.gridEdit);
-    this.analysis.setEdit(fingerprint, edit);
-    if (commit && !sameGridEdit(edit, track.gridEdit)) {
-      this.dispatch({ type: 'tracks/grid', fingerprint, edit });
-    }
-  }
-
   /** The beat nearest to the playhead becomes the first of its bar (TR-11). */
   setDownbeat(): void {
-    this.editGrid((grid, edit) => downbeatAt(grid, edit, this.position));
+    this.grids.setDownbeat();
   }
 
   /** The bars start one beat later (1) or earlier (-1) (TR-11). */
   moveBars(direction: -1 | 1): void {
-    this.editGrid((grid, edit) => shiftBars(grid, edit, this.position, direction));
+    this.grids.moveBars(direction);
   }
 
   /** Moves the beat grid by `seconds` (TR-11): later for a positive value. */
   nudgeGrid(seconds: number): void {
-    this.editGrid((_, edit) => ({ ...edit, shift: clampShift(edit.shift + seconds) }));
+    this.grids.nudge(seconds);
   }
 
-  /**
-   * Moves the beat grid to `shift` seconds from where the analysis put it (TR-11), as it is
-   * dragged; `commit` once the drag ends.
-   */
+  /** Moves the beat grid to `shift` seconds from where the analysis put it (TR-11). */
   shiftGrid(shift: number, commit: boolean): void {
-    this.editGrid((_, edit) => ({ ...edit, shift: clampShift(shift) }), commit);
+    this.grids.shift(shift, commit);
   }
 
   /** The beat grid of the current track as the analysis found it (TR-11). */
   resetGrid(): void {
-    this.editGrid(() => NO_GRID_EDIT);
+    this.grids.reset();
   }
 
   /**
@@ -991,7 +916,7 @@ export class Player {
       this.loadedToken = token;
       this.dispatch({ type: 'player/current', id });
       const fingerprint = this.currentTrack?.fingerprint;
-      if (fingerprint) this.requestAnalysis(fingerprint, file, true);
+      if (fingerprint) this.grids.analyse(fingerprint, file, true);
       this.sendBeatGrids();
       this.engine.paused = false;
       this.dispatch({ type: 'player/playing', playing: true });
@@ -1427,7 +1352,7 @@ export class Player {
   updateSettings(changes: Partial<Settings>): void {
     const range = this.state.settings.bpmRange;
     this.dispatch({ type: 'settings/changed', changes });
-    if (this.state.settings.bpmRange !== range) this.regridAll();
+    if (this.state.settings.bpmRange !== range) this.grids.regridAll();
   }
 
   dismissError(): void {
