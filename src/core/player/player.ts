@@ -12,29 +12,21 @@ import {
 import { entriesFromFiles, type QueueEntry } from '../library/folder-reader';
 import type { ProbeResult } from '../library/probe.worker';
 import ProbeWorker from '../library/probe.worker.ts?worker';
-import {
-  accessOf,
-  loadQueue,
-  requestAccess,
-  saveQueue,
-  storedInfo,
-  type Access,
-  type StoredQueue,
-} from '../library/queue-store';
+import { accessOf, loadQueue, requestAccess, saveQueue } from '../library/queue-store';
 import { TrackAnalyzer, type TrackAnalysisState } from '../library/track-analyzer';
 import { readCover, writeCover } from '../library/track-covers';
 import { sameTrackColors, sanitizeTrackColors, type TrackColors } from '../render/cover-palette';
 import { GridEditor } from './grid-editor';
+import { Library } from './library';
 import { LiveSource } from './live-source';
 import { nextTrack, previousTrack, type PlayOrder } from './play-order';
 import { StateSync } from './state-sync';
+import { UndoOffer } from './undo-offer';
 import {
   CUE_COUNT,
   initialState,
   isPlayable,
-  newTrack,
   reducer,
-  restoredTrack,
   sanitizeTrackLook,
   shownTitle,
   trackEdit,
@@ -69,8 +61,6 @@ import { WorkerClient } from '../util/worker-rpc';
 
 /** Speed change while nudging (TMP-03). */
 export const NUDGE = 0.04;
-/** How long a removal or deletion can be undone (seconds). */
-const UNDO_SECONDS = 8;
 /** How often scrubbing (the jog wheel) seeks, at most, in ms; the moves in between add up. */
 const SCRUB_SEEK_MS = 60;
 
@@ -107,22 +97,17 @@ export class Player {
   readonly engine = new AudioEngine();
   /** Waveforms and beat grids of the queue's tracks (a Svelte store). */
   readonly analysis = new TrackAnalyzer();
-  private readonly files = new Map<string, File>();
-  /** Handles to the files, where the browser gives them: the queue keeps them (SRC-05). */
-  private readonly handles = new Map<string, FileSystemFileHandle>();
   private readonly probeClient = new WorkerClient(new ProbeWorker());
-  private probing: Promise<void> = Promise.resolve();
-  /** The covers the user gave files (LS-21), by fingerprint: object URLs, null for none. */
-  private readonly ownCovers = new Map<string, Promise<string | null>>();
-  /** Resolves once the queue of the last visit is back (it is saved only after that). */
-  private readonly restored: Promise<void>;
+  /** The files behind the queue's entries. */
+  private readonly library: Library;
+  /** The last removal or deletion, while it can be undone. */
+  private readonly undoOffer: UndoOffer;
   /** Stores the state as it changes. */
   private readonly sync: StateSync;
   /** The beat grids as the user wants them: tempo, one tempo throughout, corrections. */
   private readonly grids: GridEditor;
   /** Live input as the source, instead of the queue. */
   private readonly liveSource: LiveSource;
-  private unlocking: Promise<void> | null = null;
   private loadedId: string | null = null;
   /** The engine knows files by tokens: the heard one, and which track each token stands for. */
   private loadedToken = 0;
@@ -150,12 +135,6 @@ export class Player {
   private scrubMoved = false;
   /** The newest seek of the scrubbing: once it is done, the engine is where the playhead is. */
   private scrubSeek: Promise<void> = Promise.resolve();
-  /** The last removal or deletion, while it can be undone; `release` lets it go for good. */
-  private undoEntry: {
-    restore: () => void;
-    release: () => void;
-    timer: ReturnType<typeof setTimeout>;
-  } | null = null;
   /** The beat grids and loudness the engine has, by token. */
   private readonly sentGrids = new Map<
     number,
@@ -192,9 +171,10 @@ export class Player {
     this.grids = new GridEditor(
       this.store,
       this.analysis,
-      (id) => this.files.get(id),
+      (id) => this.library.file(id),
       () => this.position,
     );
+    this.undoOffer = new UndoOffer(this.store);
     this.engine.volume = this.state.settings.volume;
     this.engine.inputGainDecibels = this.state.settings.inputGain;
     this.engine.syncOffset = this.state.settings.syncOffset / 1000;
@@ -243,14 +223,26 @@ export class Player {
     }, 50);
     // Beat grids go to the engine once they are known.
     this.analysis.subscribe(() => this.sendBeatGrids());
-    this.restored = this.restore().catch((error: unknown) => {
-      console.error('The queue of the last visit could not be restored', error);
-    });
+    this.library = new Library(
+      this.store,
+      {
+        probe: (file) => this.probeClient.call<ProbeResult>('probe', { file }),
+        loadQueue,
+        accessOf,
+        requestAccess,
+        loadTrackData,
+        readCover,
+        writeCover,
+        keepStorage,
+      },
+      (fingerprint, file, first) => this.grids.analyse(fingerprint, file, first),
+      (fingerprint) => this.analysis.forget(fingerprint),
+    );
     this.sync = new StateSync(
       this.parts,
       { saveSettings, saveSound, saveVisuals, saveKaleido, saveTrackData, saveQueue, flushWrites },
-      () => this.storedQueue(),
-      this.restored,
+      () => this.library.storedQueue(),
+      this.library.restored,
     );
     window.addEventListener('pagehide', this.flushSave);
     // A tab in the background can be discarded without a pagehide (on phones above all).
@@ -330,7 +322,7 @@ export class Player {
       kept.id !== currentId &&
       this.state.tracks.some((track) => track.id === kept.id && isPlayable(track));
     const id = keep ? kept.id : nextTrack(this.state.tracks, currentId, this.played, order, true);
-    const nextId = id !== null && this.files.has(id) ? id : null;
+    const nextId = id !== null && this.library.file(id) ? id : null;
     const track = this.state.tracks.find((entry) => entry.id === nextId);
     const start = startOf(track);
     const end = track?.marks.out ?? null;
@@ -352,7 +344,7 @@ export class Player {
   /** The planned next file, as the engine takes it. */
   private nextFile(): NextFile | null {
     const next = this.plan?.next;
-    const file = next ? this.files.get(next.id) : undefined;
+    const file = next ? this.library.file(next.id) : undefined;
     return next && file ? { file, token: next.token, start: next.start, end: next.end } : null;
   }
 
@@ -398,14 +390,14 @@ export class Player {
     const token = this.engine.heardToken;
     if (token === this.loadedToken) return;
     const id = this.tokenTracks.get(token);
-    if (!id || !this.files.has(id)) return;
+    if (!id || !this.library.file(id)) return;
     this.endScrub();
     this.loadedId = id;
     this.loadedToken = token;
     this.dispatch({ type: 'player/current', id });
     this.notePlayed(id);
     const fingerprint = this.currentTrack?.fingerprint;
-    const file = this.files.get(id);
+    const file = this.library.file(id);
     if (fingerprint && file) this.grids.analyse(fingerprint, file, true);
     // What follows this file: the stream waits for the answer at its end.
     this.planNext();
@@ -462,41 +454,15 @@ export class Player {
   }
 
   addFiles(files: Iterable<File>): void {
-    this.addEntries(entriesFromFiles(files));
+    this.library.add(entriesFromFiles(files));
   }
 
   /**
-   * Appends files to the queue (SRC-01, SRC-03). A file that an entry of the last visit misses
-   * brings that entry back instead (SRC-05). The files of a folder are sorted by track number
-   * once probed, where their tags have one.
+   * Appends files to the queue (SRC-01, SRC-03); a file that an entry of the last visit misses
+   * brings that entry back instead (SRC-05).
    */
   addEntries(entries: readonly QueueEntry[]): void {
-    const tracks: Track[] = [];
-    const ids: string[] = [];
-    const folders = new Map<string, string[]>();
-    for (const entry of entries) {
-      const { file, handle } = entry;
-      const waiting = this.state.tracks.find(
-        (track) =>
-          (track.status === 'missing' || track.status === 'locked') &&
-          track.fileName === file.name &&
-          track.size === file.size &&
-          !this.files.has(track.id),
-      );
-      const id = waiting?.id ?? crypto.randomUUID();
-      this.files.set(id, file);
-      if (handle) this.handles.set(id, handle);
-      if (waiting) this.dispatch({ type: 'tracks/access', id, status: 'probing' });
-      else tracks.push(newTrack(id, file));
-      ids.push(id);
-      if (entry.folder === null) continue;
-      const group = folders.get(entry.folder);
-      if (group) group.push(id);
-      else folders.set(entry.folder, [id]);
-    }
-    if (tracks.length > 0) this.dispatch({ type: 'tracks/added', tracks });
-    const probes = new Map(ids.map((id) => [id, this.queueProbe(id)]));
-    if (folders.size > 0) void this.arrange([...folders.values()], probes);
+    this.library.add(entries);
   }
 
   /** Shows an error (from reading dropped files, for example). */
@@ -504,162 +470,12 @@ export class Player {
     this.dispatch({ type: 'player/error', message });
   }
 
-  /** Probes the entry after the ones before it; null when it was removed meanwhile. */
-  private queueProbe(id: string): Promise<ProbeResult | null> {
-    const result = this.probing.then(() => this.probe(id));
-    this.probing = result.then(() => undefined);
-    return result;
-  }
-
   /**
-   * Sorts the files of each folder by disc and track number, once they are probed, unless the
-   * user has moved them meanwhile (SRC-03). A folder in which a file has no number stays sorted
-   * by name.
+   * Gives the file of track `id` a cover of the user's (LS-21), for every entry of that file;
+   * null takes it away.
    */
-  private async arrange(
-    folders: string[][],
-    probes: Map<string, Promise<ProbeResult | null>>,
-  ): Promise<void> {
-    for (const ids of folders) {
-      const results = await Promise.all(ids.map((id) => probes.get(id)));
-      const found = ids.flatMap((id, index) => {
-        const result = results[index];
-        return result?.status === 'ready' ? [{ id, index, result }] : [];
-      });
-      if (found.length < 2 || found.some(({ result }) => result.trackNumber === null)) continue;
-      const number = (result: ProbeResult & { status: 'ready' }) =>
-        (result.discNumber ?? 1) * 10000 + result.trackNumber!;
-      const sorted = [...found]
-        .sort((a, b) => number(a.result) - number(b.result) || a.index - b.index)
-        .map(({ id }) => id);
-      const listed = new Set(sorted);
-      const now = this.state.tracks
-        .filter((track) => listed.has(track.id))
-        .map((track) => track.id);
-      const before = found.map(({ id }) => id).filter((id) => now.includes(id));
-      const moved = now.join('\n') !== before.join('\n');
-      if (!moved && sorted.some((id, index) => id !== before[index])) {
-        this.dispatch({ type: 'tracks/arranged', ids: sorted });
-      }
-    }
-  }
-
-  private async probe(id: string): Promise<ProbeResult | null> {
-    const file = this.files.get(id);
-    if (!file) return null;
-    const result = await this.probeClient
-      .call<ProbeResult>('probe', { file })
-      .catch((error: unknown): ProbeResult => ({
-        status: 'unsupported',
-        reason: errorMessage(error),
-      }));
-    if (this.files.get(id) !== file) return null; // removed (or replaced) meanwhile
-    if (result.status === 'unsupported') {
-      this.dispatch({
-        type: 'tracks/probed',
-        id,
-        info: {
-          status: 'unsupported',
-          reason: result.reason,
-          title: null,
-          artist: null,
-          album: null,
-          duration: null,
-          sampleRate: null,
-          codec: null,
-          format: null,
-          coverUrl: null,
-          fingerprint: null,
-        },
-      });
-      return result;
-    }
-    const coverUrl = result.cover
-      ? URL.createObjectURL(new Blob([result.cover.data], { type: result.cover.mimeType }))
-      : null;
-    const stored = loadTrackData(result.fingerprint, result.duration);
-    this.dispatch({
-      type: 'tracks/probed',
-      id,
-      info: {
-        status: 'ready',
-        reason: null,
-        title: result.title,
-        artist: result.artist,
-        album: result.album,
-        duration: result.duration,
-        sampleRate: result.sampleRate,
-        codec: result.codec,
-        format: result.format,
-        coverUrl,
-        fingerprint: result.fingerprint,
-        ...(stored ? { stored } : {}),
-      },
-    });
-    this.loadOwnCover(result.fingerprint);
-    // Waveform and beat grid in the background; the track that plays first.
-    this.grids.analyse(result.fingerprint, file, id === this.state.currentId);
-    return result;
-  }
-
-  /**
-   * Shows the cover the user gave the file of `fingerprint` (LS-21), if there is one: read once,
-   * one object URL for every entry of the file.
-   */
-  private loadOwnCover(fingerprint: string): void {
-    let cover = this.ownCovers.get(fingerprint);
-    if (!cover) {
-      cover = readCover(fingerprint).then(
-        (blob) => (blob ? URL.createObjectURL(blob) : null),
-        () => null,
-      );
-      this.ownCovers.set(fingerprint, cover);
-    }
-    void cover.then((url) => {
-      if (url && this.ownCovers.get(fingerprint) === cover) {
-        this.dispatch({ type: 'tracks/cover', fingerprint, url });
-      }
-    });
-  }
-
-  /**
-   * Gives the file of track `id` a cover of the user's (LS-21), made by `prepareCover`, for
-   * every entry of that file; it shows instead of the file's, in the queue, on the logo and in
-   * exports, and is kept for the file. Null takes it away.
-   */
-  async setOwnCover(id: string, cover: Blob | null): Promise<void> {
-    const fingerprint = this.state.tracks.find((track) => track.id === id)?.fingerprint;
-    if (!fingerprint) return;
-    const url = cover ? URL.createObjectURL(cover) : null;
-    const previous = this.ownCovers.get(fingerprint);
-    this.ownCovers.set(fingerprint, Promise.resolve(url));
-    this.dispatch({ type: 'tracks/cover', fingerprint, url });
-    void previous?.then((old) => old && URL.revokeObjectURL(old));
-    if (cover) void keepStorage();
-    await writeCover(fingerprint, cover);
-  }
-
-  /** Brings back the queue of the last visit (SRC-05), with the files the browser still gives. */
-  private async restore(): Promise<void> {
-    const stored = await loadQueue();
-    if (!stored || stored.entries.length === 0) return;
-    const tracks: Track[] = [];
-    for (const { id, info, handle } of stored.entries) {
-      const access = handle ? await accessOf(handle).catch((): Access => 'denied') : 'denied';
-      const file = handle && access === 'granted' ? await handle.getFile().catch(() => null) : null;
-      const status = file ? 'probing' : access === 'prompt' ? 'locked' : 'missing';
-      if (file) this.files.set(id, file);
-      if (handle && status !== 'missing') this.handles.set(id, handle);
-      const data =
-        info.fingerprint && info.duration !== null
-          ? loadTrackData(info.fingerprint, info.duration)
-          : null;
-      tracks.push(restoredTrack(id, info, status, data));
-    }
-    this.dispatch({ type: 'tracks/restored', tracks, currentId: stored.currentId });
-    // The user's covers show at once, also for files that need permission first.
-    for (const track of tracks) if (track.fingerprint) this.loadOwnCover(track.fingerprint);
-    for (const track of tracks) if (track.status === 'probing') void this.queueProbe(track.id);
+  setOwnCover(id: string, cover: Blob | null): Promise<void> {
+    return this.library.setOwnCover(id, cover);
   }
 
   /**
@@ -667,42 +483,10 @@ export class Player {
    * may ask once for all of them; if the user declines, the rest stays locked.
    */
   unlock(): Promise<void> {
-    this.unlocking ??= this.unlockAll().finally(() => (this.unlocking = null));
-    return this.unlocking;
-  }
-
-  private async unlockAll(): Promise<void> {
-    for (const track of this.state.tracks.filter((entry) => entry.status === 'locked')) {
-      const handle = this.handles.get(track.id);
-      if (!handle || this.files.has(track.id)) continue;
-      const access = await accessOf(handle).catch((): Access => 'denied');
-      if (access === 'prompt' && !(await requestAccess(handle).catch(() => false))) return;
-      const file = access === 'denied' ? null : await handle.getFile().catch(() => null);
-      if (!this.state.tracks.some((entry) => entry.id === track.id)) continue; // removed
-      if (!file) {
-        this.handles.delete(track.id);
-        this.dispatch({ type: 'tracks/access', id: track.id, status: 'missing' });
-        continue;
-      }
-      this.files.set(track.id, file);
-      this.dispatch({ type: 'tracks/access', id: track.id, status: 'probing' });
-      void this.queueProbe(track.id);
-    }
+    return this.library.unlock();
   }
 
   private readonly flushSave = () => this.sync.flush();
-
-  /** The queue as it is stored (SRC-05): each entry with what is known of its file. */
-  private storedQueue(): StoredQueue {
-    return {
-      entries: this.state.tracks.map((track) => ({
-        id: track.id,
-        info: storedInfo(track),
-        handle: this.handles.get(track.id) ?? null,
-      })),
-      currentId: this.state.currentId,
-    };
-  }
 
   /** The tempo of the beat grid of a file (TMP-06); null: found again (see {@link GridEditor}). */
   setTempo(id: string, bpm: number | null): void {
@@ -806,8 +590,8 @@ export class Player {
   async playTrack(id: string, startSeconds?: number): Promise<void> {
     // An entry of the last visit: the click that plays it can unlock it.
     const locked = this.state.tracks.find((track) => track.id === id)?.status === 'locked';
-    if (locked && !this.files.has(id)) await this.unlock();
-    const file = this.files.get(id);
+    if (locked && !this.library.file(id)) await this.unlock();
+    const file = this.library.file(id);
     if (!file) return;
     // Choosing a track explicitly switches back from live input.
     if (this.live) this.stopLive();
@@ -966,7 +750,7 @@ export class Player {
 
   private async seekTo(seconds: number): Promise<void> {
     const id = this.loadedId;
-    const file = id !== null ? this.files.get(id) : undefined;
+    const file = id !== null ? this.library.file(id) : undefined;
     if (id === null || !file || this.live) return;
     const duration = this.currentTrack?.duration ?? Infinity;
     const target = Math.max(0, Math.min(seconds, duration - 0.05));
@@ -1013,15 +797,13 @@ export class Player {
     const track = this.state.tracks[index];
     if (!track) return;
     const current = this.state.currentId === id;
-    const kept = this.keepFiles([track]);
+    const taken = this.library.take([track]);
     if (id === this.loadedId) await this.unload();
-    this.files.delete(id);
-    this.handles.delete(id);
     this.dispatch({ type: 'tracks/removed', id });
-    this.offerUndo(
+    this.undoOffer.offer(
       `Removed “${shownTitle(track)}”`,
-      () => this.putBack(index, [track], current ? id : null, kept),
-      () => this.forgetTracks([track]),
+      () => taken.putBack(index, current ? id : null),
+      () => taken.forget(),
     );
   }
 
@@ -1043,87 +825,21 @@ export class Player {
     const tracks = this.state.tracks;
     if (tracks.length === 0) return;
     const current = this.state.currentId;
-    const kept = this.keepFiles(tracks);
+    const taken = this.library.take(tracks);
     await this.unload();
-    this.files.clear();
-    this.handles.clear();
     this.dispatch({ type: 'tracks/cleared' });
-    this.offerUndo(
+    this.undoOffer.offer(
       tracks.length === 1
         ? 'Cleared the queue (1 track)'
         : `Cleared the queue (${tracks.length} tracks)`,
-      () => this.putBack(0, tracks, current, kept),
-      () => this.forgetTracks(tracks),
+      () => taken.putBack(0, current),
+      () => taken.forget(),
     );
-  }
-
-  /** The files and handles of `tracks`, to put them back on undo. */
-  private keepFiles(tracks: readonly Track[]) {
-    return tracks.map((track) => ({
-      id: track.id,
-      file: this.files.get(track.id),
-      handle: this.handles.get(track.id),
-    }));
-  }
-
-  /** Undoes a removal: the tracks and their files return at `index`. */
-  private putBack(
-    index: number,
-    tracks: Track[],
-    currentId: string | null,
-    kept: ReturnType<Player['keepFiles']>,
-  ): void {
-    for (const { id, file, handle } of kept) {
-      if (file) this.files.set(id, file);
-      if (handle) this.handles.set(id, handle);
-    }
-    this.dispatch({ type: 'tracks/inserted', index, tracks, currentId });
-    // A probe that was running when they went was dropped.
-    for (const track of tracks) if (track.status === 'probing') void this.queueProbe(track.id);
-  }
-
-  /**
-   * Removed tracks are gone for good: their covers, and the analyses and own covers (shown, not
-   * stored) that no entry needs any more.
-   */
-  private forgetTracks(tracks: readonly Track[]): void {
-    for (const track of tracks) {
-      if (track.coverUrl) URL.revokeObjectURL(track.coverUrl);
-      const fingerprint = track.fingerprint;
-      if (fingerprint && !this.state.tracks.some((entry) => entry.fingerprint === fingerprint)) {
-        this.analysis.forget(fingerprint);
-        const cover = this.ownCovers.get(fingerprint);
-        this.ownCovers.delete(fingerprint);
-        void cover?.then((url) => url && URL.revokeObjectURL(url));
-      }
-    }
-  }
-
-  /** Offers to undo what was just done, for a few seconds or until the next such action. */
-  private offerUndo(label: string, restore: () => void, release: () => void = () => {}): void {
-    this.dropUndo();
-    const timer = setTimeout(() => this.dropUndo(), UNDO_SECONDS * 1000);
-    this.undoEntry = { restore, release, timer };
-    this.dispatch({ type: 'undo/offered', label });
-  }
-
-  private dropUndo(): void {
-    const entry = this.undoEntry;
-    if (!entry) return;
-    clearTimeout(entry.timer);
-    this.undoEntry = null;
-    entry.release();
-    this.dispatch({ type: 'undo/offered', label: null });
   }
 
   /** Undoes the last removal or deletion, while that is offered (Ctrl+Z). */
   undo(): void {
-    const entry = this.undoEntry;
-    if (!entry) return;
-    clearTimeout(entry.timer);
-    this.undoEntry = null;
-    entry.restore();
-    this.dispatch({ type: 'undo/offered', label: null });
+    this.undoOffer.undo();
   }
 
   /** Changes parameters of the visuals (recorded as actions, like everything else). */
@@ -1177,7 +893,7 @@ export class Player {
     const target = snap ? this.snap(seconds) : seconds;
     this.dispatch({ type: 'tracks/marked', id: track.id, mark, seconds: target });
     if (seconds === null && marks[mark] !== null) {
-      this.offerUndo(`Cleared the ${mark} marker`, () => this.restoreMarks(track.id, marks));
+      this.undoOffer.offer(`Cleared the ${mark} marker`, () => this.restoreMarks(track.id, marks));
     }
   }
 
@@ -1188,7 +904,7 @@ export class Player {
     const marks = track.marks;
     this.dispatch({ type: 'tracks/marked', id: track.id, mark: 'in', seconds: null });
     this.dispatch({ type: 'tracks/marked', id: track.id, mark: 'out', seconds: null });
-    this.offerUndo('Cleared the markers', () => this.restoreMarks(track.id, marks));
+    this.undoOffer.offer('Cleared the markers', () => this.restoreMarks(track.id, marks));
   }
 
   private restoreMarks(id: string, marks: Marks): void {
@@ -1231,13 +947,13 @@ export class Player {
     if (seconds === null && old !== null) {
       const restore = () =>
         this.dispatch({ type: 'tracks/cue', id: track.id, index, seconds: old });
-      this.offerUndo(`Deleted cue ${index + 1}`, restore);
+      this.undoOffer.offer(`Deleted cue ${index + 1}`, restore);
     }
   }
 
   /** The file behind a queue entry (for the export). */
   fileFor(id: string): File | null {
-    return this.files.get(id) ?? null;
+    return this.library.file(id) ?? null;
   }
 
   /** Changes tempo or effect settings (TMP, FX). */
@@ -1277,7 +993,7 @@ export class Player {
   dispose(): void {
     clearInterval(this.endCheck);
     this.endScrub();
-    this.dropUndo();
+    this.undoOffer.drop();
     window.removeEventListener('pagehide', this.flushSave);
     document.removeEventListener('visibilitychange', this.flushSave);
     this.sync.dispose();
