@@ -1,10 +1,4 @@
-import {
-  hintRange,
-  nearestBeat,
-  TEMPO_HINT_RANGE,
-  TEMPO_RANGES,
-  type BeatGrid,
-} from '../analysis/beat-grid';
+import { nearestBeat, type BeatGrid } from '../analysis/beat-grid';
 import type { TrackLoudness } from '../analysis/track-loudness';
 import { rateLimits, TEMPO_STEP, type SoundSettings } from '../audio/dsp/sound-settings';
 import { AudioEngine, type NextFile } from '../audio/engine/audio-engine';
@@ -14,7 +8,6 @@ import {
   openDisplay,
   type InputDevice,
   type LiveSourceKind,
-  type OpenedInput,
 } from '../audio/live-input';
 import { entriesFromFiles, type QueueEntry } from '../library/folder-reader';
 import type { ProbeResult } from '../library/probe.worker';
@@ -32,6 +25,7 @@ import { TrackAnalyzer, type TrackAnalysisState } from '../library/track-analyze
 import { readCover, writeCover } from '../library/track-covers';
 import { sameTrackColors, sanitizeTrackColors, type TrackColors } from '../render/cover-palette';
 import { GridEditor } from './grid-editor';
+import { LiveSource } from './live-source';
 import { nextTrack, previousTrack, type PlayOrder } from './play-order';
 import { StateSync } from './state-sync';
 import {
@@ -126,6 +120,8 @@ export class Player {
   private readonly sync: StateSync;
   /** The beat grids as the user wants them: tempo, one tempo throughout, corrections. */
   private readonly grids: GridEditor;
+  /** Live input as the source, instead of the queue. */
+  private readonly liveSource: LiveSource;
   private unlocking: Promise<void> | null = null;
   private loadedId: string | null = null;
   /** The engine knows files by tokens: the heard one, and which track each token stands for. */
@@ -171,8 +167,6 @@ export class Player {
   /** Counts loads and seeks: a newer one replaces older ones in the engine. */
   private request = 0;
   private readonly endCheck: ReturnType<typeof setInterval>;
-  /** The live input's stream while it is the source. */
-  private liveInput: OpenedInput | null = null;
   private streamFiles: readonly StreamFile[] = [];
   private readonly streamListeners = new Set<(files: readonly StreamFile[]) => void>();
   /**
@@ -186,8 +180,6 @@ export class Player {
       return () => this.streamListeners.delete(listener);
     },
   };
-  /** Increases with every start or stop of live input; stale attempts are dropped. */
-  private liveToken = 0;
   /** The engine's last trouble (NF-09): its message goes once the music plays again. */
   private trouble: string | null = null;
 
@@ -221,9 +213,13 @@ export class Player {
           : 'This browser does not let the app store anything: changes are gone after a reload.',
       ),
     );
-    this.updateTrackerRange();
-    const { tracks, settings, sound, live } = this.parts;
-    watch(live, () => this.updateTrackerRange());
+    this.liveSource = new LiveSource(
+      this.store,
+      this.engine,
+      { openDevice, openDisplay, closeInput },
+      () => this.pause(),
+    );
+    const { tracks, settings, sound } = this.parts;
     watch(tracks, (now, before) => {
       // The playing track's out marker may have moved: its stream stops somewhere else now.
       const was = before.find((track) => track.id === this.loadedId);
@@ -234,7 +230,6 @@ export class Player {
     });
     watch(sound, (now) => (this.engine.sound = now));
     watch(settings, (now, before) => {
-      this.updateTrackerRange();
       this.engine.volume = now.volume;
       this.engine.inputGainDecibels = now.inputGain;
       this.engine.syncOffset = now.syncOffset / 1000;
@@ -765,28 +760,9 @@ export class Player {
     this.grids.reset();
   }
 
-  /**
-   * Sets the tempo (BPM) of the live input (TMP-06): the live beat tracking keeps close to it;
-   * null lets it find the tempo itself. Tempos outside {@link TEMPO_HINT_RANGE} are ignored.
-   */
+  /** The tempo of the live input (TMP-06); null: found by the beat tracking. */
   setLiveTempo(bpm: number | null): void {
-    if (bpm !== null && !(bpm >= TEMPO_HINT_RANGE.min && bpm <= TEMPO_HINT_RANGE.max)) return;
-    const tempo = bpm === null ? null : Math.round(bpm * 100) / 100;
-    if (tempo !== this.state.live.tempo) this.dispatch({ type: 'live/tempo', tempo });
-  }
-
-  /**
-   * The range of the live beat tracking (for live input, and for files until their grid is
-   * there): around the tempo given for the live input (TMP-06), or the tempo range (AN-12).
-   */
-  private updateTrackerRange(): void {
-    const { live, settings } = this.state;
-    this.engine.tempoRange =
-      live.status === 'on' && live.tempo !== null
-        ? hintRange(live.tempo)
-        : settings.bpmRange === 'auto'
-          ? null
-          : TEMPO_RANGES[settings.bpmRange];
+    this.liveSource.setTempo(bpm);
   }
 
   /** Waveform and beat grid of a track, once analysed (TR-03, AN-07). */
@@ -796,91 +772,30 @@ export class Player {
 
   /** True while live input is the source (the transport is idle then). */
   get live(): boolean {
-    return this.state.live.status !== 'off';
+    return this.liveSource.active;
   }
 
   /** The audio input used last, or null for the default input. */
   get lastInputDevice(): InputDevice | null {
-    const { inputDevice, inputDeviceLabel } = this.state.settings;
-    return inputDevice ? { id: inputDevice, label: inputDeviceLabel } : null;
+    return this.liveSource.lastDevice;
   }
 
   /**
-   * Makes live input the source (IN-01, IN-02): an audio input (`device`: that input, or the
-   * default one for null) or a tab or the screen (`display`). The queue pauses. Call from a
-   * user gesture: the browser asks for permission.
+   * Makes live input the source (IN-01, IN-02): an audio input or a tab or the screen. Call
+   * from a user gesture: the browser asks for permission.
    */
-  async startLive(kind: LiveSourceKind, device: InputDevice | null = null): Promise<void> {
-    const token = ++this.liveToken;
-    this.dispatch({ type: 'live/starting', kind });
-    try {
-      await this.engine.start();
-      const opened = kind === 'device' ? await openDevice(device) : await openDisplay();
-      if (token !== this.liveToken) {
-        closeInput(opened.stream);
-        return;
-      }
-      const previous = this.liveInput;
-      this.pause();
-      // Every new source starts unmonitored: a microphone could feed back, a shared tab
-      // already plays by itself.
-      this.engine.monitorInput = false;
-      try {
-        this.engine.connectInput(opened.stream);
-      } catch (error) {
-        closeInput(opened.stream);
-        if (previous) this.engine.connectInput(previous.stream);
-        // Some browsers only accept inputs at the engine's sample rate.
-        throw new Error(
-          error instanceof DOMException && error.name === 'NotSupportedError'
-            ? 'This browser cannot use this input at 48 kHz. Set the device to 48 kHz in the system sound settings, or use Chrome.'
-            : errorMessage(error),
-          { cause: error },
-        );
-      }
-      if (previous) closeInput(previous.stream);
-      this.liveInput = opened;
-      for (const track of opened.stream.getAudioTracks()) {
-        // Unplugged, or sharing stopped in the browser's bar.
-        track.addEventListener('ended', () => {
-          if (this.liveInput === opened) {
-            this.stopLive(kind === 'display' ? 'Sharing has ended.' : 'The audio input was lost.');
-          }
-        });
-      }
-      this.dispatch({ type: 'live/started', kind, label: opened.label });
-      if (kind === 'device') {
-        const { inputDevice, inputDeviceLabel } = this.state.settings;
-        const id = opened.device?.id ?? '';
-        const label = opened.device?.label ?? '';
-        if (id !== inputDevice || label !== inputDeviceLabel) {
-          this.updateSettings({ inputDevice: id, inputDeviceLabel: label });
-        }
-      }
-    } catch (error) {
-      if (token !== this.liveToken) return;
-      this.dispatch({
-        type: 'live/failed',
-        message: errorMessage(error),
-        running: this.liveInput !== null,
-      });
-    }
+  startLive(kind: LiveSourceKind, device: InputDevice | null = null): Promise<void> {
+    return this.liveSource.start(kind, device);
   }
 
   /** Back to the queue as the source; monitoring goes off. */
   stopLive(reason: string | null = null): void {
-    this.liveToken++;
-    this.engine.monitorInput = false;
-    this.engine.disconnectInput();
-    if (this.liveInput) closeInput(this.liveInput.stream);
-    this.liveInput = null;
-    this.dispatch({ type: 'live/stopped', reason });
+    this.liveSource.stop(reason);
   }
 
   /** Hearing the live input through the app (IN-04). */
   setMonitor(monitor: boolean): void {
-    this.engine.monitorInput = monitor;
-    this.dispatch({ type: 'live/monitor', monitor });
+    this.liveSource.setMonitor(monitor);
   }
 
   /** Plays the track with `id` from `startSeconds`. Call from a user gesture the first time. */
@@ -1366,7 +1281,7 @@ export class Player {
     window.removeEventListener('pagehide', this.flushSave);
     document.removeEventListener('visibilitychange', this.flushSave);
     this.sync.dispose();
-    if (this.liveInput) closeInput(this.liveInput.stream);
+    this.liveSource.dispose();
     this.probeClient.terminate();
     this.analysis.dispose();
     void this.engine.dispose();
