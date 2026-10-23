@@ -7,6 +7,7 @@
   } from '../core/analysis/beat-grid';
   import { sameTempo } from '../core/library/analysis-cache';
   import { usePlayer } from './player-context';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * A tempo badge with a menu to correct the tempo (TMP-06): double, half, 3/2 or 2/3 of it for
@@ -53,7 +54,7 @@
   } = $props();
 
   const player = usePlayer();
-  const { settings } = player.parts;
+  const app = useAppState();
   let open = $state(false);
   let button: HTMLButtonElement;
   let menu = $state<HTMLDivElement>();
@@ -305,8 +306,8 @@
           {#each TEMPO_RANGE_IDS as id (id)}
             <button
               role="menuitemradio"
-              aria-checked={$settings.bpmRange === id}
-              class:on={$settings.bpmRange === id}
+              aria-checked={app.settings.bpmRange === id}
+              class:on={app.settings.bpmRange === id}
               onclick={(event) => {
                 event.stopPropagation();
                 chooseRange(id, event);

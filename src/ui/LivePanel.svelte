@@ -7,19 +7,20 @@
   import Icon from './Icon.svelte';
   import LevelMeter from './LevelMeter.svelte';
   import { usePlayer } from './player-context';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * Live input (IN-01…04): visualise music that plays somewhere else, from an audio input or
    * from another tab or app, with input gain, a level meter and optional monitoring.
    */
   const player = usePlayer();
-  const { settings, live: liveState } = player.parts;
+  const app = useAppState();
   const support = liveInputSupport();
-  const live = $derived($liveState);
+  const live = $derived(app.live);
   const starting = $derived(live.status === 'starting');
 
   let devices = $state<InputDevice[]>([]);
-  let chosen = $state(untrack(() => $settings.inputDevice));
+  let chosen = $state(untrack(() => app.settings.inputDevice));
 
   async function refresh() {
     devices = await listInputDevices().catch(() => []);
@@ -41,7 +42,7 @@
   $effect(() => {
     if (live.status !== 'on') return;
     void refresh();
-    chosen = untrack(() => $settings.inputDevice);
+    chosen = untrack(() => app.settings.inputDevice);
   });
 
   /** The input in the picker: from the list, or the one used last (its id may be outdated). */
@@ -140,7 +141,7 @@
     <LevelMeter />
     <Slider
       label="Input gain"
-      value={$settings.inputGain}
+      value={app.settings.inputGain}
       min={INPUT_GAIN_RANGE.min}
       max={INPUT_GAIN_RANGE.max}
       step={0.5}

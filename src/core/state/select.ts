@@ -4,8 +4,8 @@ import type { AppState } from './app-state';
  * Parts of the state that tell their subscribers only when they change (#52). Every action makes
  * a new state, also each step of a slider: what reads the whole state works again at each one,
  * what reads a part only when that part changed. A part is picked from the state and compared
- * with the last one, by `Object.is` unless told otherwise. The subscribe contract is Svelte's, so
- * that components read a part as `$part`; the core stays without Svelte.
+ * with the last one, by `Object.is` unless told otherwise. The subscribe contract is Svelte's; the
+ * core stays without Svelte. The components follow the state as Svelte state of their own (#57).
  */
 
 /** What can be subscribed to: a store, or a part of one. */
@@ -49,24 +49,15 @@ export function watch<T>(readable: Readable<T>, run: (value: T, previous: T) => 
   });
 }
 
-/** The parts of the app's state that the UI and the player follow. */
+/** The parts of the app's state that the player, the storage and the renderer follow. */
 export function appParts(store: Readable<AppState>) {
   return {
     tracks: select(store, (state) => state.tracks),
     currentId: select(store, (state) => state.currentId),
-    /** The track playing or paused, or null. */
-    currentTrack: select(
-      store,
-      (state) => state.tracks.find((track) => track.id === state.currentId) ?? null,
-    ),
-    playing: select(store, (state) => state.playing),
     settings: select(store, (state) => state.settings),
     visuals: select(store, (state) => state.visuals),
     kaleido: select(store, (state) => state.kaleido),
     sound: select(store, (state) => state.sound),
-    live: select(store, (state) => state.live),
-    error: select(store, (state) => state.error),
-    undo: select(store, (state) => state.undo),
   };
 }
 

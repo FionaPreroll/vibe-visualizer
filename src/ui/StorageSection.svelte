@@ -11,6 +11,7 @@
   import { useExporter } from './exporter-context';
   import { usePlayer } from './player-context';
   import { saveBackup } from './save-backup';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * What the app keeps in this browser, and deleting it by kind (UI-12), in the settings: the
@@ -26,7 +27,7 @@
   type Action = 'analysis-unused' | 'analysis-all' | 'tracks' | 'exports' | 'everything';
 
   const player = usePlayer();
-  const { tracks: tracksState } = player.parts;
+  const app = useAppState();
   const exporter = useExporter();
   let summary = $state.raw<StorageSummary | null>(null);
   let pending = $state<Action | null>(null);
@@ -42,7 +43,7 @@
   const exporting = $derived($exporter.status === 'running');
   /** The fingerprints of the tracks in the queue: what belongs to them stays. */
   const inQueue = $derived(
-    new Set($tracksState.map((track) => track.fingerprint).filter((print) => print !== null)),
+    new Set(app.tracks.map((track) => track.fingerprint).filter((print) => print !== null)),
   );
 
   const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));

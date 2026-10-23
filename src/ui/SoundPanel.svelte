@@ -22,14 +22,15 @@
   import Section from './controls/Section.svelte';
   import Slider from './controls/Slider.svelte';
   import { usePlayer } from './player-context';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * Tempo and effects (TMP-01…04, FX-01…06, FX-10): one-click edits, the tempo fader with
    * vinyl or key lock, the DJ filter, delay and reverb. Everything also applies to exports.
    */
   const player = usePlayer();
-  const { sound: soundState } = player.parts;
-  const sound = $derived($soundState);
+  const app = useAppState();
+  const sound = $derived(app.sound);
   const limits = $derived(rateLimits(sound.tempoRange));
   const activePreset = $derived(
     SOUND_PRESETS.find((preset) => same(preset.settings, sound))?.name ?? null,

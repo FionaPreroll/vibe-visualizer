@@ -5,6 +5,7 @@
   import Icon from './Icon.svelte';
   import { usePlayer } from './player-context';
   import StorageSection from './StorageSection.svelte';
+  import { useAppState } from './app-state.svelte';
 
   /**
    * The settings of the app as a whole, and what it keeps: the lettering of the default logo, the
@@ -20,7 +21,7 @@
   let { open, onclose, onhelp }: Props = $props();
 
   const player = usePlayer();
-  const { settings } = player.parts;
+  const app = useAppState();
   let dialog: HTMLDialogElement | undefined = $state();
   const backdrop = backdropClose(() => onclose());
 
@@ -59,7 +60,7 @@
       <label class="field">
         <span>Lettering in the ring</span>
         <input
-          value={$settings.logoText}
+          value={app.settings.logoText}
           maxlength={LOGO_TEXT_LENGTH}
           onchange={(event) => setLettering(event.currentTarget.value)}
           data-testid="settings-logo-text"
