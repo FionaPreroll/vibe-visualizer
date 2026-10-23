@@ -10,7 +10,7 @@
    * that tempo until it is set to automatic again. The tempo range (AN-12) applies too.
    */
   const player = usePlayer();
-  const app = player.store;
+  const { live } = player.parts;
   /** Beats less sure than this show no tempo. */
   const SURE = 0.3;
 
@@ -27,7 +27,7 @@
     return () => clearInterval(timer);
   });
 
-  const manual = $derived($app.live.tempo);
+  const manual = $derived($live.tempo);
 </script>
 
 <TempoMenu

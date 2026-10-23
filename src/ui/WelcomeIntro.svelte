@@ -28,7 +28,7 @@
   let { open = $bindable(false), onhelp }: { open?: boolean; onhelp?: () => void } = $props();
 
   const player = usePlayer();
-  const app = player.store;
+  const { settings } = player.parts;
   const assets = useAssets();
   let dialog: HTMLDialogElement | undefined = $state();
   let logo = $state<string | null>(null);
@@ -138,7 +138,7 @@
           <label class="calm">
             <input
               type="checkbox"
-              checked={$app.settings.reduceFlashing}
+              checked={$settings.reduceFlashing}
               onchange={(event) =>
                 player.updateSettings({
                   reduceFlashing: event.currentTarget.checked,

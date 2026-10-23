@@ -88,7 +88,13 @@ test('the second screen shows the visuals in a window for a projector (DS-03)', 
   await screen.mouse.move(200, 200);
   await screen.mouse.move(220, 210);
   const closed = screen.waitForEvent('close');
-  await screen.getByTestId('screen-back').click();
+  // The window may close before the browser confirms the click: then the click fails for that.
+  await screen
+    .getByTestId('screen-back')
+    .click()
+    .catch((error: Error) => {
+      if (!error.message.includes('closed')) throw error;
+    });
   await closed;
   const home = page.getByTestId('visual-stage');
   await expect(home).toHaveAttribute('data-status', 'running');

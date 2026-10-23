@@ -42,8 +42,8 @@
 
   const player = usePlayer();
   const assets = useAssets();
-  const app = player.store;
-  const v = $derived($app.visuals);
+  const { settings, visuals } = player.parts;
+  const v = $derived($visuals);
 
   let imageError = $state<string | null>(null);
 
@@ -131,9 +131,9 @@
     store={logoSpectrumPresets}
     current={v}
     onapply={(settings) => player.replaceVisuals(settings)}
-    favourites={$app.settings.favourites.logoSpectrum}
+    favourites={$settings.favourites.logoSpectrum}
     onfavourites={(names) =>
-      player.updateSettings({ favourites: { ...$app.settings.favourites, logoSpectrum: names } })}
+      player.updateSettings({ favourites: { ...$settings.favourites, logoSpectrum: names } })}
     sanitize={sanitizeSettings}
   />
   <AutoPresetsSection />
@@ -271,13 +271,13 @@
     <label class="option">
       <input
         type="checkbox"
-        checked={$app.settings.coverLogo}
+        checked={$settings.coverLogo}
         onchange={(event) => player.updateSettings({ coverLogo: event.currentTarget.checked })}
         data-testid="cover-logo"
       />
       Show the cover art of the track playing
     </label>
-    {#if $app.settings.coverLogo}
+    {#if $settings.coverLogo}
       <p class="hint" data-testid="cover-logo-hint">
         Tracks without cover art show the logo image. Zoom and position apply to the logo image.
       </p>

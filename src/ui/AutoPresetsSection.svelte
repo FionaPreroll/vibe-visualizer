@@ -17,12 +17,10 @@
    * way.
    */
   const player = usePlayer();
-  const app = player.store;
-  const auto = $derived($app.settings.autoPresets);
-  const mode = $derived(
-    $app.settings.visualMode === 'kaleidoscope' ? 'kaleidoscope' : 'logoSpectrum',
-  );
-  const favourites = $derived($app.settings.favourites[mode].length);
+  const { settings } = player.parts;
+  const auto = $derived($settings.autoPresets);
+  const mode = $derived($settings.visualMode === 'kaleidoscope' ? 'kaleidoscope' : 'logoSpectrum');
+  const favourites = $derived($settings.favourites[mode].length);
 
   const set = (changes: Partial<AutoPresets>) =>
     player.updateSettings({ autoPresets: { ...auto, ...changes } });

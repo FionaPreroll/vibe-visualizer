@@ -16,12 +16,12 @@
    * the display (VE-07) and the A/V sync (AN-06).
    */
   const player = usePlayer();
-  const app = player.store;
+  const { settings, visuals } = player.parts;
   let calibrating = $state(false);
   /** In the Logo Spectrum: the Kaleidoscope behind it is being set up (VE-08). */
   let editBehind = $state(false);
   const layered = $derived(
-    $app.settings.visualMode === 'logoSpectrum' && $app.visuals.backgroundSource === 'kaleidoscope',
+    $settings.visualMode === 'logoSpectrum' && $visuals.backgroundSource === 'kaleidoscope',
   );
 </script>
 
@@ -46,9 +46,9 @@
     </button>
   </div>
 {/if}
-{#if $app.settings.visualMode === 'kaleidoscope'}
+{#if $settings.visualMode === 'kaleidoscope'}
   <KaleidoPanel />
-{:else if $app.settings.visualMode === 'logoSpectrum'}
+{:else if $settings.visualMode === 'logoSpectrum'}
   {#if layered && editBehind}
     <KaleidoPanel behind />
   {:else}
@@ -61,14 +61,14 @@
   </p>
 {/if}
 
-{#if $app.settings.visualMode !== 'analysis'}
+{#if $settings.visualMode !== 'analysis'}
   <TrackInfoSection />
 {/if}
 
 <Section title="Display">
   <Slider
     label="Resolution"
-    value={$app.settings.renderScale}
+    value={$settings.renderScale}
     min={RENDER_SCALE_RANGE.min}
     max={RENDER_SCALE_RANGE.max}
     step={0.05}
@@ -79,7 +79,7 @@
   <label class="check">
     <input
       type="checkbox"
-      checked={$app.settings.autoQuality}
+      checked={$settings.autoQuality}
       onchange={(event) => player.updateSettings({ autoQuality: event.currentTarget.checked })}
       data-testid="auto-quality"
     />
@@ -88,7 +88,7 @@
   <label class="check">
     <input
       type="checkbox"
-      checked={$app.settings.reduceFlashing}
+      checked={$settings.reduceFlashing}
       onchange={(event) =>
         player.updateSettings({
           reduceFlashing: event.currentTarget.checked,
@@ -100,7 +100,7 @@
   </label>
   <p class="hint">Damps sudden jumps in brightness, in exports too.</p>
   <p class="hint" data-testid="live-scale">
-    Drawn at {percent($liveScale)} of the screen's resolution{#if $app.settings.autoQuality && $liveScale < $app.settings.renderScale - 1e-6}
+    Drawn at {percent($liveScale)} of the screen's resolution{#if $settings.autoQuality && $liveScale < $settings.renderScale - 1e-6}
       (lowered, the frame rate dropped){/if}. Exports always render at their own resolution.
   </p>
 </Section>
@@ -108,7 +108,7 @@
 <Section title="A/V sync">
   <Slider
     label="Visuals later by"
-    value={$app.settings.syncOffset}
+    value={$settings.syncOffset}
     min={SYNC_OFFSET_RANGE.min}
     max={SYNC_OFFSET_RANGE.max}
     step={5}

@@ -71,7 +71,7 @@
   let { open, onclose }: Props = $props();
 
   const player = usePlayer();
-  const app = player.store;
+  const { tracks, currentId, settings, visuals, kaleido, sound: soundState } = player.parts;
   const exporter = useExporter();
   const assets = useAssets();
 
@@ -92,19 +92,19 @@
 
   $effect(() => saveExportOptions($state.snapshot(options)));
 
-  const aspect = $derived($app.settings.aspect);
+  const aspect = $derived($settings.aspect);
   const fitted = $derived(fitOptions(options, aspect));
   const format = $derived(resolveFormat(fitted, aspect));
-  const mode = $derived($app.settings.visualMode);
+  const mode = $derived($settings.visualMode);
   const track = $derived(
-    $app.tracks.find((entry) => entry.id === $app.currentId && entry.status === 'ready') ??
-      $app.tracks.find((entry) => entry.status === 'ready') ??
+    $tracks.find((entry) => entry.id === $currentId && entry.status === 'ready') ??
+      $tracks.find((entry) => entry.status === 'ready') ??
       null,
   );
   const marked = $derived(track !== null && (track.marks.in !== null || track.marks.out !== null));
   /** The tracks a video of several can play, in the order of the queue. */
   const ready = $derived(
-    $app.tracks.filter((entry) => entry.status === 'ready' && entry.duration !== null),
+    $tracks.filter((entry) => entry.status === 'ready' && entry.duration !== null),
   );
   /** What the video plays: the choice, where it is possible. */
   const choice = $derived.by((): ExportOptions['range'] => {
@@ -121,7 +121,7 @@
   const soundOnly = $derived(fitted.content === 'sound');
   /** What the export makes, in the dialog's sentences. */
   const what = $derived(soundOnly ? 'sound' : 'video');
-  const sound = $derived($app.sound);
+  const sound = $derived($soundState);
   /** Length of the video (of all of them, for a video of each): the parts at the tempo. */
   const seconds = $derived(
     perTrack
@@ -241,10 +241,10 @@
       return;
     }
     // The track overlay names each track over the part the video plays (LS-18, LS-19).
-    const overlay = $app.settings.overlay;
+    const overlay = $settings.overlay;
     // The cover art as the logo (LS-15), and its colours (VE-12).
-    const coverLogo = !soundOnly && mode === 'logoSpectrum' && $app.settings.coverLogo;
-    const coverColors = !soundOnly && $app.settings.coverColors;
+    const coverLogo = !soundOnly && mode === 'logoSpectrum' && $settings.coverLogo;
+    const coverColors = !soundOnly && $settings.coverColors;
     const visuals: ExportVisuals = {
       ...visualsOf(mode === 'kaleidoscope' ? 'kaleidoscope' : 'logoSpectrum'),
       overlay: overlay.on ? overlay : undefined,
@@ -336,8 +336,8 @@
 
   /** The visuals of the video: the current settings, and the preset switching if it is on. */
   function visualsOf(mode: 'logoSpectrum' | 'kaleidoscope'): ExportVisuals {
-    const config = $app.settings.autoPresets;
-    const favourites = $app.settings.favourites;
+    const config = $settings.autoPresets;
+    const favourites = $settings.favourites;
     if (mode === 'kaleidoscope') {
       const presets = switchingPool(
         BUILT_IN_KALEIDO_PRESETS,
@@ -347,9 +347,9 @@
       );
       return {
         mode,
-        settings: $app.kaleido,
+        settings: $kaleido,
         auto: config.on ? { config, presets } : undefined,
-        reduceFlashing: $app.settings.reduceFlashing,
+        reduceFlashing: $settings.reduceFlashing,
       };
     }
     const presets = switchingPool(
@@ -359,14 +359,14 @@
       config.pool,
     );
     // The Kaleidoscope behind (VE-08), if a look of the video shows it.
-    const looks = config.on ? [$app.visuals, ...presets] : [$app.visuals];
+    const looks = config.on ? [$visuals, ...presets] : [$visuals];
     const layered = looks.some((look) => look.backgroundSource === 'kaleidoscope');
     return {
       mode,
-      settings: $app.visuals,
+      settings: $visuals,
       auto: config.on ? { config, presets } : undefined,
-      reduceFlashing: $app.settings.reduceFlashing,
-      layer: layered ? $app.kaleido : undefined,
+      reduceFlashing: $settings.reduceFlashing,
+      layer: layered ? $kaleido : undefined,
     };
   }
 
@@ -388,7 +388,7 @@
     if (!manifest.progress.audioDone) {
       // The audio pass starts again: it needs the files of the tracks, from the queue.
       files = manifest.parts.map(({ source }) => {
-        const match = $app.tracks.find(
+        const match = $tracks.find(
           (entry) => entry.fileName === source.name && entry.size === source.size,
         );
         return match ? player.fileFor(match.id) : null;
@@ -932,27 +932,27 @@
             {:else}
               {mode === 'kaleidoscope' ? 'Kaleidoscope' : 'Logo Spectrum'}, with the current
               settings
-              {#if $app.settings.autoPresets.on}
+              {#if $settings.autoPresets.on}
                 <span data-testid="export-switching"
-                  >({switchingSummary($app.settings.autoPresets)})</span
+                  >({switchingSummary($settings.autoPresets)})</span
                 >
               {/if}
-              {#if $app.settings.reduceFlashing}
+              {#if $settings.reduceFlashing}
                 <span data-testid="export-calm">(flashing reduced)</span>
               {/if}
-              {#if $app.settings.overlay.on}
+              {#if $settings.overlay.on}
                 <span data-testid="export-overlay"
                   >({chosen.length > 1 ? 'with the titles' : "with the track's title"})</span
                 >
               {/if}
-              {#if mode === 'logoSpectrum' && $app.settings.coverLogo && chosen.some(shownCover)}
+              {#if mode === 'logoSpectrum' && $settings.coverLogo && chosen.some(shownCover)}
                 <span data-testid="export-cover"
                   >({chosen.length > 1
                     ? 'the cover art as the logo'
                     : 'its cover art as the logo'})</span
                 >
               {/if}
-              {#if $app.settings.coverColors && chosen.some(hasColors)}
+              {#if $settings.coverColors && chosen.some(hasColors)}
                 <span data-testid="export-cover-colors"
                   >({chosen.length > 1
                     ? 'in the colours of the tracks'
@@ -1000,7 +1000,7 @@
         <label class="notify">
           <input
             type="checkbox"
-            checked={$app.settings.exportNotify}
+            checked={$settings.exportNotify}
             onchange={setNotify}
             data-testid="export-notify"
           />

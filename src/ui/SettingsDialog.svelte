@@ -20,7 +20,7 @@
   let { open, onclose, onhelp }: Props = $props();
 
   const player = usePlayer();
-  const app = player.store;
+  const { settings } = player.parts;
   let dialog: HTMLDialogElement | undefined = $state();
   const backdrop = backdropClose(() => onclose());
 
@@ -59,7 +59,7 @@
       <label class="field">
         <span>Lettering in the ring</span>
         <input
-          value={$app.settings.logoText}
+          value={$settings.logoText}
           maxlength={LOGO_TEXT_LENGTH}
           onchange={(event) => setLettering(event.currentTarget.value)}
           data-testid="settings-logo-text"

@@ -34,8 +34,8 @@
   let { behind = false }: Props = $props();
 
   const player = usePlayer();
-  const app = player.store;
-  const k = $derived(behind ? ($app.visuals.layerLook ?? $app.kaleido) : $app.kaleido);
+  const { settings, visuals, kaleido } = player.parts;
+  const k = $derived(behind ? ($visuals.layerLook ?? $kaleido) : $kaleido);
   const scene = $derived(sceneById(k.scene));
   const edit = $derived(
     behind
@@ -105,9 +105,9 @@
     store={kaleidoPresets}
     current={k}
     onapply={(settings) => edit.replace(settings)}
-    favourites={$app.settings.favourites.kaleidoscope}
+    favourites={$settings.favourites.kaleidoscope}
     onfavourites={(names) =>
-      player.updateSettings({ favourites: { ...$app.settings.favourites, kaleidoscope: names } })}
+      player.updateSettings({ favourites: { ...$settings.favourites, kaleidoscope: names } })}
     sanitize={sanitizeKaleido}
   />
   {#if !behind}

@@ -53,7 +53,7 @@
   } = $props();
 
   const player = usePlayer();
-  const app = player.store;
+  const { settings } = player.parts;
   let open = $state(false);
   let button: HTMLButtonElement;
   let menu = $state<HTMLDivElement>();
@@ -305,8 +305,8 @@
           {#each TEMPO_RANGE_IDS as id (id)}
             <button
               role="menuitemradio"
-              aria-checked={$app.settings.bpmRange === id}
-              class:on={$app.settings.bpmRange === id}
+              aria-checked={$settings.bpmRange === id}
+              class:on={$settings.bpmRange === id}
               onclick={(event) => {
                 event.stopPropagation();
                 chooseRange(id, event);

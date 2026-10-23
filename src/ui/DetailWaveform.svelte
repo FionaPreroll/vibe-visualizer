@@ -19,7 +19,7 @@
    * or the right button deletes it. The keys 1–8 do the same.
    */
   const player = usePlayer();
-  const app = player.store;
+  const { currentTrack, settings } = player.parts;
   const analyses = player.analysis;
 
   /** Seconds shown across the view. */
@@ -39,7 +39,7 @@
   const GRID_STEP = 0.005;
   const GRID_FINE_STEP = 0.001;
 
-  const current = $derived($app.tracks.find((track) => track.id === $app.currentId) ?? null);
+  const current = $derived($currentTrack);
   const cues = $derived(current?.cues ?? []);
   const hasGrid = $derived(
     current?.fingerprint ? ($analyses.get(current.fingerprint)?.grid ?? null) !== null : false,
@@ -92,7 +92,7 @@
     const track = player.currentTrack;
     const analysis = player.analysisOf(track);
     const at = centre(now);
-    const style = $app.settings.waveformStyle;
+    const style = $settings.waveformStyle;
     // The track (its cues and markers), its analysis (growing while analysed, its grid as
     // corrected), the view and a marker dragged: all a frame shows.
     const inputs = [width, height, ratio, track, analysis, at, zoom, style, markDrag];
@@ -373,15 +373,15 @@
           class="style"
           onclick={() =>
             player.updateSettings({
-              waveformStyle: $app.settings.waveformStyle === 'bands' ? 'rgb' : 'bands',
+              waveformStyle: $settings.waveformStyle === 'bands' ? 'rgb' : 'bands',
             })}
-          title={$app.settings.waveformStyle === 'bands'
+          title={$settings.waveformStyle === 'bands'
             ? 'Three bands: lows blue, mids orange, highs white. Click for RGB'
             : 'RGB: coloured by the bands. Click for three bands'}
           data-testid="waveform-style"
-          data-style={$app.settings.waveformStyle}
+          data-style={$settings.waveformStyle}
         >
-          {$app.settings.waveformStyle === 'bands' ? '3 bands' : 'RGB'}
+          {$settings.waveformStyle === 'bands' ? '3 bands' : 'RGB'}
         </button>
         <div class="zoom" role="group" aria-label="Zoom">
           <button

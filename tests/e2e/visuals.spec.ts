@@ -9,6 +9,20 @@ import { createTaggedWav, createWav } from './wav';
 
 const ACK = 'vibe-visualizer:welcome:v1';
 
+/** The files that have a cover of the user's (LS-21), as the browser stores them. */
+function storedCovers(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const covers = await root.getDirectoryHandle('track-covers', { create: true });
+    const names: string[] = [];
+    // keys() is missing from the DOM types the tests are checked with.
+    for await (const name of (covers as unknown as { keys(): AsyncIterable<string> }).keys()) {
+      names.push(name);
+    }
+    return names;
+  });
+}
+
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -879,7 +893,9 @@ test('a track can be given a cover of your own, kept for the file (LS-21)', asyn
     })
     .toBe(true);
 
-  // Kept for the file: it is back with it after a reload.
+  // Kept for the file: it is back with it after a reload (once it is stored: that goes on
+  // after the dialog closed).
+  await expect.poll(() => storedCovers(page)).toHaveLength(1);
   await page.reload();
   await page.getByRole('tab', { name: 'Queue' }).click();
   await page.getByTestId('file-input').setInputFiles(file);
@@ -893,6 +909,7 @@ test('a track can be given a cover of your own, kept for the file (LS-21)', asyn
   await expect(page.getByTestId('track-cover-preview')).toHaveCount(0);
   await page.getByTestId('track-name-save').click();
   await expect(page.getByTestId('queue-cover')).toHaveCount(0);
+  await expect.poll(() => storedCovers(page)).toEqual([]);
   await page.reload();
   await page.getByRole('tab', { name: 'Queue' }).click();
   await page.getByTestId('file-input').setInputFiles(file);
